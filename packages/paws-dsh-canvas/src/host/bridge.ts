@@ -48,7 +48,11 @@ export function startParentConnection(): void {
         if (!update) return;
         if (current?.sessionKey === update.sessionKey && current.manifestRevision !== undefined
             && update.manifestRevision !== undefined && update.manifestRevision < current.manifestRevision) return;
-        current = update;
+        // The editor can attach after several URI-only syncs, or remount while
+        // the iframe stays alive. Retain its authoritative scene until a new
+        // scene arrives; a new canvas session starts with no retained state.
+        current = !update.scene && current?.sessionKey === update.sessionKey && current.scene
+            ? { ...update, scene: current.scene } : update;
         for (const listener of listeners) listener();
     });
     postCanvasMessage({ type: 'paws-project-canvas/ready' });

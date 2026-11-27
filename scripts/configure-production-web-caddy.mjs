@@ -39,10 +39,7 @@ const PUBLIC_SHARE_CADDY_LINES = [
     PUBLIC_SHARE_CADDY_BLOCK_END,
 ];
 
-const WEB_OSS_CADDY_LINES = [
-    WEB_OSS_CADDY_BLOCK_START,
-    '@paws_web_asset path /_expo/* /assets/* /desktop-skins/* /.well-known/* /canvaskit.wasm /favicon.ico /favicon-active.ico /metadata.json',
-    `redir @paws_web_asset ${PRODUCTION_WEB_OSS_ORIGIN}{uri} 302`,
+export const PROJECT_CANVAS_CADDY_LINES = Object.freeze([
     '@paws_canvas_prefix path /dsh-image-canvas /dsh-image-canvas/*',
     'handle @paws_canvas_prefix {',
     '    @paws_canvas_file {',
@@ -67,6 +64,13 @@ const WEB_OSS_CADDY_LINES = [
     '        respond 404',
     '    }',
     '}',
+]);
+
+const WEB_OSS_CADDY_LINES = [
+    WEB_OSS_CADDY_BLOCK_START,
+    '@paws_web_asset path /_expo/* /assets/* /desktop-skins/* /.well-known/* /canvaskit.wasm /favicon.ico /favicon-active.ico /metadata.json',
+    `redir @paws_web_asset ${PRODUCTION_WEB_OSS_ORIGIN}{uri} 302`,
+    ...PROJECT_CANVAS_CADDY_LINES,
     'handle {',
     '    rewrite * /web/current/index.html',
     `    reverse_proxy ${PRODUCTION_WEB_OSS_ORIGIN} {`,
@@ -263,13 +267,34 @@ export function configureProductionWebCaddy(source, siteAddress = '47.115.228.20
     return hadFinalNewline && !result.endsWith('\n') ? `${result}\n` : result;
 }
 
+export function configureSecondaryCanvasCaddy(source, siteAddress = '121.43.32.242:8443') {
+    if (siteAddress !== '121.43.32.242:8443') throw new Error('Expected the approved secondary canvas site address.');
+    const lines = source.replace(/\r\n/g, '\n').split('\n');
+    configureGracePeriod(lines);
+    const start = lines.findIndex(line => line.trim() === `${siteAddress} {`);
+    if (start < 0) throw new Error(`Caddy site block not found: ${siteAddress}`);
+    const end = findBlockEnd(lines, start);
+    const site = lines.slice(start + 1, end);
+    const range = findManagedRange(site, '# paws-secondary-canvas:start', '# paws-secondary-canvas:end');
+    if (range) site.splice(range.start, range.end - range.start + 1);
+    if (site.some(line => /paws_canvas|dsh-image-canvas/.test(line))) {
+        throw new Error('Found an unmanaged canvas handler in the secondary site; review before replacing it.');
+    }
+    const indentation = site.find(line => line.trim())?.match(/^\s*/)?.[0] ?? '    ';
+    const canvas = ['# paws-secondary-canvas:start', ...PROJECT_CANVAS_CADDY_LINES, '# paws-secondary-canvas:end'];
+    site.unshift(...canvas.map(line => indentation + line));
+    lines.splice(start + 1, end - start - 1, ...site);
+    return lines.join('\n');
+}
+
 async function main() {
     const [inputPath, outputPath, siteAddress] = process.argv.slice(2);
     if (!inputPath || !outputPath) {
-        throw new Error('Usage: node scripts/configure-production-web-caddy.mjs <input> <output> [site-address]');
+        throw new Error('Usage: node scripts/configure-production-web-caddy.mjs <input> <output> [site-address|--secondary-canvas]');
     }
     const source = await readFile(inputPath, 'utf8');
-    const configured = configureProductionWebCaddy(source, siteAddress);
+    const configured = siteAddress === '--secondary-canvas'
+        ? configureSecondaryCanvasCaddy(source) : configureProductionWebCaddy(source, siteAddress);
     await writeFile(outputPath, configured, 'utf8');
     process.stdout.write(configured === source ? 'unchanged\n' : 'changed\n');
 }

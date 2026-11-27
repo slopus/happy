@@ -861,6 +861,42 @@ describe('project canvas RPC', () => {
         expect(await reopened.preview(request)).toEqual({ success: true, base64, size: jpeg.length });
     });
 
+    it('acknowledges preview writes with a bounded scoped receipt without retransmitting a large scene', async () => {
+        const f = await fixture();
+        const handlers = new Map<string, (input: unknown) => Promise<any>>();
+        const service = registerProjectGoalHandlers({ registerHandler: (name, handler) => handlers.set(name, handler) }, f.deps);
+        cleanups.push(() => service.dispose());
+        const projectPath = join(f.root, 'p');
+        const imported = await service.canvas.import({ projectPath, name: 'Preview.png', mimeType: 'image/png', base64: image.toString('base64') });
+        if (!('canvas' in imported)) throw new Error('Expected a completed import');
+        const asset = imported.canvas.assets[0];
+        const galleryId = `${asset.id}-${asset.versionId}`;
+        const scene = sceneImage(`asset:ig-${galleryId}`, `shape:ig-${galleryId}`, { galleryId });
+        scene.image.props.name = 'x'.repeat(300 * 1024);
+        const document = JSON.stringify(sceneEnvelope(scene.image, scene.shape));
+        const saved = await service.canvas.saveScene({ projectPath, revision: 0, document });
+        vi.mocked(f.deps.changed).mockClear();
+
+        const put = handlers.get('goalProjectCanvasPutPreviewReceipt');
+        expect(put).toBeTypeOf('function');
+        const input = { projectPath, assetId: asset.id, versionId: asset.versionId, base64: jpeg.toString('base64') };
+        const receipt = await put!(input);
+        expect(receipt).toMatchObject({ success: true, canvasId: saved.canvas.id, baseRevision: saved.canvas.revision,
+            revision: saved.canvas.revision + 1, asset: { ...asset, preview: { size: jpeg.length } } });
+        expect(JSON.stringify(receipt).length).toBeLessThan(2048);
+        expect(receipt).not.toHaveProperty('canvas');
+        expect(f.deps.changed).toHaveBeenCalledExactlyOnceWith({ kind: 'preview', canvasId: saved.canvas.id,
+            baseRevision: saved.canvas.revision, revision: receipt.revision, asset: receipt.asset });
+        expect((await service.canvas.get({ projectPath })).canvas.scene).toEqual(saved.canvas.scene);
+        expect(await put!(input)).toMatchObject({ baseRevision: receipt.revision, revision: receipt.revision, asset: receipt.asset });
+        expect(f.deps.changed).toHaveBeenCalledTimes(1);
+        expect(await put!({ ...input, projectPath: f.feature })).toMatchObject({ success: false });
+        expect(await put!({ ...input, base64: image.toString('base64') })).toMatchObject({ success: false });
+        const legacy = await handlers.get('goalProjectCanvasPutPreview')!(input);
+        expect(legacy.canvas.scene).toEqual(saved.canvas.scene);
+        expect(legacy.canvas.revision).toBe(receipt.revision);
+    });
+
     it('atomically saves categorized image changes and full canvas documents with independent scene revisions', async () => {
         const f = await fixture();
         const projectPath = join(f.root, 'p');

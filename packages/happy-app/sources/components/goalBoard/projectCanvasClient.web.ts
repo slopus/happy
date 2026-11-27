@@ -5,9 +5,12 @@ import {
     goalCanvasBundleFromSnapshot, goalCanvasPackageHeader, prepareGoalCanvasBundleImport, readGoalCanvasPackage,
 } from '@slopus/happy-wire';
 import type { z } from 'zod';
+import { assertAccountRuntime, getActiveAccountKey, getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { projectFileHash } from '@/sync/projectFileHash';
 import { projectGoalRequest } from '@/sync/projectGoals';
+import { readProjectCanvasPreviewCache, writeProjectCanvasPreviewCache } from './projectCanvasPreviewCache.web';
+import type { ProjectCanvasPreviewReceipt } from './projectCanvasUpdates.web';
 
 export const projectCanvasImageTypes = GoalCanvasImageMimeSchema.options;
 const uploadChunkSize = Math.min(256 * 1024, GOAL_CANVAS_LIMITS.uploadChunkBytes);
@@ -18,14 +21,33 @@ export type ProjectCanvasAsset = z.infer<typeof GoalCanvasAssetSchema>;
 export type ProjectCanvasSnapshot = GoalProjectCanvas;
 export type ProjectCanvasPlacement = Pick<ProjectCanvasAsset, 'id' | 'x' | 'y'>;
 
-export function projectCanvasClient(machineId: string, projectPath: string) {
+export function projectCanvasClient(machineId: string, projectPath: string, capabilities: { previewReceipts?: boolean } = {}) {
+    const account = getRuntimeAccountSelection();
+    const owner = JSON.stringify([account?.key, account?.generation]);
+    let canvasId: string | undefined;
+    function assertCurrent() {
+        assertAccountRuntime();
+        const current = getRuntimeAccountSelection();
+        if (owner !== JSON.stringify([current?.key, current?.generation]) || getActiveAccountKey() !== (account?.key ?? null)) {
+            throw new Error('Canvas request account changed');
+        }
+    }
+    function previewIdentity(asset: ProjectCanvasAsset) {
+        return account?.key && canvasId && asset.preview ? {
+            accountKey: account.key, machineId, canvasId, assetId: asset.id,
+            versionId: asset.versionId, previewVersionId: asset.preview.versionId,
+        } : undefined;
+    }
     async function request<K extends keyof typeof GoalProjectCanvasRequests>(method: K, input: object = {}, signal?: AbortSignal) {
+        assertCurrent();
         signal?.throwIfAborted();
         const argumentsForProject = GoalProjectCanvasRequests[method].parse({ projectPath, ...input });
         const response = await projectGoalRequest(machineId, method, argumentsForProject);
+        assertCurrent();
         signal?.throwIfAborted();
         const parsed = GoalProjectCanvasResponses[method].parse(response) as z.infer<(typeof GoalProjectCanvasResponses)[K]>;
         if (!parsed.success) throw new Error(parsed.error);
+        if ('canvas' in parsed) canvasId = (parsed.canvas as ProjectCanvasSnapshot).id;
         return parsed as Extract<typeof parsed, { success: true }>;
     }
 
@@ -83,7 +105,16 @@ export function projectCanvasClient(machineId: string, projectPath: string) {
             return new File([bytes], asset.name, { type: asset.mimeType });
         },
         async readPreview(asset: ProjectCanvasAsset, signal: AbortSignal): Promise<Blob> {
+            signal.throwIfAborted();
+            assertCurrent();
             if (!asset.preview) throw new Error('Canvas preview is unavailable');
+            const identity = previewIdentity(asset);
+            if (identity) {
+                const cached = await readProjectCanvasPreviewCache(identity, asset.preview.size, signal, assertCurrent);
+                assertCurrent();
+                signal.throwIfAborted();
+                if (cached) return new Blob([new Uint8Array(cached)], { type: 'image/jpeg' });
+            }
             const response = await request('goalProjectCanvasPreview', { assetId: asset.id, versionId: asset.versionId }, signal);
             const bytes = decodeBase64(response.base64);
             if (response.size !== asset.preview.size || bytes.length !== asset.preview.size ||
@@ -91,13 +122,28 @@ export function projectCanvasClient(machineId: string, projectPath: string) {
                 throw new Error('Canvas preview bytes do not match the saved version');
             }
             signal.throwIfAborted();
+            assertCurrent();
+            if (identity) await writeProjectCanvasPreviewCache(identity, bytes, signal, assertCurrent);
+            assertCurrent();
+            signal.throwIfAborted();
             return new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' });
         },
-        async putPreview(asset: ProjectCanvasAsset, preview: Blob, signal: AbortSignal): Promise<ProjectCanvasSnapshot> {
+        async putPreview(asset: ProjectCanvasAsset, preview: Blob, signal: AbortSignal): Promise<ProjectCanvasSnapshot | ProjectCanvasPreviewReceipt> {
             const bytes = new Uint8Array(await preview.arrayBuffer());
-            return (await request('goalProjectCanvasPutPreview', {
-                assetId: asset.id, versionId: asset.versionId, base64: encodeBase64(bytes),
-            }, signal)).canvas;
+            const input = { assetId: asset.id, versionId: asset.versionId, base64: encodeBase64(bytes) };
+            const saved = capabilities.previewReceipts
+                ? await request('goalProjectCanvasPutPreviewReceipt', input, signal)
+                : (await request('goalProjectCanvasPutPreview', input, signal)).canvas;
+            if ('canvasId' in saved) canvasId = saved.canvasId;
+            const accepted = 'canvasId' in saved ? saved.asset : saved.assets.find(item => item.id === asset.id && item.versionId === asset.versionId);
+            const identity = accepted?.id === asset.id && accepted.versionId === asset.versionId && previewIdentity(accepted);
+            if (identity && accepted?.preview?.size === bytes.length && await projectFileHash(bytes) === identity.previewVersionId) {
+                assertCurrent();
+                await writeProjectCanvasPreviewCache(identity, bytes, signal, assertCurrent);
+            }
+            signal.throwIfAborted();
+            assertCurrent();
+            return saved;
         },
         async saveLayout(revision: number, placements: ProjectCanvasPlacement[]): Promise<ProjectCanvasSnapshot> {
             return (await request('goalProjectCanvasLayout', { revision, placements })).canvas;

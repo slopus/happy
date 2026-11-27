@@ -27,13 +27,18 @@ git rev-parse origin/main
 ## Paws Web 发布契约
 
 本仓库中“部署 Web”、“上线 Web”、“Web 预览”或“让我在线测试”均指向唯一的正式
-Paws Web origin：`https://47.115.228.20:8443`。
+Paws Web 主 origin：`https://47.115.228.20:8443`。
 
 - 合入 `main` 后，由 `.github/workflows/web-production-deploy.yml` 自动构建并发布；它是
   正式 Web 的唯一常规发布入口。
 - 发布必须复用 `scripts/deploy-web.sh` 的原子切换，并先上传并校验 OSS 上的哈希资源。
 - `scripts/deploy-web.sh` 只接受该正式 origin，且仅允许干净、与 `origin/main` 一致的
   `main`；不得从功能分支发布。
+- 用户于 2026-11-28 明确授权修复既有次要入口 `https://121.43.32.242:8443` 的项目画布。
+  它复用同一份 OSS release，由同一 main workflow 在主入口验收后配置严格的同源画布代理并
+  单独验收；这不替代主入口，也不开放其他 origin。次要入口失败须明确报告并回滚它自己的
+  代理变更，已验收的主入口保持在线。每个启用画布的精确 origin 都必须通过真实 tldraw
+  许可校验，不得靠放宽域名或关闭许可检查启用。
 - 未经用户明确要求，禁止以 Vercel、Cloudflare Pages、`cloudflared`、Wrangler、临时
   tunnel 或任何其他 origin/端口代替该正式入口。
 - “在线测试”不授权把未合并分支发布到 `8443`。需要测试未合并分支时，应明确询问是否

@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { goalOutputRecognition, GoalProjectConversationCandidateSchema, GoalProjectConversationIndexEntrySchema } from '@slopus/happy-wire';
-import type { GoalTask, GoalTaskSession, GoalProjectConversation, GoalProjectConversationGroup, GoalProjectConversationCandidate, GoalProjectConversationCatalogPage, GoalProjectConversationCatalogManifestPage, GoalProjectConversationIndexEntry } from '@slopus/happy-wire';
+import type { GoalTask, GoalTaskSession, GoalProjectConversation, GoalProjectConversationGroup, GoalProjectConversationCandidate, GoalProjectConversationCatalogPage, GoalProjectConversationCatalogManifestPage, GoalProjectConversationIndexEntry, GoalProjectCanvasChangeNotice } from '@slopus/happy-wire';
 import { discoverRoots, readCatalog, readProjects, safePath, within, catalogSummary, MAX_CATALOG, type CatalogRecord } from './catalog';
 import { digest, goalFileRevision, goalOf, titleOf, parseBoard, readBoundedFile } from './parser';
 import { goalBoardTaskPrompt } from './taskPrompt';
@@ -29,7 +29,7 @@ export type ProjectGoalDependencies = {
     conversationCatalog?: (projectPath: string, input: { snapshotId?: string; cursor?: string; format?: 'manifest'; sessionIds?: string[] }) => Promise<GoalProjectConversationCatalogPage | GoalProjectConversationCatalogManifestPage>;
     conversationIndex?: (projectPath: string, input: { snapshotId: string; catalogFingerprint: string; entries: GoalProjectConversationIndexEntry[] }) => Promise<{ success: true }>;
     releaseConversationCatalog?: (projectPath: string, snapshotId: string) => boolean | Promise<boolean>;
-    changed: () => void | Promise<void>;
+    changed: (change?: GoalProjectCanvasChangeNotice) => void | Promise<void>;
     getArtifactStore?: () => Promise<import('../artifacts/store').ArtifactStore>;
 };
 const pathInput = z.string().min(1).max(8192);
@@ -633,6 +633,7 @@ export function registerProjectGoalHandlers(manager: { registerHandler(method: s
     manager.registerHandler('goalProjectCanvasAsset', wrap(service.canvas.asset));
     manager.registerHandler('goalProjectCanvasPreview', wrap(service.canvas.preview));
     manager.registerHandler('goalProjectCanvasPutPreview', wrap(service.canvas.putPreview));
+    manager.registerHandler('goalProjectCanvasPutPreviewReceipt', wrap(service.canvas.putPreviewReceipt));
     manager.registerHandler('goalProjectCanvasLayout', wrap(service.canvas.layout));
     manager.registerHandler('goalProjectCanvasMutate', wrap(service.canvas.mutate));
     manager.registerHandler('goalProjectCanvasSaveScene', wrap(service.canvas.saveScene));

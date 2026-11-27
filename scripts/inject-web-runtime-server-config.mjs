@@ -1,12 +1,17 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
+export const PROJECT_CANVAS_APPROVED_ORIGINS = Object.freeze(['https://47.115.228.20:8443', 'https://121.43.32.242:8443']);
+
 export const RUNTIME_CONFIG_START = '<!-- paws-web-runtime-server-config:start -->';
 export const RUNTIME_CONFIG_END = '<!-- paws-web-runtime-server-config:end -->';
 
-function projectCanvasConfig(origin, revision, license, evaluationExpiry) {
-    if (!/^https:\/\/[\w.:-]+$/.test(origin ?? '') || !/^[0-9a-f]{40}$/.test(revision ?? '')) {
-        throw new Error('Project Canvas requires an exact HTTPS origin and a full release revision.');
+function projectCanvasConfig(origins, revision, license, evaluationExpiry) {
+    if (!Array.isArray(origins) || !origins.length || origins.some(origin => !PROJECT_CANVAS_APPROVED_ORIGINS.includes(origin))) {
+        throw new Error('Expected an approved exact Project Canvas origin.');
+    }
+    if (!/^[0-9a-f]{40}$/.test(revision ?? '')) {
+        throw new Error('Project Canvas requires a full release revision.');
     }
     if (typeof license !== 'string' || !license.trim() || license.length > 4096) {
         throw new Error('Missing or malformed PAWS_PROJECT_CANVAS_TLDRAW_LICENSE.');
@@ -25,13 +30,13 @@ function projectCanvasConfig(origin, revision, license, evaluationExpiry) {
     const entry = `/dsh-image-canvas/${revision}/index.html`;
     return {
         markup: `<meta name="paws-project-canvas-entry" content="${entry}">`,
-        script: `if(l.origin===${JSON.stringify(origin)})Object.assign(globalThis.__HAPPY_CONFIG__,${options});`,
+        script: `if(${JSON.stringify([...new Set(origins)])}.includes(l.origin))Object.assign(globalThis.__HAPPY_CONFIG__,${options});`,
     };
 }
 
 export function injectWebRuntimeServerConfig(html, canvas) {
     const { markup = '', script = '' } = canvas
-        ? projectCanvasConfig(canvas.origin, canvas.revision, canvas.license, canvas.evaluationExpiry)
+        ? projectCanvasConfig(canvas.origins ?? [canvas.origin], canvas.revision, canvas.license, canvas.evaluationExpiry)
         : {};
     const managed = `${RUNTIME_CONFIG_START}${markup}<script>(function(){var l=globalThis.location;if(!l||l.protocol!=="https:"||!["app.paws.rodeo","paws.rodeo","47.115.228.20","121.43.32.242"].includes(l.hostname))return;globalThis.__HAPPY_CONFIG__=Object.assign({},globalThis.__HAPPY_CONFIG__,{serverUrl:l.origin});${script}})();</script>${RUNTIME_CONFIG_END}`;
     const startCount = html.split(RUNTIME_CONFIG_START).length - 1;
@@ -59,13 +64,13 @@ export function injectWebRuntimeServerConfig(html, canvas) {
 async function main() {
     const [indexPath, ...canvasArgs] = process.argv.slice(2);
     if (!indexPath) {
-        throw new Error('Usage: node scripts/inject-web-runtime-server-config.mjs <index.html> [--project-canvas|--check-project-canvas <origin> <revision>]');
+        throw new Error('Usage: node scripts/inject-web-runtime-server-config.mjs <index.html> [--project-canvas|--check-project-canvas <origin[,origin]> <revision>]');
     }
     if (canvasArgs.length && (canvasArgs.length !== 3 || !['--project-canvas', '--check-project-canvas'].includes(canvasArgs[0]))) {
         throw new Error('Expected a Project Canvas option, origin, and revision.');
     }
     const canvas = canvasArgs.length ? {
-        origin: canvasArgs[1],
+        origins: canvasArgs[1].split(','),
         revision: canvasArgs[2],
         license: process.env.PAWS_PROJECT_CANVAS_TLDRAW_LICENSE,
         evaluationExpiry: process.env.PAWS_PROJECT_CANVAS_TLDRAW_EXPIRES_AT,

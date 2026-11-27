@@ -29,3 +29,22 @@ node --test scripts/classify-ota-impact.test.cjs scripts/ota-delivery-workflows.
 ```
 
 这些测试使用本地 Git 仓库和 OSS CLI 替身，验证判定及对象校验/复制/失败边界。实际云端耗时改善必须在优化合并后的生产 workflow 中另行测量，不能把本地替身耗时当作上线收益。
+
+
+## 项目画布的两个已批准入口
+
+正式主入口保持 `https://47.115.228.20:8443`。用户于 2026-11-28 特别授权的既有
+次要入口 `https://121.43.32.242:8443` 使用同一份 `web/releases/<sha>/`，没有
+新增存储、付费服务或第二次 Web 构建。许可预检逐一检查真实 hostname，运行时只对已通过
+许可的精确 origin 注入画布配置，禁止把其他端口或相似主机名带入范围。
+
+两个 origin 的 `/dsh-image-canvas/<sha>/<allowlisted-file>` 均由 Caddy 同源代理到
+OSS，保留 iframe、图片 blob 与 CSP 的原有关系。JS/CSS 使用压缩，字体及其他静态文件
+沿用不可变缓存；跨 Web 提交的相同文件继续通过已有 OSS 内容校验与内部复制复用。
+不存在或不允许的画布路径返回 404，不回落到主 SPA HTML。
+
+同一 main workflow 先完成主入口部署与验收，再独立配置和验收次要画布代理。次要失败
+必须明确呈现为失败；次要代理有独立备份和回滚，不撤掉已验收的主入口。若现有 CI 公钥
+尚未安装到次要主机，从 `paws-web-deploy-public-key` artifact 取公钥经授权安装；不复制
+个人私钥、不关闭 SSH 主机校验，也不打印许可或私钥。浏览器核心操作仍须从用户当前设备
+实际验收，HTTP 字节校验不能替代这一步。

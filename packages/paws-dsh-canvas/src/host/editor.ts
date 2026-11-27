@@ -135,14 +135,16 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
     const queued = new Set<string>();
     const loading = new Map<string, string>();
     const displays = new Map<string, DisplayImage>();
+    const failedDisplays = new Map<string, string>();
     const requestedPreviews = new Set<string>();
+    const pendingPreviews = new Set<string>();
+    let failedPreviews = new Set<string>();
     const requestedOriginals = new Set<string>();
     const removed = new Set<string>();
     let desired = new Map<string, ProjectCanvasRenderAsset>();
     let disposed = false;
     let fitFrame: number | undefined;
     let previewFrame: number | undefined;
-    let previewViewport = '';
     let wheelFrame: number | undefined;
     let initialFit = true;
     let requestedAsset: string | undefined;
@@ -183,7 +185,7 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
     });
     const beforePointerDown = (): void => { scene.trackPointer(true); };
     const clearPointer = (): void => {
-        if (!disposed && scene.trackPointer(false)) {
+        if (!disposed && currentSync()?.sessionKey === sessionKey && scene.trackPointer(false)) {
             removeOrphans();
             if (!scene.hasLocalEdits()) alignShapes(desired.keys(), 'authoritative');
             fitPlacedImages();
@@ -260,14 +262,18 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
         const isPreview = quality === 'preview';
         const requested = isPreview ? requestedPreviews : requestedOriginals;
         const limit = isPreview ? PROJECT_CANVAS_PREVIEW_REQUEST_MAX : PROJECT_CANVAS_ORIGINAL_REQUEST_MAX;
+        const capacity = isPreview ? limit - pendingPreviews.size : limit;
+        if (capacity <= 0) return;
         const ids = [];
-        // Keep the window stable across incremental byte arrivals. Filter
-        // already loaded items after ranking, so hydration never advances the
-        // window to fetch the rest of a stationary board.
-        for (const { key, asset } of candidates.sort((a, b) => a.distance - b.distance).slice(0, limit)) {
-            if (requested.has(key) || (isPreview ? asset.uri !== undefined : asset.sourceQuality !== 'preview')) continue;
+        const ranked = candidates.sort((a, b) => a.distance - b.distance);
+        // Preview arrivals release bounded capacity for the next nearest
+        // visible image. Originals stay limited to an explicit zoom's window.
+        for (const { key, asset } of isPreview ? ranked : ranked.slice(0, limit)) {
+            if (requested.has(key) || (isPreview ? asset.uri !== undefined || failedPreviews.has(key) : asset.sourceQuality !== 'preview')) continue;
             requested.add(key);
+            if (isPreview) pendingPreviews.add(key);
             ids.push(asset.id);
+            if (ids.length === capacity) break;
         }
         if (ids.length) postCanvasMessage({ type: 'paws-project-canvas/request-assets', sessionKey, ids, quality });
     }
@@ -276,14 +282,6 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
         if (previewFrame !== undefined || disposed) return;
         previewFrame = requestAnimationFrame(() => {
             previewFrame = undefined;
-            const viewport = editor.getViewportPageBounds();
-            const zoom = editor.getZoomLevel();
-            const signature = [
-                editor.getCurrentPageId(), Math.round(viewport.x * zoom / 36), Math.round(viewport.y * zoom / 36),
-                Math.round(Math.log2(zoom) * 12), Math.round(viewport.w * zoom / 36), Math.round(viewport.h * zoom / 36),
-            ].join(':');
-            if (previewViewport === signature) return;
-            previewViewport = signature;
             requestVisibleAssets('preview');
         });
     }
@@ -333,7 +331,7 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
     }
 
     function applyDisplay(key: string, source: DisplayImage): void {
-        if (!desired.has(key)) return;
+        if (disposed || currentSync()?.sessionKey !== sessionKey || !desired.has(key)) return;
         const id = imageAssetIdOf(key);
         const asset = editor.getAsset(id);
         if (asset && (asset.type !== 'image' || asset.props.src === source.dataUrl)) return;
@@ -350,7 +348,8 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
 
     async function hydrateDisplay(key: string, asset: ProjectCanvasRenderAsset): Promise<void> {
         const { uri } = asset;
-        if (!uri || loading.get(key) === uri) return;
+        if (disposed || currentSync()?.sessionKey !== sessionKey || !uri || loading.get(key) === uri
+            || failedDisplays.get(key) === uri) return;
         // A copied image can still refer to this bitmap after the canonical
         // placement has been removed. Hydrate that copy without restoring the
         // placement the user deleted.
@@ -365,7 +364,8 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
         loading.set(key, uri);
         try {
             const source = cached?.uri === uri ? cached : await readDisplayImage(asset, uri);
-            if (disposed || desired.get(key)?.uri !== uri) return;
+            if (disposed || currentSync()?.sessionKey !== sessionKey || desired.get(key)?.uri !== uri) return;
+            failedDisplays.delete(key);
             displays.set(key, source);
             if (editor.getShape(shapeIdOf(key)) || removed.has(key)) {
                 applyDisplay(key, source);
@@ -374,11 +374,12 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
                 queued.add(key);
                 setAssetUri(key, uri);
                 try {
-                    await landTlItems(landingEditor, [landingOf(asset, source)], () => !disposed && desired.has(key) && !removed.has(key));
+                    await landTlItems(landingEditor, [landingOf(asset, source)], () => !disposed
+                        && currentSync()?.sessionKey === sessionKey && desired.has(key) && !removed.has(key));
                 } finally {
                     queued.delete(key);
                 }
-                if (!disposed && desired.has(key) && !removed.has(key)) {
+                if (!disposed && currentSync()?.sessionKey === sessionKey && desired.has(key) && !removed.has(key)) {
                     alignShapes([key], 'landed');
                     applyDisplay(key, displays.get(key) ?? source);
                     if (initialFit || requestedAsset) fitPlacedImages();
@@ -386,6 +387,10 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
             }
         } catch (error) {
             // A previous display remains live if a new source cannot decode.
+            // Only replacement bytes can retry; incidental manifest syncs must
+            // not repeatedly fetch/decode the same failing local bitmap.
+            if (disposed || currentSync()?.sessionKey !== sessionKey || desired.get(key)?.uri !== uri) return;
+            failedDisplays.set(key, uri);
             console.warn('Project canvas could not display an image.', error instanceof Error ? error.name : 'UnknownError');
         } finally {
             if (loading.get(key) === uri) loading.delete(key);
@@ -396,7 +401,7 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
         if (fitFrame !== undefined) cancelAnimationFrame(fitFrame);
         fitFrame = requestAnimationFrame(() => {
             fitFrame = undefined;
-            if (disposed) return;
+            if (disposed || currentSync()?.sessionKey !== sessionKey) return;
             if (requestedAsset && focusAsset(requestedAsset)) {
                 requestedAsset = undefined;
                 initialFit = false;
@@ -526,6 +531,24 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
         }
         const previous = desired;
         desired = new Map(update.assets.map(asset => [canvasKey(asset), asset]));
+        const nextFailures = new Set((update.previewRequestFailures ?? [])
+            .map(asset => `${asset.id}-${asset.versionId}`).filter(key => desired.has(key)));
+        let previewProgress = false;
+        for (const key of failedPreviews) {
+            if (!nextFailures.has(key)) {
+                // The parent only clears a terminal failure on explicit retry
+                // or version change. Unrelated sync events cannot retry it.
+                requestedPreviews.delete(key);
+                previewProgress = true;
+            }
+        }
+        failedPreviews = nextFailures;
+        for (const key of pendingPreviews) {
+            if (!desired.has(key) || desired.get(key)?.uri || failedPreviews.has(key)) {
+                pendingPreviews.delete(key);
+                previewProgress = true;
+            }
+        }
         const nextFilter = update.visibleAssetIds ? [...update.visibleAssetIds].sort().join('|') : undefined;
         const filterChanged = nextFilter !== filterKey;
         filterKey = nextFilter;
@@ -536,15 +559,19 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
             if (visible.length !== selected.length) editor.store.mergeRemoteChanges(() => editor.setSelectedShapes(visible));
         }
         const sceneRestored = scene.accept(update.scene);
-        const sameSceneRevision = sceneRevision === update.scene?.revision;
-        sceneRevision = update.scene?.revision;
+        // URI-only syncs omit the unchanged document. Its accepted revision
+        // still governs placement updates until an actual scene is supplied.
+        const sameSceneRevision = !update.scene || sceneRevision === update.scene.revision;
+        if (update.scene) sceneRevision = update.scene.revision;
         for (const [key, asset] of previous) {
             if (desired.has(key)) continue;
             removeAssetUri(key);
             queued.delete(key);
             loading.delete(key);
             displays.delete(key);
+            failedDisplays.delete(key);
             requestedPreviews.delete(key);
+            pendingPreviews.delete(key);
             requestedOriginals.delete(key);
             removed.delete(key);
         }
@@ -555,10 +582,9 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
         });
         if (sceneRestored && !scene.hasLocalEdits()) alignShapes(desired.keys(), 'authoritative');
         else if (sameSceneRevision) {
-            alignShapes(positioned.map(canvasKey), update.scene ? 'authoritative' : 'legacy', previous);
+            alignShapes(positioned.map(canvasKey), sceneRevision !== undefined ? 'authoritative' : 'legacy', previous);
         }
-        if (positioned.length || previous.size !== desired.size || sceneRestored || filterChanged) {
-            previewViewport = '';
+        if (positioned.length || previous.size !== desired.size || sceneRestored || filterChanged || previewProgress) {
             if (sceneRestored || filterChanged || (initialFit && desired.size)) fitPlacedImages();
             else schedulePreviews();
         }

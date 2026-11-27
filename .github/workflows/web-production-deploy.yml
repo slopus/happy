@@ -25,6 +25,9 @@ jobs:
     environment: production-web
     env:
       PAWS_WEB_ORIGIN: https://47.115.228.20:8443
+      PAWS_SECONDARY_WEB_ORIGIN: https://121.43.32.242:8443
+      PAWS_SECONDARY_DEPLOY_HOST: root@121.43.32.242
+      PAWS_SECONDARY_DEPLOY_PORT: '22'
       PAWS_LEGACY_WEB_ORIGIN: http://47.115.228.20:8080
       PAWS_DEPLOY_HOST: root@47.115.228.20
       PAWS_DEPLOY_PORT: '22'
@@ -76,6 +79,8 @@ jobs:
           test -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" || { echo '::error::Missing ALIYUN_OSS_ACCESS_KEY_SECRET secret.'; exit 1; }
           test -n "${{ secrets.PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY }}" || { echo '::error::Missing PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY secret.'; exit 1; }
           test "$PAWS_WEB_ORIGIN" = 'https://47.115.228.20:8443'
+          test "$PAWS_SECONDARY_WEB_ORIGIN" = 'https://121.43.32.242:8443'
+          test "$PAWS_SECONDARY_DEPLOY_HOST" = 'root@121.43.32.242'
           test "$PAWS_LEGACY_WEB_ORIGIN" = 'http://47.115.228.20:8080'
           test "$PAWS_WEB_OSS_ORIGIN" = 'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com'
           test "$PAWS_LEGACY_WEB_PATH" = '/var/www/happy-web'
@@ -107,7 +112,16 @@ jobs:
           set -euo pipefail
           if [ -n "$PAWS_PROJECT_CANVAS_TLDRAW_LICENSE" ] &&
             expires_at="$(node packages/paws-dsh-canvas/scripts/verify-production-license.mjs "$PAWS_WEB_ORIGIN" --print-evaluation-expiry)"; then
+            canvas_origins="$PAWS_WEB_ORIGIN"
+            if node packages/paws-dsh-canvas/scripts/verify-production-license.mjs "$PAWS_SECONDARY_WEB_ORIGIN"; then
+              canvas_origins="$canvas_origins,$PAWS_SECONDARY_WEB_ORIGIN"
+              echo 'secondary_enabled=true' >> "$GITHUB_OUTPUT"
+            else
+              echo 'secondary_enabled=false' >> "$GITHUB_OUTPUT"
+              echo '::warning::Secondary Project Canvas omitted: the current license does not cover its hostname.'
+            fi
             echo 'enabled=true' >> "$GITHUB_OUTPUT"
+            echo "origins=$canvas_origins" >> "$GITHUB_OUTPUT"
             echo "expires_at=$expires_at" >> "$GITHUB_OUTPUT"
           else
             echo 'enabled=false' >> "$GITHUB_OUTPUT"
@@ -134,17 +148,31 @@ jobs:
           install -d -m 700 ~/.ssh
           printf '%s\n' "${{ secrets.PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/id_paws_web_deploy
           chmod 600 ~/.ssh/id_paws_web_deploy
+          ssh-keygen -y -f ~/.ssh/id_paws_web_deploy > ~/.ssh/id_paws_web_deploy.pub
+          install -D -m 644 ~/.ssh/id_paws_web_deploy.pub "$RUNNER_TEMP/paws-web-deploy-public-key/id_paws_web_deploy.pub"
           cat >> ~/.ssh/config <<EOF
-          Host 47.115.228.20
+          Host 47.115.228.20 121.43.32.242
             IdentityFile ~/.ssh/id_paws_web_deploy
             IdentitiesOnly yes
+            BatchMode yes
+            ConnectTimeout 15
             StrictHostKeyChecking yes
           EOF
           cat >> ~/.ssh/known_hosts <<'EOF'
+          121.43.32.242 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIANTgpKlzMNcTgKZLtWubafpSwCB/V5imUq0+Zj2dbep
           47.115.228.20 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIVfo18lZ0KyBKfSB3phd1CnYAQSH7DAYwVJ49HQOwM+
           47.115.228.20 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDDcZOQThFyWm+OCABirON7FmBZpTzNv7sSm4VVOpF+kaq4bkLH2wBsMJbpjxut+OZM9bPQZr6m75eU1gZGuYHEkrlU67P6PknEzJXGcE6++UP/iqmKoOZZ1HTWDxUrkn1uhpU40h34O2xxu6vZTyRS3qBPtysrdC1vfhw57kK1fznx5qA47WTMP1yyVQ+NfRPH69zkWFseuiuI5hhDVpy+nCSuVIWwB1yynR4i04iakGrmrRhfw5vgiPqVCW0LM52bxLokukCtNMPCRzD9Odu/gEVDeo10vix1sersYtaYY+kO1c1PXZt+N2wQVbwBzCj0xy58KBSSQuYwGN3SPS1yTudSZYHdpHTSYMZv6+wLqmkmHi0mKz/iJsOMc0g1RimGIiJv8w1Aw5pj3z8I59nK49w+9PrggrNfaU8eP8+lr8ATcH35Qd45SGt4djbd+X6yw06+bp/EU1YIEIJARA5w0jdlDFnohQN0WZS6w5UExu87GpylJm+3hQj+n6IjsM=
           47.115.228.20 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmQUBstAnrOJApt7mRCo0vqiQKe9AG6IgWcwZ+X/RxBwVNPQnCPWjfR3GnxeZOsB5D/6XLIKQAyj/0/N79BlEU=
           EOF
+
+      - name: Retain deployment public key for authorized host provisioning
+        if: ${{ steps.source.outputs.eligible == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: paws-web-deploy-public-key
+          path: ${{ runner.temp }}/paws-web-deploy-public-key/id_paws_web_deploy.pub
+          retention-days: 3
+          if-no-files-found: error
 
       - name: Resolve MCP App sandbox rollout
         id: mcp_rollout
@@ -239,6 +267,7 @@ jobs:
         if: ${{ steps.source.outputs.eligible == 'true' }}
         env:
           PAWS_PROJECT_CANVAS_TLDRAW_LICENSE: ${{ secrets.PAWS_PROJECT_CANVAS_TLDRAW_LICENSE }}
+          PAWS_PROJECT_CANVAS_ORIGINS: ${{ steps.canvas_rollout.outputs.origins }}
           PAWS_PROJECT_CANVAS_TLDRAW_EXPIRES_AT: ${{ steps.canvas_rollout.outputs.expires_at }}
           PAWS_PROJECT_CANVAS_BUILD_DISABLED: ${{ steps.canvas_rollout.outputs.enabled != 'true' && '1' || '0' }}
         run: |
@@ -257,7 +286,7 @@ jobs:
           pnpm --filter happy-app exec tsx sources/scripts/injectWebLoading.ts
           node scripts/build-bots-web.mjs
           if [ "$PAWS_PROJECT_CANVAS_BUILD_DISABLED" = '0' ]; then
-            node scripts/inject-web-runtime-server-config.mjs packages/happy-app/dist/index.html --project-canvas "$PAWS_WEB_ORIGIN" "$GITHUB_SHA"
+            node scripts/inject-web-runtime-server-config.mjs packages/happy-app/dist/index.html --project-canvas "$PAWS_PROJECT_CANVAS_ORIGINS" "$GITHUB_SHA"
           else
             node scripts/inject-web-runtime-server-config.mjs packages/happy-app/dist/index.html
           fi
@@ -282,6 +311,7 @@ jobs:
           PAWS_WEB_SKIP_SUPERSEDED: '1'
           PAWS_WEB_RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           PAWS_PROJECT_CANVAS_TLDRAW_LICENSE: ${{ secrets.PAWS_PROJECT_CANVAS_TLDRAW_LICENSE }}
+          PAWS_PROJECT_CANVAS_ORIGINS: ${{ steps.canvas_rollout.outputs.origins }}
           PAWS_PROJECT_CANVAS_TLDRAW_EXPIRES_AT: ${{ steps.canvas_rollout.outputs.expires_at }}
         run: pnpm web:deploy
 
@@ -526,6 +556,48 @@ jobs:
             echo '| Server Web files | Removed after verification |'
             echo "| MCP Apps | ${{ steps.mcp_rollout.outputs.enabled == 'true' && 'Enabled after sandbox verification' || 'Disabled (repository variable unset)' }} |"
             echo "| Project Canvas | ${{ steps.canvas_rollout.outputs.enabled == 'true' && 'Enabled after license verification' || 'Disabled (production license unavailable)' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Route the approved secondary canvas to shared OSS
+        id: secondary_caddy
+        # A failure here leaves the already-verified primary release live.
+        if: ${{ steps.live_verify.outcome == 'success' && steps.canvas_rollout.outputs.enabled == 'true' }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.canvas_rollout.outputs.secondary_enabled }}" != 'true' ]; then
+            echo '::error::Primary Web is live. Secondary canvas is blocked because the current tldraw license does not cover its hostname.'
+            exit 1
+          fi
+          if ! bash scripts/deploy-secondary-canvas-ingress.sh; then
+            echo '::error::Primary Web remains live. Secondary ingress failed; inspect the secondary deployment and its pinned SSH access.'
+            echo 'The deploy PUBLIC key is available in the paws-web-deploy-public-key artifact for authorized host provisioning.'
+            ssh-keygen -lf ~/.ssh/id_paws_web_deploy.pub
+            exit 1
+          fi
+
+      - name: Verify secondary OSS-backed release and canvas routes
+        id: secondary_verify
+        if: ${{ steps.secondary_caddy.outcome == 'success' }}
+        run: |
+          PAWS_LEGACY_WEB_ORIGIN='' node scripts/verify-web-release.mjs "$PAWS_SECONDARY_WEB_ORIGIN" packages/happy-app/dist/index.html
+
+      - name: Roll back failed secondary canvas activation
+        if: ${{ failure() && steps.secondary_verify.outcome != 'success' && steps.secondary_caddy.outputs.backup_path != '' }}
+        env:
+          SECONDARY_CADDY_BACKUP: ${{ steps.secondary_caddy.outputs.backup_path }}
+        run: bash scripts/deploy-secondary-canvas-ingress.sh --rollback "$SECONDARY_CADDY_BACKUP"
+
+      - name: Write secondary canvas deployment summary
+        if: ${{ success() && steps.secondary_verify.outcome == 'success' }}
+        run: |
+          {
+            echo '### Secondary Project Canvas deployed'
+            echo ''
+            echo "| Origin | $PAWS_SECONDARY_WEB_ORIGIN |"
+            echo '| --- | --- |'
+            echo "| Commit | \`$GITHUB_SHA\` |"
+            echo '| Assets | Same versioned OSS release as the primary; same-origin proxy with immutable caching and compression |'
+            echo '| Verification | Licensed hostname, release revision, exact canvas HTML/JS/CSS/font bytes and MIME types |'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Write superseded deployment summary

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ vault: new Map<string, any>(), write: vi.fn(), cleanup: vi.fn() }));
+const mocks = vi.hoisted(() => ({ vault: new Map<string, any>(), write: vi.fn(), cleanup: vi.fn(), clearCanvasPreviews: vi.fn(async (_accountKey: string) => undefined) }));
+vi.mock('@/components/goalBoard/projectCanvasPreviewCache', () => ({ clearProjectCanvasPreviewCache: mocks.clearCanvasPreviews }));
 vi.mock('react-native', () => ({ Platform: { OS: 'web' } }));
 vi.mock('./accountIndex', () => import('./accountIndex.web'));
 vi.mock('./authChallenge', () => ({ authChallenge: () => ({ challenge: new Uint8Array(32), signature: new Uint8Array(64), publicKey: new Uint8Array(32) }) }));
@@ -45,6 +46,7 @@ describe('account registry', () => {
         expect(data.has('paws.accounts.initialized')).toBe(false);
         await api.selectSavedAccount(a.key);
         await api.removeSavedAccount(b.key);
+        expect(mocks.clearCanvasPreviews).toHaveBeenCalledWith(b.key);
         expect(mocks.vault.has(a.key)).toBe(true);
         await expect(api.removeSavedAccount(a.key)).rejects.toThrow();
     });
@@ -68,6 +70,7 @@ describe('account registry', () => {
         await api.selectSavedAccount(b.key);
         await api.logoutSavedAccount(oldGeneration, mocks.cleanup);
         expect(mocks.cleanup).not.toHaveBeenCalled();
+        expect(mocks.clearCanvasPreviews).not.toHaveBeenCalled();
         expect(JSON.parse(data.get('paws.accounts.active')!).key).toBe(b.key);
         expect(mocks.vault.has(b.key)).toBe(true);
     });
@@ -76,9 +79,11 @@ describe('account registry', () => {
         const a = await api.saveAccountCredentials(credentials('A'), 'https://example.com');
         await api.selectSavedAccount(a.key);
         const gen = JSON.parse(data.get('paws.accounts.active')!).generation;
+        mocks.clearCanvasPreviews.mockImplementationOnce(async () => { expect(data.has('paws.accounts.active')).toBe(false); });
         await api.logoutSavedAccount(gen, mocks.cleanup);
         await api.logoutSavedAccount(gen, mocks.cleanup);
         expect(mocks.cleanup).toHaveBeenCalledOnce();
+        expect(mocks.clearCanvasPreviews).toHaveBeenCalledExactlyOnceWith(a.key);
         expect(await api.listSavedAccounts()).toEqual([]);
     });
     it('rejects a recovery key for a different target account before storing', async () => {

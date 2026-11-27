@@ -254,6 +254,10 @@ test('a new immutable release uploads only changed bytes and copies matching pri
     const fixture = await createFixture();
     try {
         await writeFile(join(fixture.dist, '_expo', 'static', 'large.js'), Buffer.alloc(9 * 1024 * 1024, 65));
+        await mkdir(join(fixture.dist, 'dsh-image-canvas', 'assets', 'fonts'), { recursive: true });
+        await writeFile(join(fixture.dist, 'dsh-image-canvas', 'canvas.js'), Buffer.alloc(4 * 1024 * 1024, 65));
+        await writeFile(join(fixture.dist, 'dsh-image-canvas', 'canvas.css'), '.canvas { display: block; }');
+        await writeFile(join(fixture.dist, 'dsh-image-canvas', 'assets', 'fonts', 'test.woff2'), 'canvas font');
         assert.equal((await runUpload(fixture)).status, 0);
         await activateFixtureRevision(fixture);
         const next = 'c'.repeat(40);
@@ -264,7 +268,8 @@ test('a new immutable release uploads only changed bytes and copies matching pri
         assert.equal(result.status, 0, result.stderr);
         assert.match(result.stdout, /2 uploaded \(48 B\), \d+ copied inside OSS/);
         const state = JSON.parse(await readFile(fixture.statePath, 'utf8'));
-        for (const name of ['assets/fonts/Ionicons.abc.ttf', '_expo/static/large.js', 'canvaskit.wasm']) {
+        for (const name of ['assets/fonts/Ionicons.abc.ttf', '_expo/static/large.js', 'canvaskit.wasm',
+            'dsh-image-canvas/canvas.js', 'dsh-image-canvas/canvas.css', 'dsh-image-canvas/assets/fonts/test.woff2']) {
             assert.deepEqual(state[`web/releases/${next}/${name}`], state[`web/releases/${revision}/${name}`]);
             assert.ok(result.log.includes(`COPIED web/releases/${next}/${name}`));
         }

@@ -52,6 +52,8 @@ export interface ProjectCanvasSync {
     palette?: ProjectCanvasPalette;
     scene?: ProjectCanvasScene;
     visibleAssetIds?: string[];
+    /** Terminal preview requests for this session; cleared only for explicit retry or a new version. */
+    previewRequestFailures?: Array<{ id: string; versionId: string }>;
     review?: ProjectCanvasReviewState;
 }
 
@@ -169,6 +171,13 @@ function isAssetSize(value: unknown): value is number {
     return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 12 * 1024 * 1024;
 }
 
+function previewFailures(value: unknown): boolean {
+    return Array.isArray(value) && value.length <= maxAssets
+        && value.every(item => record(item) && typeof item.id === 'string' && assetId.test(item.id)
+            && typeof item.versionId === 'string' && versionId.test(item.versionId))
+        && new Set(value.map(item => `${item.id}-${item.versionId}`)).size === value.length;
+}
+
 export function isCanvasImportBatch(value: unknown): value is File[] {
     return Array.isArray(value) && value.length > 0 && value.length <= maxAssets && typeof File !== 'undefined'
         && value.every(file => file instanceof File && imageTypes.has(file.type) && isAssetSize(file.size)
@@ -231,6 +240,7 @@ export function readProjectCanvasSync(value: unknown, origin: string): ProjectCa
         || (value.manifestRevision !== undefined && !isSceneRevision(value.manifestRevision))
         || (value.scene !== undefined && !validScene(value.scene))
         || (value.visibleAssetIds !== undefined && !idsOf(value.visibleAssetIds))
+        || (value.previewRequestFailures !== undefined && !previewFailures(value.previewRequestFailures))
         || (value.review !== undefined && !validReview(value.review))
         || !value.assets.every(asset => renderAsset(asset, origin))) return undefined;
     if (new Set(value.assets.map(asset => asset.id)).size !== value.assets.length) return undefined;

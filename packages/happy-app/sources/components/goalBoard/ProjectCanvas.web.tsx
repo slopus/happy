@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { randomUUID } from 'expo-crypto';
-import { GOAL_CANVAS_PACKAGE_EXTENSION, type GoalProjectCanvasChange } from '@slopus/happy-wire';
+import { GOAL_CANVAS_PACKAGE_EXTENSION, GoalProjectCanvasChangeNoticeSchema, type GoalProjectCanvasChange } from '@slopus/happy-wire';
 import { Text } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { getActiveAccountKey } from '@/auth/accountRuntime';
@@ -16,6 +16,8 @@ import { ProjectCanvasGeneratedPicker } from './ProjectCanvasGeneratedPicker.web
 import { ProjectCanvasTools } from './ProjectCanvasTools.web';
 import { createProjectCanvasPreview } from './projectCanvasPreview.web';
 import { projectCanvasClient, projectCanvasImageTypes, type ProjectCanvasAsset, type ProjectCanvasSnapshot } from './projectCanvasClient.web';
+import { applyProjectCanvasPreviewReceipt, type ProjectCanvasPreviewReceipt } from './projectCanvasUpdates.web';
+import { supportsProjectCanvas } from './projectMachine';
 
 function getCanvasLicense(): string | undefined {
     const settings = (globalThis as typeof globalThis & {
@@ -39,13 +41,22 @@ const frameReadyTimeoutMs = 60_000;
 type CanvasStatus = 'loading' | 'loadError' | 'assetError' | 'saving' | 'importError' | 'layoutError' | 'referencePending' | 'referenceAdded' | 'referenceError'
     | 'packageImportError' | 'packageExportError' | 'packageImported' | 'packageExported';
 type ImageQuality = 'preview' | 'original';
-type DisplayImage = { blob: Blob; uri: string; quality: ImageQuality };
+type DisplayImage = { blob: Blob; uri: string; quality: ImageQuality; previewVersionId?: string };
 type ImageRequest = {
     id: string;
     versionId: string;
+    previewVersionId?: string;
     mode: 'preview' | 'generate-preview' | 'original';
     failedPreviewVersion?: string;
 };
+function previewForAsset(cache: ReadonlyMap<string, DisplayImage>, asset: ProjectCanvasAsset) {
+    const image = cache.get(asset.versionId);
+    return image && (!asset.preview || image.previewVersionId === asset.preview.versionId) ? image : undefined;
+}
+function displayForAsset(cache: ReadonlyMap<string, DisplayImage>, asset: ProjectCanvasAsset) {
+    const image = cache.get(asset.versionId);
+    return image?.quality === 'original' ? image : previewForAsset(cache, asset);
+}
 
 export function ProjectCanvas(props: ProjectCanvasProps) {
     const framePath = getProjectCanvasFramePath();
@@ -57,8 +68,15 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
     onSelectSurface, onReference, generatedResults, readGeneratedResult, review, onReviewMark, framePath }: ProjectCanvasProps & { framePath: string }) {
     const { theme } = useUnistyles();
     const colors = theme.colors;
-    const invalidation = (useMachine(machineId)?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision;
-    const client = React.useMemo(() => projectCanvasClient(machineId, projectPath), [machineId, projectPath]);
+    const machine = useMachine(machineId);
+    const daemonState = machine?.daemonState as { goalProjectRevision?: string; goalProjectCanvasChange?: unknown } | null;
+    const invalidation = daemonState?.goalProjectRevision;
+    const rawNotice = daemonState?.goalProjectCanvasChange as { token?: unknown; change?: unknown } | undefined;
+    const parsedNotice = GoalProjectCanvasChangeNoticeSchema.safeParse(rawNotice?.change);
+    const notice = typeof rawNotice?.token === 'string' && rawNotice.token.length > 0 && rawNotice.token.length <= 200 && parsedNotice.success
+        ? { token: rawNotice.token, change: parsedNotice.data } : undefined;
+    const previewReceipts = supportsProjectCanvas(machine ?? undefined) && machine?.metadata?.projectCanvas?.previewReceipts === true;
+    const client = React.useMemo(() => projectCanvasClient(machineId, projectPath, { previewReceipts }), [machineId, projectPath, previewReceipts]);
     const [snapshot, setSnapshot] = React.useState<ProjectCanvasSnapshot>();
     const current = React.useRef<ProjectCanvasSnapshot | undefined>(undefined);
     const [displayImages, setDisplayImages] = React.useState<ReadonlyMap<string, DisplayImage>>(new Map());
@@ -69,6 +87,7 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
     const activeImages = React.useRef(new Set<string>());
     const readingLargeImage = React.useRef(false);
     const failedImages = React.useRef(new Map<string, ImageRequest>());
+    const [previewFailures, setPreviewFailures] = React.useState<Array<{ id: string; versionId: string }>>([]);
     const [status, setStatus] = React.useState<CanvasStatus | null>('loading');
     const [frameReady, setFrameReady] = React.useState(false);
     const rendererReady = React.useRef(false);
@@ -99,6 +118,9 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
     const sessionKey = snapshot ? JSON.stringify([getActiveAccountKey(), machineId, snapshot.id]) : null;
     const locale = getCurrentLanguage().startsWith('zh') ? 'zh' : 'en';
     const lastInvalidation = React.useRef(invalidation);
+    const lastNotice = React.useRef(notice?.token);
+    const pendingRefresh = React.useRef<{ promise: Promise<ProjectCanvasSnapshot>; targetRevision: number; followup: boolean; unknownRevision: boolean } | null>(null);
+    const sentScene = React.useRef<{ sessionKey: string; revision: number } | null>(null);
     const activeFilter = categoryFilter == null || snapshot?.categories?.some(category => category.id === categoryFilter)
         ? categoryFilter : undefined;
 
@@ -106,6 +128,58 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
         if (current.current && next.revision < current.current.revision) return;
         current.current = next;
         setSnapshot(next);
+    }, []);
+
+    const refreshCanvas = React.useCallback(function refresh(signal: AbortSignal, requiredRevision?: number): Promise<ProjectCanvasSnapshot> {
+        const pending = pendingRefresh.current;
+        if (pending) {
+            if (requiredRevision === undefined || requiredRevision > pending.targetRevision) {
+                pending.followup = true;
+                if (requiredRevision === undefined) pending.unknownRevision = true;
+                pending.targetRevision = Math.max(pending.targetRevision, requiredRevision ?? 0);
+            }
+            return pending.promise;
+        }
+        let record: NonNullable<typeof pendingRefresh.current>;
+        const work = Promise.resolve().then(async () => {
+            let next: ProjectCanvasSnapshot | undefined;
+            let failed = false;
+            let failure: unknown;
+            try {
+                next = await client.get(signal);
+                signal.throwIfAborted();
+                update(next);
+            } catch (error) { failed = true; failure = error; }
+            if (pendingRefresh.current !== record) {
+                if (failed) throw failure;
+                return next!;
+            }
+            pendingRefresh.current = null;
+            // A newer event can arrive after this request captured its snapshot.
+            // Coalesce those events into one trailing read; never query again
+            // merely because a response is unchanged or a request failed.
+            if (!signal.aborted && record.followup && (record.unknownRevision || (current.current?.revision ?? 0) < record.targetRevision)) {
+                return refresh(signal, record.targetRevision || undefined);
+            }
+            if (failed) throw failure;
+            return next!;
+        });
+        record = { promise: work, targetRevision: requiredRevision ?? 0, followup: false, unknownRevision: false };
+        pendingRefresh.current = record;
+        return work;
+    }, [client, update]);
+
+    const acceptPreview = React.useCallback(async (saved: ProjectCanvasSnapshot | ProjectCanvasPreviewReceipt, signal: AbortSignal) => {
+        signal.throwIfAborted();
+        if ('id' in saved) { update(saved); return; }
+        const next = current.current && applyProjectCanvasPreviewReceipt(current.current, saved);
+        if (next) update(next);
+        else await refreshCanvas(signal, saved.revision);
+    }, [refreshCanvas, update]);
+
+    const publishPreviewFailures = React.useCallback(() => {
+        setPreviewFailures([...failedImages.current.values()].filter(item => item.mode !== 'original')
+            .map(({ id, versionId }) => ({ id, versionId })));
     }, []);
 
     const refreshDisplayImages = React.useCallback(() => {
@@ -116,13 +190,18 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
         setDisplayImages(next);
     }, []);
 
-    const cachePreview = React.useCallback((asset: ProjectCanvasAsset, blob: Blob) => {
-        if (previewCache.current.has(asset.versionId)) return;
-        previewCache.current.set(asset.versionId, { blob, uri: URL.createObjectURL(blob), quality: 'preview' });
+    const cachePreview = React.useCallback((asset: ProjectCanvasAsset, blob: Blob, previewVersionId = asset.preview?.versionId) => {
+        const latest = current.current?.assets.find(item => item.id === asset.id);
+        if (!latest || latest.versionId !== asset.versionId || latest.preview?.versionId !== asset.preview?.versionId) return;
+        const previous = previewCache.current.get(asset.versionId);
+        if (previous?.previewVersionId === previewVersionId) return;
+        if (previous) URL.revokeObjectURL(previous.uri);
+        previewCache.current.set(asset.versionId, { blob, uri: URL.createObjectURL(blob), quality: 'preview', previewVersionId });
         refreshDisplayImages();
     }, [refreshDisplayImages]);
 
     const cacheOriginal = React.useCallback((asset: ProjectCanvasAsset, file: File) => {
+        if (!current.current?.assets.some(item => item.id === asset.id && item.versionId === asset.versionId)) return;
         const cache = originalCache.current;
         const existing = cache.get(asset.versionId);
         cache.delete(asset.versionId);
@@ -155,14 +234,15 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
     const generatePreview = React.useCallback(async (asset: ProjectCanvasAsset, signal: AbortSignal) => {
         const original = await readOriginal(asset, signal);
         const preview = await createProjectCanvasPreview(original, signal);
+        const previewVersionId = await projectFileHash(new Uint8Array(await preview.arrayBuffer()));
         signal.throwIfAborted();
-        cachePreview(asset, preview);
+        cachePreview(asset, preview, previewVersionId);
         if (imageQueue.current.has(`original:${asset.versionId}`)) cacheOriginal(asset, original);
         const save = pendingMutations.current.then(async () => {
-            if (!signal.aborted) update(await client.putPreview(asset, preview, signal));
+            if (!signal.aborted) await acceptPreview(await client.putPreview(asset, preview, signal), signal);
         });
         pendingMutations.current = save.catch(() => {});
-    }, [cacheOriginal, cachePreview, client, readOriginal, update]);
+    }, [acceptPreview, cacheOriginal, cachePreview, client, readOriginal]);
 
     const pumpImages = React.useCallback(function pump(): void {
         const signal = life.current?.signal;
@@ -186,8 +266,7 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
             const asset = assets.get(request.id);
             if (!asset || asset.versionId !== request.versionId) continue;
             const mode = hasNewPreview(request) ? 'preview' : request.mode;
-            const cache = mode === 'original' ? originalCache.current : previewCache.current;
-            if (cache.has(asset.versionId)) continue;
+            if (mode === 'original' ? originalCache.current.has(asset.versionId) : previewForAsset(previewCache.current, asset)) continue;
 
             const large = mode !== 'preview';
             if (large) readingLargeImage.current = true;
@@ -204,29 +283,43 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
                     cacheOriginal(asset, file);
                 });
             void work.catch(() => {
-                if (!signal.aborted) {
+                const latest = current.current?.assets.find(item => item.id === asset.id);
+                if (!signal.aborted && latest?.versionId === asset.versionId &&
+                    (mode === 'original' || latest.preview?.versionId === asset.preview?.versionId)) {
                     failedImages.current.set(key, request);
+                    publishPreviewFailures();
                     setStatus(previous => previous === 'saving' || previous === 'referencePending' ? previous : 'assetError');
                 }
             }).finally(() => {
                 activeImages.current.delete(key);
                 if (large) readingLargeImage.current = false;
+                const latest = current.current?.assets.find(item => item.id === asset.id);
+                if (!signal.aborted && mode !== 'original' && latest?.versionId === asset.versionId &&
+                    latest.preview?.versionId !== asset.preview?.versionId) {
+                    // The renderer tracks source versions. Finish its existing
+                    // slot with the latest thumbnail if the manifest changed
+                    // while this preview request was in flight.
+                    const nextKey = `preview:${latest.versionId}:${latest.preview?.versionId ?? 'missing'}`;
+                    if (!activeImages.current.has(nextKey) && !previewForAsset(previewCache.current, latest)) {
+                        queue.set(nextKey, { id: latest.id, versionId: latest.versionId, previewVersionId: latest.preview?.versionId,
+                            mode: latest.preview ? 'preview' : 'generate-preview' });
+                    }
+                }
                 pump();
             });
         }
-    }, [cacheOriginal, cachePreview, client, generatePreview, readOriginal]);
+    }, [cacheOriginal, cachePreview, client, generatePreview, publishPreviewFailures, readOriginal]);
 
     const requestImages = React.useCallback((ids: readonly string[], quality: ImageQuality) => {
         const assets = new Map(current.current?.assets.map(asset => [asset.id, asset]));
         for (const id of ids) {
             const asset = assets.get(id);
             if (!asset) continue;
-            const cache = quality === 'preview' ? previewCache.current : originalCache.current;
-            if (cache.has(asset.versionId)) continue;
-            const key = `${quality}:${asset.versionId}`;
+            if (quality === 'preview' ? previewForAsset(previewCache.current, asset) : originalCache.current.has(asset.versionId)) continue;
+            const key = quality === 'preview' ? `preview:${asset.versionId}:${asset.preview?.versionId ?? 'missing'}` : `original:${asset.versionId}`;
             if (activeImages.current.has(key) || failedImages.current.has(key) || imageQueue.current.has(key)) continue;
             const mode = quality === 'preview' && !asset.preview ? 'generate-preview' : quality;
-            imageQueue.current.set(key, { id, versionId: asset.versionId, mode });
+            imageQueue.current.set(key, { id, versionId: asset.versionId, previewVersionId: asset.preview?.versionId, mode });
         }
         pumpImages();
     }, [pumpImages]);
@@ -252,26 +345,65 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
         };
     }, []);
 
-    React.useEffect(() => { pumpImages(); }, [snapshot, pumpImages]);
+    React.useEffect(() => {
+        let changed = false;
+        let releasedImage = false;
+        const versions = new Set(snapshot?.assets.map(asset => asset.versionId));
+        for (const cache of [previewCache.current, originalCache.current]) {
+            for (const [versionId, image] of cache) {
+                if (versions.has(versionId)) continue;
+                URL.revokeObjectURL(image.uri);
+                cache.delete(versionId);
+                releasedImage = true;
+            }
+        }
+        if (releasedImage) refreshDisplayImages();
+        for (const asset of snapshot?.assets ?? []) {
+            if (!previewCache.current.has(asset.versionId) || previewForAsset(previewCache.current, asset)) continue;
+            const key = `preview:${asset.versionId}:${asset.preview?.versionId ?? 'missing'}`;
+            if (!activeImages.current.has(key) && !failedImages.current.has(key)) {
+                imageQueue.current.set(key, { id: asset.id, versionId: asset.versionId, previewVersionId: asset.preview?.versionId,
+                    mode: asset.preview ? 'preview' : 'generate-preview' });
+            }
+        }
+        for (const [key, request] of failedImages.current) {
+            const asset = snapshot?.assets.find(item => item.id === request.id);
+            if (!asset || asset.versionId !== request.versionId || asset.preview?.versionId !== request.previewVersionId) {
+                failedImages.current.delete(key);
+                changed = true;
+            }
+        }
+        if (changed) publishPreviewFailures();
+        pumpImages();
+    }, [snapshot, pumpImages, publishPreviewFailures, refreshDisplayImages]);
 
     React.useEffect(() => {
         let active = true;
+        const signal = life.current?.signal;
+        if (!signal || signal.aborted) return;
         setStatus('loading');
-        void client.get().then(next => {
+        void refreshCanvas(signal).then(() => {
             if (!active) return;
-            update(next);
             setStatus(null);
         }, () => { if (active) setStatus('loadError'); });
         return () => { active = false; };
-    }, [client, reload, update]);
+    }, [refreshCanvas, reload]);
 
     React.useEffect(() => {
-        if (lastInvalidation.current === invalidation) return;
+        const globalChanged = lastInvalidation.current !== invalidation;
+        const scopedChanged = lastNotice.current !== notice?.token;
         lastInvalidation.current = invalidation;
+        // A scoped event received before the first manifest is known must be
+        // reconsidered once that canvas identity arrives.
+        if (current.current || !notice) lastNotice.current = notice?.token;
         const signal = life.current?.signal;
         if (!signal || signal.aborted) return;
-        void client.get(signal).then(update, () => {});
-    }, [client, invalidation, update]);
+        if (scopedChanged && notice && current.current?.id === notice.change.canvasId) {
+            if (notice.change.kind === 'preview') void acceptPreview(notice.change, signal).catch(() => {});
+            else if (notice.change.revision !== current.current.revision) void refreshCanvas(signal, notice.change.revision).catch(() => {});
+        }
+        if (globalChanged && invalidation && invalidation !== notice?.token) void refreshCanvas(signal).catch(() => {});
+    }, [acceptPreview, invalidation, notice?.token, refreshCanvas, snapshot?.id]);
 
     React.useEffect(() => {
         if (frameReady) return;
@@ -280,9 +412,9 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
     }, [frameReady, reload]);
 
     React.useEffect(() => {
-        if (!frameReady || !sessionKey || !snapshot) return;
+        if (!frameReady || !sessionKey || !snapshot) { sentScene.current = null; return; }
         const assets = snapshot.assets.map(({ preview: _preview, ...asset }) => {
-            const display = displayImages.get(asset.versionId);
+            const display = displayForAsset(displayImages, { ...asset, preview: _preview });
             return display ? { ...asset, uri: display.uri, sourceQuality: display.quality,
                 displaySize: display.blob.size, displayMimeType: display.quality === 'preview' ? 'image/jpeg' as const : asset.mimeType }
                 : asset;
@@ -291,7 +423,9 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
         const message: ProjectCanvasSync = {
             type: 'paws-project-canvas/sync', sessionKey, assets, theme: theme.dark ? 'dark' : 'light', locale,
             manifestRevision: snapshot.revision,
-            ...(snapshot.scene ? { scene: snapshot.scene } : {}),
+            ...(snapshot.scene && (sentScene.current?.sessionKey !== sessionKey || sentScene.current.revision !== snapshot.scene.revision)
+                ? { scene: snapshot.scene } : {}),
+            previewRequestFailures: previewFailures,
             ...(activeFilter === undefined ? {} : {
                 visibleAssetIds: snapshot.assets.filter(asset => (asset.categoryId ?? null) === activeFilter).map(asset => asset.id),
             }),
@@ -307,7 +441,8 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
             ...(licenseKey ? { licenseKey } : {}),
         };
         frame.current?.contentWindow?.postMessage(message, window.location.origin);
-    }, [activeFilter, frameReady, sessionKey, snapshot, displayImages, theme.dark, colors, locale, review, rejectedReview]);
+        if (message.scene) sentScene.current = { sessionKey, revision: message.scene.revision };
+    }, [activeFilter, frameReady, sessionKey, snapshot, displayImages, previewFailures, theme.dark, colors, locale, review, rejectedReview]);
 
     React.useEffect(() => {
         function receive(event: MessageEvent<unknown>) {
@@ -533,18 +668,19 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
             try {
                 for (const file of await files()) {
                     let saved = await client.importFile(file, active);
+                    update(saved);
                     const versionId = await projectFileHash(new Uint8Array(await file.arrayBuffer()));
                     const asset = saved.assets.find(item => item.versionId === versionId);
                     if (asset && !asset.preview) {
                         try {
                             const preview = await createProjectCanvasPreview(file, active);
-                            cachePreview(asset, preview);
-                            saved = await client.putPreview(asset, preview, active);
+                            const previewVersionId = await projectFileHash(new Uint8Array(await preview.arrayBuffer()));
+                            cachePreview(asset, preview, previewVersionId);
+                            await acceptPreview(await client.putPreview(asset, preview, active), active);
                         } catch {
                             if (active.aborted) return;
                         }
                     }
-                    if (!active.aborted) update(saved);
                 }
                 if (active.aborted) return;
                 if (resultRef) setAddedResults(previous => new Set([...previous, resultRef]));
@@ -613,6 +749,7 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
             setReload(value => value + 1);
             for (const [key, request] of failedImages.current) imageQueue.current.set(key, request);
             failedImages.current.clear();
+            publishPreviewFailures();
             pumpImages();
         }}><Text style={buttonText}>{t('projectCanvas.retry')}</Text></GoalBoardButton>}
     </div>;
@@ -644,7 +781,7 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
             flexDirection: 'column', flex: '0 0 clamp(230px, 23%, 280px)', minWidth: 0, minHeight: 0,
             ...(compactPane && { ...compactPosition, visibility: compactPane === 'tools' ? 'visible' : 'hidden' }) }}>
             <ProjectCanvasTools assets={snapshot?.assets.map(asset => ({ ...asset,
-                uri: previewCache.current.get(asset.versionId)?.uri ?? displayImages.get(asset.versionId)?.uri })) ?? []}
+                uri: previewForAsset(previewCache.current, asset)?.uri ?? displayForAsset(displayImages, asset)?.uri })) ?? []}
                 activeAssetId={selectedAssetId} selectedAssetIds={selectedAssetIds} files={files} disabled={!snapshot || busy || !frameReady}
                 categories={snapshot?.categories} categoryFilter={activeFilter} onCategoryFilterChange={setCategoryFilter}
                 onMutation={mutateAssets} onImportPackage={() => packageInput.current?.click()}

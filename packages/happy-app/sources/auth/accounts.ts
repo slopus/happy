@@ -7,6 +7,7 @@ import { normalizeSecretKey } from './secretKeyBackup';
 import { authChallenge } from './authChallenge';
 import { flushDeviceStorageWrites } from '@/persistence/deviceStorage';
 import { AsyncLock } from '@/utils/lock';
+import { clearProjectCanvasPreviewCache } from '@/components/goalBoard/projectCanvasPreviewCache';
 
 export type SavedAccount = { key: string; accountId: string; serverUrl: string; label: string; scope: string };
 const lock = new AsyncLock();
@@ -83,6 +84,7 @@ export async function validateSavedAccount(key: string): Promise<void> {
 export async function removeSavedAccount(key: string): Promise<void> {
     return inRegistryLock(async () => {
         if (getActiveAccountKey() === key) throw new Error('Cannot remove active account');
+        await clearProjectCanvasPreviewCache(key);
         await AccountVault.remove(key);
         saveRows(rows().filter(a => a.key !== key));
     });
@@ -99,6 +101,9 @@ export async function logoutSavedAccount(expectedGeneration: string | undefined,
         if (readAccountSelection()?.generation !== expectedGeneration) return;
         commitAccountSelection(null);
         if (selection) {
+            // Revoke the shared selection before purging optional binary
+            // previews so other tabs cannot write them after this cleanup.
+            await clearProjectCanvasPreviewCache(selection.key);
             await AccountVault.remove(selection.key);
             saveRows(rows().filter(a => a.key !== selection.key));
         }

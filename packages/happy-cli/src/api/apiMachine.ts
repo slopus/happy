@@ -6,6 +6,7 @@ import { DelegationRequestSchema, MachineDelegationRolesRequestSchema, type Dele
 import { createCodingAgentService } from '@/environment/codingAgentService';
 import { createArtifactRuntime, authorizeArtifactRoot, watchArtifactChanges, artifactAccountScope } from '@/modules/artifacts/runtime';
 import { registerProjectGoalHandlers, type ProjectGoalDependencies } from '@/modules/goalBoard/projectService';
+import { projectGoalChangeState } from './projectGoalChangeState';
 import { invokeBoundProjectCanvas } from '@/daemon/projectCanvasLocal';
 import type { ProjectCanvasLocalRequest } from '@/modules/goalBoard/projectCanvasTools';
 import { registerArtifactHandlers } from '@/modules/artifacts/rpc';
@@ -319,7 +320,7 @@ export class ApiMachineClient {
             ...projectGoals, spawn: spawnSession, workingDirectory: process.cwd(),
             getArtifactStore: this.getArtifactStore,
             storageDirectory: join(configuration.happyHomeDir, 'goal-projects', artifactAccountScope(this.machine.encryptionKey, configuration.serverUrl, this.machine.id)),
-            changed: async () => { await this.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', goalProjectRevision: `${Date.now()}:${Math.random()}` })); },
+            changed: async (change) => { await this.updateDaemonState(state => projectGoalChangeState(state, change)); },
         });
 
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
@@ -751,7 +752,7 @@ export class ApiMachineClient {
                 if (!this.projectGoals || !this.socket.connected || this.machine.daemonState?.startedAt !== startedAt) return;
                 return this.updateMachineMetadata(metadata => ({
                     ...(metadata ?? this.machine.metadata),
-                    projectCanvas: { version: 1, daemonStartedAt: startedAt },
+                    projectCanvas: { version: 1, daemonStartedAt: startedAt, previewReceipts: true },
                 }));
             }).catch(error => logger.debug('[API MACHINE] Failed to publish daemon state or canvas capability:', error));
 

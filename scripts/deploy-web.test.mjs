@@ -179,5 +179,5 @@ test('build path injects browser-origin runtime configuration once before releas
     assert.ok(script.indexOf(injector) < script.indexOf(stamp));
     assert.match(script, /readonly CANONICAL_WEB_ORIGIN="https:\/\/47\.115\.228\.20:8443"/);
     assert.match(script, /EXPO_PUBLIC_HAPPY_SERVER_URL="\$PAWS_WEB_ORIGIN"/);
-    assert.match(script, /--check-project-canvas "\$PAWS_WEB_ORIGIN" "\$RELEASE_REVISION"/);
+    assert.match(script, /--check-project-canvas "\$CANVAS_ORIGINS" "\$RELEASE_REVISION"/);
 });

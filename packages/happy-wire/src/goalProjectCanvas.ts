@@ -67,6 +67,20 @@ export type GoalProjectCanvasScene = z.infer<typeof GoalProjectCanvasSceneSchema
 export type GoalProjectCanvasChange = z.infer<typeof GoalProjectCanvasChangeSchema>;
 export type GoalProjectCanvasBundle = z.infer<typeof GoalProjectCanvasBundleSchema>;
 
+export const GoalProjectCanvasPreviewReceiptSchema = z.object({
+    success: z.literal(true),
+    canvasId: GoalProjectCanvasSchema.shape.id,
+    baseRevision: revision,
+    revision,
+    asset: GoalCanvasAssetSchema,
+}).strict();
+export type GoalProjectCanvasPreviewReceipt = z.infer<typeof GoalProjectCanvasPreviewReceiptSchema>;
+export const GoalProjectCanvasChangeNoticeSchema = z.discriminatedUnion('kind', [
+    GoalProjectCanvasPreviewReceiptSchema.omit({ success: true }).extend({ kind: z.literal('preview') }),
+    z.object({ kind: z.literal('content'), canvasId: GoalProjectCanvasSchema.shape.id, baseRevision: revision, revision }).strict(),
+]);
+export type GoalProjectCanvasChangeNotice = z.infer<typeof GoalProjectCanvasChangeNoticeSchema>;
+
 const project = z.object({ projectPath: z.string().min(1).max(8192) }).strict();
 const asset = project.extend({ assetId, versionId });
 const image = project.extend({
@@ -83,6 +97,7 @@ export const GoalProjectCanvasRequests = {
     goalProjectCanvasAsset: asset.extend({ offset }),
     goalProjectCanvasPreview: asset,
     goalProjectCanvasPutPreview: asset.extend({ base64: previewBase64 }),
+    goalProjectCanvasPutPreviewReceipt: asset.extend({ base64: previewBase64 }),
     goalProjectCanvasLayout: project.extend({ revision, placements }),
     goalProjectCanvasMutate: project.extend({
         revision,
@@ -105,6 +120,7 @@ export const GoalProjectCanvasResponses = {
     }).strict(), error]),
     goalProjectCanvasPreview: z.union([z.object({ success: z.literal(true), base64: previewBase64, size: previewSize }).strict(), error]),
     goalProjectCanvasPutPreview: z.union([canvasResponse, error]),
+    goalProjectCanvasPutPreviewReceipt: z.union([GoalProjectCanvasPreviewReceiptSchema, error]),
     goalProjectCanvasLayout: z.union([canvasResponse, error]),
     goalProjectCanvasMutate: z.union([canvasResponse, error]),
     goalProjectCanvasSaveScene: z.union([canvasResponse, error]),

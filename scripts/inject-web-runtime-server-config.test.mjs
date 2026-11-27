@@ -89,3 +89,24 @@ test('stamps the canvas entry for this release and exposes its license only on t
         /Invalid Project Canvas evaluation expiry/,
     );
 });
+
+
+test('shares the licensed canvas release only with the two approved exact HTTPS origins', () => {
+    const origins = ['https://47.115.228.20:8443', 'https://121.43.32.242:8443'];
+    const license = 'test-only-license';
+    const output = injectWebRuntimeServerConfig('<head></head>', { origins, revision: 'a'.repeat(40), license });
+    const script = extractManagedScript(output);
+    for (const origin of origins) assert.equal(runInjectedScript(script, origin).projectCanvasTldrawLicense, license);
+    for (const origin of ['https://121.43.32.242', 'https://121.43.32.242:8444', 'http://121.43.32.242:8443',
+        'https://121.43.32.242.evil.example:8443', 'https://paws.rodeo', 'https://47.115.228.20:8444']) {
+        assert.equal(runInjectedScript(script, origin)?.projectCanvasTldrawLicense, undefined, origin);
+    }
+});
+
+test('refuses to stamp a canvas license onto any unapproved origin', () => {
+    for (const origins of [[], ['https://example.com'], ['https://121.43.32.242:8444'],
+        ['https://47.115.228.20:8443', 'https://evil.example'], ['https://121.43.32.242:8443/']]) {
+        assert.throws(() => injectWebRuntimeServerConfig('<head></head>', { origins, revision: 'a'.repeat(40), license: 'test' }),
+            /approved exact Project Canvas origin/);
+    }
+});

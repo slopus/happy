@@ -377,10 +377,11 @@ describe('ApiMachineClient socket reconnection', () => {
         try {
             emitSocketEvent('connect');
             expect(rpcHandlers.has('goalProjectCanvasGet')).toBe(true);
+            expect(rpcHandlers.has('goalProjectCanvasPutPreviewReceipt')).toBe(true);
             expect(update).not.toHaveBeenCalled();
             confirmDaemonState!();
             await vi.waitFor(() => expect(machine.metadata.projectCanvas).toEqual({
-                version: 1, daemonStartedAt: machine.daemonState?.startedAt,
+                version: 1, daemonStartedAt: machine.daemonState?.startedAt, previewReceipts: true,
             }));
             expect(machine.metadata.host).toBe('localhost');
         } finally {

@@ -2,7 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, readdir, realpath, rename, rm, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { GOAL_CANVAS_LIMITS, GoalProjectCanvasRequests, GoalProjectCanvasSchema, type GoalProjectCanvas,
-    type GoalProjectCanvasBundle, type GoalProjectCanvasCategory, type GoalProjectCanvasChange } from '@slopus/happy-wire';
+    type GoalProjectCanvasBundle, type GoalProjectCanvasCategory, type GoalProjectCanvasChange,
+    type GoalProjectCanvasChangeNotice } from '@slopus/happy-wire';
 import { openAuthorizedFile } from './authorizedFiles';
 import { detectCodexImage } from '../../codex/codexImageInput';
 
@@ -463,7 +464,7 @@ function firstOpenPosition(assets: GoalProjectCanvas['assets']) {
     }
 }
 
-export function createProjectCanvasService(storageDirectory: string, resolveProject: (projectPath: string) => Promise<string>, changed: () => void | Promise<void>) {
+export function createProjectCanvasService(storageDirectory: string, resolveProject: (projectPath: string) => Promise<string>, changed: (change?: GoalProjectCanvasChangeNotice) => void | Promise<void>) {
     const uploads = new Map<string, Upload>();
     const completedUploads = new Map<string, CompletedUpload>();
     const bundleUploads = new Map<string, StagedUpload>();
@@ -491,13 +492,16 @@ export function createProjectCanvasService(storageDirectory: string, resolveProj
     const mutate = async (store: ProjectStore, update: () => Promise<GoalProjectCanvas>): Promise<CanvasResult> =>
         ({ success: true, canvas: await orderManifestOperation(store, update) });
 
-    const commit = async (store: ProjectStore, canvas: GoalProjectCanvas) => {
+    const commit = async (store: ProjectStore, canvas: GoalProjectCanvas, notice?: GoalProjectCanvasChangeNotice | false) => {
         const document = JSON.stringify(canvas);
         if (Buffer.byteLength(document, 'utf8') > MAX_MANIFEST_BYTES) throw new Error('Canvas project manifest is too large');
         await atomicWrite(store.manifest, document);
         // The change event can be delivered after the commit. A transient notification
         // failure must not report a successful disk commit as a failed write.
-        await Promise.resolve().then(changed).catch(() => {});
+        const change = notice === false ? undefined : notice ?? {
+            kind: 'content' as const, canvasId: canvas.id, baseRevision: canvas.revision - 1, revision: canvas.revision,
+        };
+        await Promise.resolve().then(() => changed(change)).catch(() => {});
         return canvas;
     };
 
@@ -626,7 +630,32 @@ export function createProjectCanvasService(storageDirectory: string, resolveProj
                 await atomicWrite(join(directory, asset.versionId), bytes);
                 const preview = { size: bytes.length, versionId: sha256(bytes) };
                 const assets = canvas.assets.map(item => item === asset ? { ...item, preview } : item);
-                return commit(store, { ...canvas, revision: canvas.revision + 1, assets });
+                // The legacy endpoint retains its full response and broad notification.
+                return commit(store, { ...canvas, revision: canvas.revision + 1, assets }, false);
+            });
+        },
+        putPreviewReceipt: async (input: unknown) => {
+            const data = GoalProjectCanvasRequests.goalProjectCanvasPutPreviewReceipt.parse(input);
+            const bytes = decodeChunk(data.base64, GOAL_CANVAS_LIMITS.previewBytes);
+            if (!isPreviewJpeg(bytes)) throw new Error('Canvas image preview must be a small JPEG');
+            const store = await projectStore(data.projectPath);
+            return orderManifestOperation(store, async () => {
+                const canvas = await readCanvas(store);
+                const asset = requireAsset(canvas, data.assetId, data.versionId);
+                const receipt = (savedAsset: CanvasAsset, savedRevision: number) => ({
+                    success: true as const, canvasId: canvas.id, baseRevision: canvas.revision,
+                    revision: savedRevision, asset: savedAsset,
+                });
+                if (asset.preview && await readPreview(store, asset).then(() => true, () => false)) return receipt(asset, canvas.revision);
+                const directory = await privateDirectory(join(store.directory, 'previews'));
+                await atomicWrite(join(directory, asset.versionId), bytes);
+                const savedAsset = { ...asset, preview: { size: bytes.length, versionId: sha256(bytes) } };
+                const revision = canvas.revision + 1;
+                const result = receipt(savedAsset, revision);
+                const { success: _success, ...delta } = result;
+                await commit(store, { ...canvas, revision, assets: canvas.assets.map(item => item === asset ? savedAsset : item) },
+                    { kind: 'preview', ...delta });
+                return result;
             });
         },
         layout: async (input: unknown) => {

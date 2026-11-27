@@ -422,3 +422,55 @@ smoke_tunnel_origin
         assert.equal(result.status === 0, success, `${JSON.stringify(headers)}: ${result.stderr}`);
     }
 });
+
+
+test('canvas rollout verifies both approved hosts and exposes only covered origins', async () => {
+    const { jobs: { deploy: { steps } } } = parse(await readFile(workflowUrl, 'utf8'));
+    const rollout = steps.find(step => step.id === 'canvas_rollout');
+    const temporary = await mkdtemp(join(tmpdir(), 'paws-canvas-origins-'));
+    try {
+        const scripts = join(temporary, 'packages/paws-dsh-canvas/scripts');
+        await mkdir(scripts, { recursive: true });
+        await writeFile(join(scripts, 'verify-production-license.mjs'), `
+            if (process.argv[2] === 'https://121.43.32.242:8443' && process.env.REJECT_SECONDARY === '1') process.exit(1);
+            console.log('1800057600000');
+        `);
+        for (const reject of ['0', '1']) {
+            const output = join(temporary, 'result');
+            await writeFile(output, '');
+            const result = spawnSync('bash', ['-c', rollout.run], { cwd: temporary, encoding: 'utf8', env: {
+                ...process.env, PAWS_WEB_ORIGIN: 'https://47.115.228.20:8443',
+                PAWS_SECONDARY_WEB_ORIGIN: 'https://121.43.32.242:8443',
+                PAWS_PROJECT_CANVAS_TLDRAW_LICENSE: 'test-secret-do-not-log', REJECT_SECONDARY: reject, GITHUB_OUTPUT: output,
+            } });
+            assert.equal(result.status, 0, result.stderr);
+            const values = Object.fromEntries((await readFile(output, 'utf8')).trim().split('\n').map(line => line.split('=')));
+            assert.equal(values.enabled, 'true');
+            assert.equal(values.origins, reject === '1' ? 'https://47.115.228.20:8443'
+                : 'https://47.115.228.20:8443,https://121.43.32.242:8443');
+            assert.doesNotMatch(result.stdout + result.stderr, /test-secret-do-not-log/);
+        }
+    } finally { await rm(temporary, { recursive: true, force: true }); }
+});
+
+test('secondary canvas activation uses the pinned existing SSH identity and preserves primary success on secondary failure', async () => {
+    const { jobs: { deploy: { steps, env } } } = parse(await readFile(workflowUrl, 'utf8'));
+    assert.equal(env.PAWS_SECONDARY_WEB_ORIGIN, 'https://121.43.32.242:8443');
+    const ssh = steps.find(step => step.name === 'Configure verified SSH access');
+    assert.match(ssh.run, /Host 47\.115\.228\.20 121\.43\.32\.242/);
+    assert.match(ssh.run, /121\.43\.32\.242 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIANTgpKlzMNcTgKZLtWubafpSwCB\/V5imUq0\+Zj2dbep/);
+    assert.match(ssh.run, /ssh-keygen -y -f .*id_paws_web_deploy.*>.*\.pub/);
+    const publicKey = steps.find(step => step.name === 'Retain deployment public key for authorized host provisioning');
+    assert.equal(publicKey?.uses, 'actions/upload-artifact@v4');
+    assert.equal(publicKey?.with?.path, '${{ runner.temp }}/paws-web-deploy-public-key/id_paws_web_deploy.pub');
+    const primary = steps.findIndex(step => step.id === 'live_verify');
+    const secondary = steps.findIndex(step => step.id === 'secondary_caddy');
+    const verify = steps.findIndex(step => step.id === 'secondary_verify');
+    assert.ok(secondary > primary);
+    assert.ok(verify > secondary);
+    assert.match(steps[secondary].if, /live_verify.outcome == 'success'/);
+    assert.match(steps[verify].run, /PAWS_LEGACY_WEB_ORIGIN=''[\s\S]*verify-web-release\.mjs.*PAWS_SECONDARY_WEB_ORIGIN/);
+    assert.match(steps.find(step => step.name === 'Roll back failed secondary canvas activation')?.run ?? '', /deploy-secondary-canvas-ingress\.sh --rollback/);
+    const primaryRollback = steps.find(step => step.name === 'Roll back failed Web activation');
+    assert.match(primaryRollback.if, /steps.live_verify.outcome != 'success'/);
+});

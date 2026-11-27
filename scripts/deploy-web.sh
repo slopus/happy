@@ -3,6 +3,7 @@
 set -euo pipefail
 
 readonly CANONICAL_WEB_ORIGIN="https://47.115.228.20:8443"
+readonly CANVAS_ORIGINS="${PAWS_PROJECT_CANVAS_ORIGINS:-$CANONICAL_WEB_ORIGIN}"
 readonly OSS_BUCKET="${PAWS_WEB_OSS_BUCKET:-happy-app-ota-jacky}"
 readonly OSS_UPLOAD_ENDPOINT="${OSS_UPLOAD_ENDPOINT:-https://oss-cn-hangzhou.aliyuncs.com}"
 readonly OSS_ADDRESSING_STYLE="${OSS_ADDRESSING_STYLE:-virtual}"
@@ -21,6 +22,7 @@ Required environment:
   PAWS_WEB_ORIGIN       Must be https://47.115.228.20:8443
 
 Optional environment:
+  PAWS_PROJECT_CANVAS_ORIGINS  Comma-separated licensed origins; defaults to primary
   PAWS_WEB_OSS_BUCKET   OSS bucket, default happy-app-ota-jacky
   PAWS_SKIP_BUILD       Set to 1 to reuse a stamped dist from this origin/main
   PAWS_WEB_DIST_DIR     Override dist location
@@ -159,6 +161,10 @@ if [[ "${PAWS_SKIP_BUILD:-0}" != "1" ]]; then
     canvas_build_disabled=1
     if [[ -n "${PAWS_PROJECT_CANVAS_TLDRAW_LICENSE:-}" ]] &&
         expires_at="$(node "$REPO_ROOT/packages/paws-dsh-canvas/scripts/verify-production-license.mjs" "$PAWS_WEB_ORIGIN" --print-evaluation-expiry)"; then
+        IFS=',' read -r -a canvas_origins <<< "$CANVAS_ORIGINS"
+        for canvas_origin in "${canvas_origins[@]}"; do
+            node "$REPO_ROOT/packages/paws-dsh-canvas/scripts/verify-production-license.mjs" "$canvas_origin" >/dev/null
+        done
         canvas_build_disabled=0
         export PAWS_PROJECT_CANVAS_TLDRAW_EXPIRES_AT="$expires_at"
     else
@@ -173,7 +179,7 @@ if [[ "${PAWS_SKIP_BUILD:-0}" != "1" ]]; then
             pnpm --filter happy-app export:web
     )
     if [[ "$canvas_build_disabled" == "0" ]]; then
-        node "$SCRIPT_DIR/inject-web-runtime-server-config.mjs" "$DIST_DIR/index.html" --project-canvas "$PAWS_WEB_ORIGIN" "$RELEASE_REVISION"
+        node "$SCRIPT_DIR/inject-web-runtime-server-config.mjs" "$DIST_DIR/index.html" --project-canvas "$CANVAS_ORIGINS" "$RELEASE_REVISION"
     else
         node "$SCRIPT_DIR/inject-web-runtime-server-config.mjs" "$DIST_DIR/index.html"
     fi
@@ -190,8 +196,11 @@ artifact_revision="$(tr -d '[:space:]' < "$RELEASE_MARKER")"
 grep -Fq "<meta name=\"paws-release-revision\" content=\"$RELEASE_REVISION\">" "$DIST_DIR/index.html" \
     || fail "index.html 缺少匹配的 release revision meta。"
 if [[ "${PAWS_SKIP_BUILD:-0}" == "1" && -d "$DIST_DIR/dsh-image-canvas" ]]; then
-    node "$REPO_ROOT/packages/paws-dsh-canvas/scripts/verify-production-license.mjs" "$PAWS_WEB_ORIGIN"
-    node "$SCRIPT_DIR/inject-web-runtime-server-config.mjs" "$DIST_DIR/index.html" --check-project-canvas "$PAWS_WEB_ORIGIN" "$RELEASE_REVISION"
+    IFS=',' read -r -a canvas_origins <<< "$CANVAS_ORIGINS"
+    for canvas_origin in "${canvas_origins[@]}"; do
+        node "$REPO_ROOT/packages/paws-dsh-canvas/scripts/verify-production-license.mjs" "$canvas_origin"
+    done
+    node "$SCRIPT_DIR/inject-web-runtime-server-config.mjs" "$DIST_DIR/index.html" --check-project-canvas "$CANVAS_ORIGINS" "$RELEASE_REVISION"
 fi
 
 release_prefix="web/releases/$RELEASE_REVISION"

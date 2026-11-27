@@ -45,3 +45,27 @@ Use the candidate release in place of `v0.12.3`. The preview reports the verifie
 DSH Image Gen source is Apache-2.0. The build ships the [full tldraw SDK license](licenses/tldraw-5.3.0-LICENSE.md) from the SDK's pinned version alongside the DSH license and notices. When the SDK version changes, include the verbatim license for that release in `licenses/tldraw-<version>-LICENSE.md`.
 
 To enable the canvas on production Web, store a tldraw key that covers the HTTPS origin as `PAWS_PROJECT_CANVAS_TLDRAW_LICENSE` in the GitHub Actions `production-web` environment. The workflow checks the signature and hostname with the pinned SDK. It includes the versioned renderer only when the key passes. If an evaluation key expires, the canvas entry is unavailable and ordinary Web releases can continue. The browser runs the normal SDK license checks and displays any required watermark. Loopback development uses the unversioned local renderer without a production key.
+
+
+The approved production canvas origins are exactly `https://47.115.228.20:8443`
+(primary) and `https://121.43.32.242:8443` (authorized secondary). The workflow
+verifies the actual key against each hostname before stamping that origin into
+the runtime configuration. A key that only covers the primary keeps the primary
+canvas usable and reports the secondary as blocked. Other ports, hosts and
+schemes do not receive canvas configuration.
+
+Both frames retain their Paws origin and restrictive CSP. Each server proxies
+only the allowlisted versioned files to the existing OSS release, strips Paws
+credentials and OSS cookies, and returns 404 for invalid or missing canvas paths.
+It never redirects the iframe or its blobs to OSS. The proxy compresses large
+text bundles; immutable headers permit browser reuse. The uploader also reuses
+unchanged renderer files through checksum-verified OSS server-side copies across
+Web revisions, and both origins use those same objects.
+
+The secondary route is maintained by
+`scripts/deploy-secondary-canvas-ingress.sh` and the production Web workflow.
+It uses the existing CI deploy identity and a pinned host key. CI retains only
+its derived public key for authorized provisioning if access has not yet been
+installed on that host. Secondary activation and byte/MIME verification happen
+after primary verification; a secondary failure fails the workflow, rolls back
+its route when changed, and reports the primary result independently.
