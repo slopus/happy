@@ -156,6 +156,13 @@ public enum UserMessageEncoder {
             permission = permission ?? defaults.permissionMode
             model = model ?? defaults.modelMode
             effort = effort ?? defaults.effortLevel
+        } else if model == nil, AgentDefaults.isClaude(flavor: m["flavor"]?.stringValue),
+                  AgentDefaults.sendsDefaultClaudeModel(reported: m["currentModelCode"]?.stringValue) {
+            // The chip shows Claude's code default while its CLI reports no
+            // model; left out, Claude Code would run its own account default
+            // (Sonnet on some plans) under that chip. Once the CLI reports the
+            // model it runs, nothing is sent and that one stays.
+            model = AgentDefaults.resolve(overrides, agent, cliVersion: version).modelMode
         }
         if let selected = permission {
             let retired = AgentDefaults.retirePermissionMode(selected)

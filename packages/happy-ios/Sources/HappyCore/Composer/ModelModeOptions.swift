@@ -86,6 +86,29 @@ extension AgentDefaults {
         }
         return retiredClaudeModelModes[mode] ?? mode
     }
+
+    /// A Claude Code session: flavor `claude`, or none from a CLI that predates it.
+    public static func isClaude(flavor: String?) -> Bool {
+        flavor == nil || flavor == "claude"
+    }
+
+    /// The model a Claude session with no pick of its own runs: the user's
+    /// default, which every message carries; else the model its CLI reports
+    /// running (`currentModelCode`), which a message leaves alone; else the
+    /// code default, which a message then carries (`sendsDefaultClaudeModel`).
+    /// The chip shows this, so it never names a model no message sends.
+    public static func unpickedClaudeModel(_ overrides: [String: JSONValue], cliVersion: String?, reported: String?) -> String {
+        let reported = reported.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        return override(overrides, .claude, .modelMode)
+            ?? retireModelMode(reported, flavor: "claude")
+            ?? resolve(overrides, .claude, cliVersion: cliVersion).modelMode
+    }
+
+    /// Whether a Claude message with no pick and no user default carries the
+    /// code default: its CLI reports no model of its own.
+    public static func sendsDefaultClaudeModel(reported: String?) -> Bool {
+        reported.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? true
+    }
 }
 
 /// modelModeOptions.ts: what the composer's permission, model and effort

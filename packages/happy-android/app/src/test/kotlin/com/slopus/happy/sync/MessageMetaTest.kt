@@ -15,11 +15,12 @@ import org.junit.Test
 
 /** messageMeta.ts: a port of messageMeta.test.ts. */
 class MessageMetaTest {
-    private fun metadata(flavor: String? = null, version: String? = null): SessionMetadata = SessionMetadata.parse(buildJsonObject {
+    private fun metadata(flavor: String? = null, version: String? = null, currentModelCode: String? = null): SessionMetadata = SessionMetadata.parse(buildJsonObject {
         put("path", "/repo")
         put("host", "mac")
         flavor?.let { put("flavor", it) }
         version?.let { put("version", it) }
+        currentModelCode?.let { put("currentModelCode", it) }
     })!!
 
     private val rig: SessionMetadata = SessionMetadata.parse(
@@ -161,8 +162,16 @@ class MessageMetaTest {
     fun claudeModelPicks() {
         // An explicit default is a reset: model null on the wire.
         assertEquals(MessageModeMeta(model = Present(null)), mode(metadata("claude"), modelMode = "default"))
-        // The code default seeds new sessions only; a running session is never re-modeled.
-        assertEquals(MessageModeMeta(), mode(metadata("claude"), overrides = overrides("{}")))
+        // With no pick and no model reported by the CLI, the default the chip shows goes out:
+        // left out, Claude Code would run its own account default under that chip.
+        assertEquals(meta(model = "claude-opus-5-5"), mode(metadata("claude", "1.2.7"), overrides = overrides("{}")))
+        assertEquals(meta(model = "claude-opus-5"), mode(metadata(null, "1.2.5")))
+        // Once the CLI reports the model it runs, a running session is never re-modeled.
+        assertEquals(MessageModeMeta(), mode(metadata("claude", "1.2.7", currentModelCode = "claude-sonnet-5-5")))
+        assertEquals(MessageModeMeta(), mode(metadata("claude", currentModelCode = "claude-opus-5[1m]")))
+        // Other harnesses that send nothing by default still send nothing.
+        assertEquals(MessageModeMeta(), mode(metadata("gemini")))
+        assertEquals(MessageModeMeta(), mode(metadata("openclaw")))
         assertEquals(meta(model = "claude-sonnet-5-5[1m]"), mode(metadata("claude"), modelMode = "claude-sonnet-5-5[1m]"))
         assertEquals(meta(model = "claude-opus-5"), mode(metadata("claude"), overrides = overrides("""{"claude":{"modelMode":"claude-opus-5[1m]"}}""")))
     }

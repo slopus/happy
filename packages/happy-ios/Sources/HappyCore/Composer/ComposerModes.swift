@@ -57,7 +57,9 @@ public struct ComposerModes: Equatable, Sendable {
 
     /// `useComposerModes` for a session: its picks, then the agent defaults
     /// (`agentDefaultOverrides` over the code defaults for the session's CLI,
-    /// `metadata.version`), then what the metadata says. Happy Agent sessions
+    /// `metadata.version`), then what the metadata says. Claude's code
+    /// default comes after the model its CLI reports (`unpickedClaudeModel`),
+    /// since a message carries it only when there is none. Happy Agent sessions
     /// fall back to their own published selection instead of the defaults.
     /// Nil metadata is a session that doesn't exist yet: every row falls
     /// back to the defaults.
@@ -71,10 +73,18 @@ public struct ComposerModes: Equatable, Sendable {
         // A pick on a since-retired row shows the row that runs the same
         // model; the key itself is left alone.
         let sessionModelMode = isRig ? picks.modelMode : AgentDefaults.retireModelMode(picks.modelMode, flavor: flavor)
+        // A Claude session with no pick shows what it runs, not a default no message sends.
+        let unpickedModelMode = !isRig && AgentDefaults.isClaude(flavor: flavor)
+            ? AgentDefaults.unpickedClaudeModel(
+                agentDefaultOverrides,
+                cliVersion: cliVersion,
+                reported: metadata?["currentModelCode"]?.stringValue
+            )
+            : defaults.modelMode
         let availableModels = Options.availableModels(
             flavor: flavor,
             metadata: metadata,
-            selectedKey: sessionModelMode ?? (isRig ? nil : defaults.modelMode)
+            selectedKey: sessionModelMode ?? (isRig ? nil : unpickedModelMode)
         )
         let availableModes = Options.availablePermissionModes(flavor: flavor, metadata: metadata, selectedKey: picks.permissionMode)
 
@@ -90,7 +100,7 @@ public struct ComposerModes: Equatable, Sendable {
         )
         let modelMode = Options.resolveCurrentOption(availableModels, preferredKeys: [
             sessionModelMode,
-            isRig ? Options.rigCurrentModelOptionKey(metadata: metadata) : defaults.modelMode,
+            isRig ? Options.rigCurrentModelOptionKey(metadata: metadata) : unpickedModelMode,
             isRig ? nil : metadata?["currentModelCode"]?.stringValue,
         ])
 
