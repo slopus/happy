@@ -147,6 +147,60 @@ class AgentHomeLayoutTest {
         rule.onNodeWithContentDescription("≈ +12345 −1234", useUnmergedTree = true).assertExists()
     }
 
+    /**
+     * A Happy Cloud task: its author's face, then its repositories 6 after
+     * it (one; two piled 12 apart; more, the first and `+N`), each a 26
+     * cell centred down the row, the title 12 after them; the lines its own
+     * agent changed at the row's end, a subtask's its own. Rows stay 48.
+     */
+    @Test
+    fun aCloudTaskWearsItsAuthorThenItsRepositoriesAndItsAgentsChanges() {
+        val happy = com.slopus.happy.agent.RepositoryMark("r1", "happy")
+        val site = com.slopus.happy.agent.RepositoryMark("r2", "site")
+        val docs = com.slopus.happy.agent.RepositoryMark("r3", "docs")
+        val work = com.slopus.happy.agent.TaskWork(
+            repositories = mapOf("t1" to listOf(happy), "t2" to listOf(happy, site), "t3" to listOf(happy, site, docs)),
+            changes = mapOf(
+                "at1" to com.slopus.happy.agent.WorkspaceLineChanges("ready", 12, 3, true, 0.0),
+                "as1" to com.slopus.happy.agent.WorkspaceLineChanges("ready", 5, 0, true, 0.0),
+            ),
+        )
+        show(AgentFeed.derive(catalog(sample), work = work))
+        fun inRow(tag: String, row: String) = rule.onNode(hasTestTag(tag) and hasAnyAncestor(hasTestTag(AgentHomeTags.row(row))), useUnmergedTree = true)
+        val cell = AgentHomeSpec.repoMark + AgentHomeSpec.repoRing * 2
+        for ((row, width) in listOf("agent-at1" to cell, "agent-at2" to cell + AgentHomeSpec.repoStep, "agent-at3" to cell)) {
+            val bounds = rule.node(AgentHomeTags.row(row)).bounds
+            assertDp("$row stays 48", 48, bounds.height)
+            val mark = inRow(AgentHomeTags.ROW_MARK, row).bounds
+            assertBox("$row's author", mark, 32.dp, bounds.top + 9.dp, 30.dp, 30.dp)
+            val repositories = inRow(AgentHomeTags.ROW_REPOSITORIES, row).bounds
+            assertDp("$row's repositories after the author", mark.right + AgentHomeSpec.repoGap, repositories.left)
+            val pile = rule.onAllNodes(hasTestTag(AgentHomeTags.ROW_REPOSITORY) and hasAnyAncestor(hasTestTag(AgentHomeTags.row(row))), useUnmergedTree = true)
+                .fetchSemanticsNodes().map { with(rule.density) { it.boundsInRoot.left.toDp() to it.boundsInRoot.top.toDp() } }.sortedBy { it.first.value }
+            assertEquals(if (row == "agent-at2") 2 else 1, pile.size)
+            pile.forEachIndexed { index, (left, top) ->
+                assertDp("$row's photo $index", repositories.left + AgentHomeSpec.repoStep * index, left)
+                assertDp("$row's photo $index centred down", bounds.top + (48.dp - cell) / 2, top)
+            }
+            val title = inRow(AgentHomeTags.ROW_TITLE, row).bounds
+            val end = if (row == "agent-at3") inRow(AgentHomeTags.ROW_REPOSITORIES_MORE, row).bounds.right else repositories.left + width
+            assertDp("$row's title after them", end + AgentHomeSpec.markGap, title.left)
+        }
+        val one = inRow(AgentHomeTags.ROW_REPOSITORIES, "agent-at3").bounds
+        assertDp("+N after the first", one.left + cell + AgentHomeSpec.repoCountGap, inRow(AgentHomeTags.ROW_REPOSITORIES_MORE, "agent-at3").bounds.left)
+        rule.onNodeWithText("+2", useUnmergedTree = true).assertExists()
+        rule.onNodeWithContentDescription("happy, site, docs", useUnmergedTree = true).assertExists()
+        // The placeholders their own ids pick.
+        val seeds = rule.onAllNodes(SemanticsMatcher.keyIsDefined(PlaceholderIndexKey) and hasAnyAncestor(hasTestTag(AgentHomeTags.ROW_REPOSITORIES)), useUnmergedTree = true)
+            .fetchSemanticsNodes().map { it.config[PlaceholderIndexKey] }.toSet()
+        assertEquals(setOf(AvatarPlaceholder.index("r1"), AvatarPlaceholder.index("r2")), seeds)
+        inRow(AgentHomeTags.ROW_CHANGES, "agent-at1").assertExists()
+        rule.onNodeWithContentDescription("+12 −3", useUnmergedTree = true).assertExists()
+        inRow(AgentHomeTags.ROW_CHANGES, "agent-as1").assertExists()
+        rule.onAllNodes(hasTestTag(AgentHomeTags.ROW_CHANGES) and hasAnyAncestor(hasTestTag(AgentHomeTags.row("agent-at2"))), useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodes(hasTestTag(AgentHomeTags.ROW_REPOSITORIES) and hasAnyAncestor(hasTestTag(AgentHomeTags.row("agent-ab1"))), useUnmergedTree = true).assertCountEquals(0)
+    }
+
     @Test
     fun xHeightCountsShareTheActivityEdgeWithoutAnApproximationMark() {
         val changes = com.slopus.happy.agent.WorkspaceLineChanges("ready", 12345, 1234, false, 1.0)

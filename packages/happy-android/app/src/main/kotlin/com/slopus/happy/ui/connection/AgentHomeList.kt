@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -76,6 +77,7 @@ import com.slopus.happy.agent.AgentFeedSection
 import com.slopus.happy.agent.AgentPictures
 import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.agent.FolderMark
+import com.slopus.happy.agent.RepositoryMark
 import com.slopus.happy.agent.WorkspaceLineChanges
 import com.slopus.happy.model.compactCount
 import com.slopus.happy.ui.components.HappyDropdownMenu
@@ -130,6 +132,11 @@ object AgentHomeTags {
     /** The square at a row's end its status mark is centred in ([AgentHomeSpec.statusSlot]). */
     const val ROW_STATUS = "agentHome.rowStatus"
     const val ROW_CHANGES = "agentHome.rowChanges"
+    /** A Happy Cloud task's repositories, after its mark. */
+    const val ROW_REPOSITORIES = "agentHome.rowRepositories"
+    const val ROW_REPOSITORY = "agentHome.rowRepository"
+    /** How many repositories more than the one shown. */
+    const val ROW_REPOSITORIES_MORE = "agentHome.rowRepositoriesMore"
     /** A Surface row's held menu: Leave. */
     const val LEAVE = "agentHome.leave"
 }
@@ -166,6 +173,19 @@ object AgentHomeSpec {
     val dot = HomeCardSpec.dot
     /** Between the title and the line counts after it. */
     val cornerGap = 12.dp
+    /**
+     * A Happy Cloud task's repositories ([RepositoryMarks]): each photo a
+     * smaller rounded square in a ring of the card's ground, a pile
+     * stepping [repoStep] along, [repoGap] after the author's face.
+     */
+    val repoMark = 22.dp
+    val repoRadius = 6.dp
+    val repoRing = 2.dp
+    val repoStep = 12.dp
+    val repoGap = 6.dp
+    /** Between the first repository and the `+N` of the rest. */
+    val repoCountGap = 4.dp
+    val repoCount = happyTextStyle(fontSize = 13, lineHeight = DETAIL_LINE, weight = FontWeight.Medium)
     /**
      * The square every status mark stands in, centred, ending at the row's
      * end: as iOS's (`Metrics.statusSlot`), so its signal, question, clock
@@ -432,7 +452,7 @@ internal fun AgentHomeCardRow(
         selected = selected,
     ) {
         when (val row = item.row) {
-            is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold)
+            is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold, selected)
             is AgentFeedRow.Folder -> FolderRow(row)
             AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), { TileMark(Ionicon.DocumentTextOutline, RowTile.Purple) }, onOpenArtifacts)
             AgentFeedRow.Plugins -> PlaceRow(stringResource(R.string.plugins_title), { TileMark(Ionicon.ExtensionPuzzleOutline, RowTile.Orange) }, onOpenPlugins)
@@ -524,14 +544,15 @@ private fun titleStart(row: AgentFeedRow): Dp {
 }
 
 /**
- * One conversation, on one line: a bot's or task's 30 mark, the title 17/22
+ * One conversation, on one line: a bot's or task's 30 mark (a Happy Cloud
+ * task's author's face, then its repositories, [RepositoryMarks]), the title 17/22
  * (desktop's sheen while it runs, [AgentFeedRow.Conversation.running];
  * cut with its last 14 fading where it runs out of room, [com.slopus.happy.ui.components.TitleFade]),
  * and a 10 dot in its status slot while it waits or is unread. No time. The whole
  * row opens it.
  */
 @Composable
-private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> Unit, onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null) {
+private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> Unit, onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null, selected: Boolean = false) {
     LocalHomeRowObserver.current?.let { observe -> SideEffect { observe(row.agentId) } }
     val colors = HappyTheme.colors
     val haptics = LocalHapticFeedback.current
@@ -565,6 +586,7 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> 
     ) {
         if (marked) {
             Box(modifier = Modifier.size(AgentHomeSpec.mark).testTag(AgentHomeTags.ROW_MARK)) { ConversationMark(row, AgentHomeSpec.mark) }
+            if (row.repositories.isNotEmpty()) RepositoryMarks(row.repositories, if (selected) colors.surfaceSelected else colors.surfaceHigh)
         }
         Box(
             modifier = Modifier
@@ -584,6 +606,71 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> 
         }
         WorkspaceCounts(row.lineChanges)
         Corner(row.blocked, row.unread)
+    }
+}
+
+/**
+ * A Happy Cloud task's repositories, [AgentHomeSpec.repoGap] after its
+ * author's face: one repository's photo; two piled, the second
+ * [AgentHomeSpec.repoStep] after the first and under it; more, the first
+ * with `+N` 13/18 medium in the secondary colour [AgentHomeSpec.repoCountGap]
+ * after it. Each photo is a 22 square rounded 6 in a 2 ring of the
+ * card's [ground] (26 a cell), so a pile reads as two; one without a photo
+ * wears the placeholder its ID picks. TalkBack hears their names. The
+ * row's hairline keeps its card's lane, from where a marked title starts
+ * without them, so a card's hairlines stay in one line.
+ */
+@Composable
+private fun RepositoryMarks(repositories: List<RepositoryMark>, ground: Color) {
+    val shown = if (repositories.size == 2) repositories else repositories.take(1)
+    val more = repositories.size - shown.size
+    val names = repositories.joinToString(", ") { it.name }
+    val cell = AgentHomeSpec.repoMark + AgentHomeSpec.repoRing * 2
+    Row(
+        modifier = Modifier
+            .padding(start = AgentHomeSpec.repoGap)
+            .testTag(AgentHomeTags.ROW_REPOSITORIES)
+            .semantics { contentDescription = names },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(width = cell + AgentHomeSpec.repoStep * (shown.size - 1), height = cell)) {
+            // The first listed lies on top.
+            for (index in shown.indices.reversed()) {
+                RepositoryMarkView(shown[index], ground, Modifier.offset(x = AgentHomeSpec.repoStep * index))
+            }
+        }
+        if (more > 0) {
+            Text(
+                "+$more",
+                style = AgentHomeSpec.repoCount,
+                color = HappyTheme.colors.textSecondary,
+                maxLines = 1,
+                modifier = Modifier
+                    .padding(start = AgentHomeSpec.repoCountGap)
+                    .wrapContentHeight(unbounded = true)
+                    .testTag(AgentHomeTags.ROW_REPOSITORIES_MORE),
+            )
+        }
+    }
+}
+
+/** One repository's photo over its ThumbHash, or its placeholder, in its ring of [ground]. */
+@Composable
+private fun RepositoryMarkView(repository: RepositoryMark, ground: Color, modifier: Modifier) {
+    val ring = AgentHomeSpec.repoRing
+    Box(
+        modifier
+            .testTag(AgentHomeTags.ROW_REPOSITORY)
+            .clip(RoundedCornerShape(AgentHomeSpec.repoRadius + ring))
+            .background(ground)
+            .padding(ring),
+    ) {
+        val picture = repository.picture
+        if (picture != null) {
+            AgentPicture(picture, repository.thumbhash, AgentHomeSpec.repoMark, AgentHomeSpec.repoRadius)
+        } else {
+            PlaceholderAvatar(repository.id, AgentHomeSpec.repoMark, shape = RoundedCornerShape(AgentHomeSpec.repoRadius))
+        }
     }
 }
 

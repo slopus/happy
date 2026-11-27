@@ -439,13 +439,29 @@ class AgentSession internal constructor(
         keep = { value -> withContext(Dispatchers.IO) { keepResource(TeamDirectory.RESOURCE, value) } },
     )
 
+    /**
+     * Happy Cloud's tasks' repositories and changed lines, which their home
+     * rows show ([TaskWork]); none on any other server.
+     */
+    val taskWork: StateFlow<TaskWork> =
+        if (client.cloud) {
+            TaskWorkSource(
+                ClusterTaskWork(client), events,
+                kept = { withContext(Dispatchers.IO) { cachedResource(TaskWorkSource.RESOURCE) } },
+                keep = { value -> withContext(Dispatchers.IO) { keepResource(TaskWorkSource.RESOURCE, value) } },
+                scope = scope,
+            ).work
+        } else {
+            MutableStateFlow(TaskWork.Empty).asStateFlow()
+        }
+
     /** Home's rows, derived off the main thread; equal rows keep their instances. */
     val feed: StateFlow<AgentFeed> = combine(
-        catalogState, intents.pending, gitSnapshots,
+        catalogState, intents.pending, combine(gitSnapshots, taskWork, ::Pair),
         feedLibrary.state.map { if (it.available == true) it.unread else null }.distinctUntilChanged(),
         combine(team.users, pluginsAvailable, pipelinesAvailable, ::Triple),
-    ) { catalog, pending, git, feedUnread, (users, plugins, pipelines) ->
-        AgentFeed.derive(catalog.withSurfaceIntents(pending), git = git, intents = IntentOverlay.of(pending), feedUnread = feedUnread, users = users, plugins = plugins, pipelines = pipelines)
+    ) { catalog, pending, (git, work), feedUnread, (users, plugins, pipelines) ->
+        AgentFeed.derive(catalog.withSurfaceIntents(pending), git = git, work = work, intents = IntentOverlay.of(pending), feedUnread = feedUnread, users = users, plugins = plugins, pipelines = pipelines)
     }
         .distinctUntilChanged()
         .scan(null as AgentFeed?) { previous, next -> AgentFeed.reuse(previous, next) }

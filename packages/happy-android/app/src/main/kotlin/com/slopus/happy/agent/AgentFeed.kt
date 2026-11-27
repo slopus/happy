@@ -83,7 +83,10 @@ sealed interface AgentFeedRow {
         /** One of its subtasks listed under it is [running]. */
         val delegating: Boolean = false,
         val workspaceId: String? = null,
+        /** The lines changed in its workspace, or on Happy Cloud in the checkouts it holds ([TaskWork.changes]); null for none. */
         val lineChanges: WorkspaceLineChanges? = null,
+        /** On Happy Cloud, a task's repositories, after its author's face, in the server's order ([TaskWork.repositories]). */
+        val repositories: List<RepositoryMark> = emptyList(),
     ) : AgentFeedRow {
         override val key get() = "agent-$agentId"
 
@@ -171,12 +174,17 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
          * ([leaving]), gone at once while the agent is asked. What this
          * phone has on its way ([intents]) shows already: a chat read has
          * no dot, a task, bot, subtask or Surface archived or left is gone,
-         * a task or bot renamed wears its new name.
+         * a task or bot renamed wears its new name. On Happy Cloud ([work])
+         * a task wears its repositories after its author's face, and a
+         * task's or subtask's row the lines changed in the checkouts its
+         * own agent holds.
          */
         fun derive(
             catalog: AgentCatalog,
             leaving: Set<String> = emptySet(),
             git: Map<String, WorkspaceLineChanges> = emptyMap(),
+            /** Happy Cloud's tasks' repositories and the lines their agents changed. */
+            work: TaskWork = TaskWork.Empty,
             intents: IntentOverlay = IntentOverlay(),
             /** The Feed's unread count; null where there is no Feed. */
             feedUnread: Int? = null,
@@ -200,6 +208,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 agentId: String, title: String?, kind: ConversationKind, depth: Int,
                 picture: String? = null, thumbhash: String? = null, parentId: String? = null, nesting: Int = 0,
                 seed: String? = null, happy: Boolean = false,
+                repositories: List<RepositoryMark> = emptyList(),
                 /** A bot muted on the desktop: listed, its subtasks too, without activity or unread (iOS SidebarRows' `muted`). */
                 muted: Boolean = false,
             ): Boolean {
@@ -224,7 +233,8 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     parentId = parentId,
                     waiting = !muted && wire.wait != null,
                     workspaceId = wire.workspaceId,
-                    lineChanges = git[wire.workspaceId]?.takeIf { it.visible },
+                    lineChanges = (wire.workspaceId?.let { git[it] } ?: work.changes[agentId])?.takeIf { it.visible },
+                    repositories = repositories,
                 )
                 var delegating = false
                 if (nesting < 2) {
@@ -323,6 +333,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     agentRows(
                         agentId, id?.let(intents.titles::get) ?: task.string("name"), ConversationKind.Task, 0,
                         picture = author?.takeIf { photo != null }?.let(TeamUser::photoPath), thumbhash = photo, seed = author ?: id ?: agentId,
+                        repositories = id?.let { work.repositories[it] }.orEmpty(),
                     )
                 }
             }

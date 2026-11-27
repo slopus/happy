@@ -2847,6 +2847,26 @@ daemon sends none, and its bots stay as they were). `agent/Bots.kt` reads it
 - **Fixture:** debug builds have `ui.bots.BotsFixturesActivity`
   (`--es bots.scene owner|member|page|edit`).
 
+### Tasks on Happy Cloud
+
+What a Happy Cloud task works in, on its home row (desktop's task rows;
+`agent/TaskWork.kt`).
+
+- **Row:** the author's face first (the person's own from the profile,
+  another member's as read, else their placeholder), then the task's
+  repositories (`RepositoryMarks`): one photo; two piled; more, the first
+  and `+N`; one without a photo its ID's placeholder. A task with none
+  wears its author alone. The lines changed show at the row's end as a
+  worktree's do (`WorkspaceCounts`), only when some were added or deleted:
+  a task's row the checkouts its own agent holds, a subtask's its own.
+- **Wire:** `GET /v0/tasks/repositories` (`ClusterTaskWork`), Happy Cloud
+  only: each checkout's `changes` summed by its `agentId`, failed ones and
+  ones not scanned (`changes` null or absent, older servers) left out.
+  `TaskWorkSource` reads it on every `hello` and on `checkout.updated`,
+  `checkout.deleted`, `repository.updated`, `repository.deleted`,
+  `task.created` and `task.joined`; it is kept beside the catalog, and a
+  failed read keeps what showed. 404/501 is none.
+
 ### Pipelines
 
 A Happy Cloud server's pipelines, read only (happy-cluster API.md,
