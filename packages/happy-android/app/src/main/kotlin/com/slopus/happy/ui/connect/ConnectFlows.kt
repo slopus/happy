@@ -19,10 +19,14 @@ import androidx.compose.ui.res.stringResource
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.analytics.SignInMethod
+import com.slopus.happy.auth.AuthApi
+import com.slopus.happy.auth.AuthRepository
 import com.slopus.happy.auth.AuthState
+import com.slopus.happy.auth.InvalidLinkException
 import com.slopus.happy.auth.TERMINAL_URL_PREFIX
 import com.slopus.happy.auth.approveAccountLink
 import com.slopus.happy.auth.approveTerminal
+import com.slopus.happy.auth.terminalPublicKey
 import com.slopus.happy.crypto.AccountLink
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -157,6 +161,9 @@ class ConnectFlow internal constructor(
     suspend fun processAuthUrl(url: String): Boolean = process(url)
 
     internal fun errorAlert(message: String) = Alert(errorTitle, message, listOf(AlertButton(okTitle)))
+
+    /** What a failed approval says: a code whose key isn't one is an invalid link, anything else [failed]. */
+    internal fun failure(error: Throwable, failed: String) = if (error is InvalidLinkException) messages.invalidUrl else failed
 }
 
 /** Which code a [ConnectFlow] approves itself. */
@@ -232,7 +239,7 @@ fun rememberTerminalConnect(
             currentOnSuccess()
         } else {
             val handler = currentOnError
-            if (handler != null) handler() else flow.alert = flow.errorAlert(failed)
+            if (handler != null) handler() else flow.alert = flow.errorAlert(flow.failure(error, failed))
         }
     }
 }
@@ -351,15 +358,24 @@ private fun rememberConnectFlow(
  */
 @Composable
 fun rememberAddFlow(graph: AppGraph, onRestore: () -> Unit, onServer: () -> Unit, serverLabel: String?): ConnectFlow = rememberAddConnect(
-    approve = { url ->
-        AnalyticsReasons.signingIn(SignInMethod.RelayCreate) {
-            graph.auth.createAccount { account -> approveTerminal(graph.authApi, account.credentials, account.encryption, url) }
-        }
-    },
+    approve = { url -> createAccountForTerminal(graph.auth, graph.authApi, url) },
     onRestore = onRestore,
     onServer = onServer,
     serverLabel = serverLabel,
 )
+
+/**
+ * A new Happy account for the terminal in [url], kept only if it approves
+ * that terminal. A code whose key isn't one ([terminalPublicKey]) is turned
+ * away before the account is made: the server would make an account this
+ * phone then drops, and `sign_in_failed` would only say `unknown`.
+ */
+internal suspend fun createAccountForTerminal(auth: AuthRepository, api: AuthApi, url: String) {
+    if (terminalPublicKey(url) == null) throw InvalidLinkException("Not a terminal link")
+    AnalyticsReasons.signingIn(SignInMethod.RelayCreate) {
+        auth.createAccount { account -> approveTerminal(api, account.credentials, account.encryption, url) }
+    }
+}
 
 /** [rememberAddFlow] with the approval passed in, for tests. */
 @Composable
@@ -372,7 +388,7 @@ fun rememberAddConnect(
     val haptics = LocalHapticFeedback.current
     val failed = stringResource(R.string.modals_failed_to_connect_terminal)
     val flow = rememberConnectFlow(ConnectKind.Add, approve) { flow, error ->
-        if (error == null) haptics.performHapticFeedback(HapticFeedbackType.Confirm) else flow.alert = flow.errorAlert(failed)
+        if (error == null) haptics.performHapticFeedback(HapticFeedbackType.Confirm) else flow.alert = flow.errorAlert(flow.failure(error, failed))
     }
     flow.onUnavailable = { flow.enteringLink = true }
     val currentOnRestore by rememberUpdatedState(onRestore)

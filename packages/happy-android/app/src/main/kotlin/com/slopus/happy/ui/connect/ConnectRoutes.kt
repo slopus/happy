@@ -20,8 +20,6 @@ import androidx.compose.ui.res.stringResource
 import com.slopus.happy.AppGraph
 import com.slopus.happy.OpenAccount
 import com.slopus.happy.R
-import com.slopus.happy.analytics.AnalyticsReasons
-import com.slopus.happy.analytics.SignInMethod
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.auth.approveTerminal
 import com.slopus.happy.auth.TERMINAL_URL_PREFIX
@@ -49,9 +47,7 @@ fun NavGraphBuilder.connectRoutes(graph: AppGraph, nav: NavHostController) {
                 if (account != null) {
                     approveTerminal(graph.authApi, account.credentials, account.encryption, url)
                 } else {
-                    AnalyticsReasons.signingIn(SignInMethod.RelayCreate) {
-                        graph.auth.createAccount { made -> approveTerminal(graph.authApi, made.credentials, made.encryption, url) }
-                    }
+                    createAccountForTerminal(graph.auth, graph.authApi, url)
                 }
             },
             onSuccess = { nav.popBackStack() },

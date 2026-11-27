@@ -1,7 +1,9 @@
 package com.slopus.happy.ui
 
+import androidx.annotation.StringRes
 import com.slopus.happy.analytics.AnalyticsReasons
 import com.slopus.happy.connection.PairingStart
+import com.slopus.happy.analytics.SignInError
 import com.slopus.happy.analytics.SignInMethod
 import com.slopus.happy.ui.todos.todoRoutes
 
@@ -356,6 +358,22 @@ private fun Server(graph: AppGraph, nav: NavHostController) {
     )
 }
 
+/**
+ * What a failed secret-key restore says, by the step that failed
+ * ([AnalyticsReasons.relaySignIn]). Only a key that isn't one, or one the
+ * server refused, says to check the key: happy-app said so for every
+ * failure, which sent people retyping a right key while offline or while
+ * the server failed.
+ */
+@StringRes
+internal fun restoreFailureMessage(error: SignInError): Int = when (error) {
+    SignInError.InvalidToken, SignInError.Rejected -> R.string.connect_invalid_secret_key
+    SignInError.Unreachable -> R.string.errors_network_error
+    SignInError.ServerError, SignInError.RateLimited, SignInError.InvalidResponse -> R.string.errors_server_error
+    SignInError.StorageFailed -> R.string.errors_token_storage_failed
+    else -> R.string.errors_unknown_error
+}
+
 @Composable
 private fun RestoreManual(graph: AppGraph, nav: NavHostController) {
     val scope = rememberCoroutineScope()
@@ -365,7 +383,7 @@ private fun RestoreManual(graph: AppGraph, nav: NavHostController) {
     val error = stringResource(R.string.common_error)
     val ok = stringResource(R.string.common_ok)
     val enterKey = stringResource(R.string.connect_enter_secret_key)
-    val invalidKey = stringResource(R.string.connect_invalid_secret_key)
+    val messages = SignInError.entries.associateWith { stringResource(restoreFailureMessage(it)) }
 
     RestoreManualScreen(
         secretKey = secretKey,
@@ -381,9 +399,8 @@ private fun RestoreManual(graph: AppGraph, nav: NavHostController) {
                         AnalyticsReasons.signingIn(SignInMethod.RelayRestore) { graph.auth.restore(secretKey) }
                     } catch (e: CancellationException) {
                         throw e
-                    } catch (_: Exception) {
-                        // Like happy-app: a bad key and a failed exchange read the same.
-                        alert = Alert(error, invalidKey, listOf(AlertButton(ok)))
+                    } catch (e: Exception) {
+                        alert = Alert(error, messages.getValue(AnalyticsReasons.relaySignIn(e)), listOf(AlertButton(ok)))
                     } finally {
                         restoring = false
                     }

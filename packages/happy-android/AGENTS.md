@@ -281,7 +281,9 @@ win:
   make room (iOS StartLayout). The code is routed
   (`ConnectKind.Add`): `happy://terminal?` creates a Happy account and
   approves that terminal in one step (`AuthRepository.createAccount`'s
-  `prepare`; a failed approval keeps no account), `happy:///account?`
+  `prepare`; a failed approval keeps no account; a code whose key isn't
+  32 bytes of base64url is "Invalid authentication URL" before any account
+  is made, `createAccountForTerminal`), `happy:///account?`
   says it needs a signed-in phone, `happy://direct?` pairs an agent. The
   other ways in are the self-hosted flow's: the next screen's ⋮
   (`StartMenu`) and the scanner's (`ScannerWay`) hold Enter link manually

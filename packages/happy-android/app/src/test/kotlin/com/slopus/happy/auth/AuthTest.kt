@@ -8,10 +8,12 @@ import com.slopus.happy.analytics.AnalyticsReasons
 import com.slopus.happy.analytics.SignInError
 import com.slopus.happy.crypto.Base64Variant
 import com.slopus.happy.crypto.SecretKeyBackup
+import com.slopus.happy.crypto.Sodium
 import com.slopus.happy.crypto.encodeBase64
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
+import com.slopus.happy.ui.connect.createAccountForTerminal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.Dispatcher
@@ -134,6 +136,29 @@ class AuthTest {
             override fun clear() {}
         }
         assertEquals(SignInError.StorageFailed, failure(AuthRepository(refusing, AuthApi(http()), io = Dispatchers.Unconfined)))
+    }
+
+    /**
+     * Add with a terminal code: the account is made and approves the
+     * terminal; a code whose key isn't one is turned away before the server
+     * is asked for an account, so no account is made for it.
+     */
+    @Test
+    fun anAccountIsMadeForATerminalOnlyWhenItsCodeHasAKey() = runTest {
+        val auth = repository()
+        for (url in listOf("happy://terminal?abc", TERMINAL_URL_PREFIX + "a".repeat(42) + "!")) {
+            val error = runCatching { createAccountForTerminal(auth, AuthApi(http()), url) }.exceptionOrNull()
+            assertTrue("$url: $error", error is InvalidLinkException)
+        }
+        assertTrue(server.requestsTo("/v1/auth").isEmpty())
+        assertEquals(AuthState.SignedOut, auth.state.value)
+
+        val terminal = Sodium.boxKeypair()
+        server.addTerminalRequest(terminal.publicKey, supportsV2 = true)
+        createAccountForTerminal(auth, AuthApi(http()), TERMINAL_URL_PREFIX + encodeBase64(terminal.publicKey, Base64Variant.Url))
+        assertTrue(auth.state.value is AuthState.SignedIn)
+        assertEquals(1, server.requestsTo("/v1/auth").size)
+        assertTrue(server.terminalRequests.getValue(encodeBase64(terminal.publicKey)).response != null)
     }
 
     @Test
