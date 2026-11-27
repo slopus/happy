@@ -198,8 +198,8 @@ private fun HeaderFadeIn(shown: Boolean, content: @Composable () -> Unit) {
  * the title, 16/20 semibold, with the workspace or branch and the git
  * counts under it in 12/16 secondary; New chat and More in 48 dp right
  * slots; title and More's Details open session info, while supported
- * permission choices live in More), then [ChatScreenSlots.headerAccessory] (Home's tab strip)
- * and the voice status bar: together the screen's top bar, on glass
+ * permission choices live in More), then [ChatScreenSlots.headerAccessory] (Home's tab strip):
+ * together the screen's top bar, on glass
  * ([GlassBarLayout]), as the agent chat's is. The transcript runs the full
  * height and scrolls on under the bar, starting clear of it; then the dock
  * ([ChatDock]) above the keyboard and the navigation bar. The CLI warning
@@ -324,7 +324,6 @@ fun ChatScreen(
                             right = { HeaderFadeIn(headerShown) { ChatHeaderActions(actions) } },
                         )
                         slots.headerAccessory?.invoke()
-                        if (!tablet) com.slopus.happy.ui.voice.VoiceStatusBar()
                     }
                 },
             ) { top ->

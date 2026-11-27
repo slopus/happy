@@ -9,7 +9,6 @@
     <string name="chat_created">创建于 %1$s</string>
     <string name="chat_permissions_in_terminal">权限仅在终端中显示。重置或发送消息即可在应用中控制。</string>
     <string name="chat_stop">停止</string>
-    <string name="chat_voice">语音</string>
     <string name="chat_send">发送</string>
     <string name="chat_markdown_image">Markdown 图片</string>
     <string name="chat_remove_image">移除 %1$s</string>

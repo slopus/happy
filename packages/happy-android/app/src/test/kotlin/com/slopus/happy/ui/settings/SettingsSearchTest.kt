@@ -16,7 +16,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.slopus.happy.model.Settings
 import com.slopus.happy.model.settings.PushToken
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
@@ -35,9 +34,6 @@ import com.slopus.happy.ui.connection.agentAppearanceSections
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.ui.theme.ThemePreference
-import com.slopus.happy.ui.voice.VoiceSettingsScreen
-import com.slopus.happy.ui.voice.VoiceUsageReading
-import com.slopus.happy.ui.voice.voicePageEntries
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -227,12 +223,6 @@ class SettingsSearchTest {
 
     @Test
     fun backupEntriesNameItsRows() = assertPageShows({ backupPageEntries {} }, { BackupScreen("AAAAA-BBBBB", {}) })
-
-    @Test
-    fun voiceEntriesNameItsRows() = assertPageShows(
-        { voicePageEntries(Settings.Defaults, hasPro = false) {} },
-        { VoiceSettingsScreen(Settings.Defaults, {}, VoiceUsageReading.Unavailable, false, onSupport = {}, onLanguage = {}, onBack = {}) },
-    )
 
     @Test
     fun languageEntriesNameItsRows() {

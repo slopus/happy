@@ -11,7 +11,6 @@
     <string name="chat_created">Created %1$s</string>
     <string name="chat_permissions_in_terminal">Permissions shown in terminal only. Reset or send a message to control from app.</string>
     <string name="chat_stop">Stop</string>
-    <string name="chat_voice">Voice</string>
     <string name="chat_send">Send</string>
     <string name="chat_markdown_image">Markdown image</string>
     <string name="chat_remove_image">Remove %1$s</string>

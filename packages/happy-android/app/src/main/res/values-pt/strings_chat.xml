@@ -9,7 +9,6 @@
     <string name="chat_created">Criada %1$s</string>
     <string name="chat_permissions_in_terminal">As permissões são mostradas só no terminal. Redefina ou envie uma mensagem para controlar pelo app.</string>
     <string name="chat_stop">Parar</string>
-    <string name="chat_voice">Voz</string>
     <string name="chat_send">Enviar</string>
     <string name="chat_markdown_image">Imagem Markdown</string>
     <string name="chat_remove_image">Remover %1$s</string>

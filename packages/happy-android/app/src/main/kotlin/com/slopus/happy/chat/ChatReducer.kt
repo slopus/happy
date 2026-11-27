@@ -138,6 +138,10 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
     private var latestUsage: TimedUsage? = null
     private var nextId = 0L
 
+    /** The turns that ended in an error ([AgentEvent.TurnFailed]). */
+    private val failed = HashSet<String>()
+    val failedTurns: Set<String> get() = failed
+
     val todos: List<TodoItem>? get() = latestTodos?.first
     val usage: ContextUsage? get() = latestUsage?.usage
 
@@ -211,9 +215,10 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
                 }
                 continue
             }
-            if (event == AgentEvent.Ready) {
+            if (event == AgentEvent.Ready || event == AgentEvent.TurnFailed) {
                 messageIds[msg.id] = msg.id
                 hasReadyEvent = true
+                if (event == AgentEvent.TurnFailed) msg.turn?.let(failed::add)
                 continue
             }
             if (event is AgentEvent.Message && event.message == "Turn started") {

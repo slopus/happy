@@ -10,7 +10,7 @@ are authoritative. Translation catalogs now live as plain JSON in
 `packages/happy-i18n/translations`; run
 `node tools/translations/generate.mjs` with no TypeScript loader. The old
 RN-based crypto/send/diff generators are retired; their checked-in fixtures
-remain compatibility baselines. Version and legacy voice configuration are
+remain compatibility baselines. Version and voice agent configuration are
 owned by `app/build.gradle.kts`, Firebase by `app/google-services.json`.
 Preserve credential and push compatibility on upgrades.
 
@@ -21,16 +21,25 @@ Preserve credential and push compatibility on upgrades.
   Do not port legacy protocol paths:
   sessions and machines without a `dataEncryptionKey` are skipped, not
   decrypted with the account secret.
-- **Voice** in Happy (relay) sessions is switched off: `AppGraph.voice` is
-  built with `enabled = false`, so a session's chat shows no voice button and
-  `start` answers `NotAvailable` before the microphone, the server's grant,
-  a sheet or ElevenLabs. The engine stays in the tree (removal not decided).
-  When on, it uses Happy's server-controlled allowance and the app's own
-  offer sheets (`payments/`, see "Purchases"), with ElevenLabs over WebRTC. The pinned SDK source patch in
+- **Voice on a Happy CLI account** is the same call as an agent
+  connection's (below), bound to the open Happy account instead
+  (`CallController.startCli`, `LegacyCallTargets` over `AppGraph`'s
+  `LegacyCallAccount`): the same hosted agent, prompt, four tools, sheets and
+  one device-local `CallAllowance`. Its button is where the agent home has
+  it, left of compose (`ComposeFab(onVoice)`, the tablet's
+  `SidebarFootBar(onVoice)`), and nowhere else: no chat or composer has one.
+  Settings' Voice row opens the agent connection's Voice page
+  (`AgentVoiceRoute`). The directory is home's sessions (bots, tasks, then
+  projects, each newest made first; no side chats, no stopped Happy CLI
+  session); reads are the chat screen's reduction (`ChatFeed`), sends the
+  composer's sender marked `voice`, model and effort the composer's chips
+  (refused only when the computer locks them). New tasks and named bots
+  start through Happy Agent's spawn on compose's computer, else the only one
+  that can. Nothing reads the server's old voice usage or token endpoints;
+  the old relay voice (`VoiceEngine`) is gone. The pinned SDK source patch in
   `vendor/elevenlabs` fixes audio focus, teardown and call-local mute.
 - **An agent connection's voice call** (`call/`, `ui/call/`), iOS's
-  `HappyCore/Call` ported: apart from the relay's voice above, its own new
-  hosted ElevenLabs agent, its system prompt sent from the phone
+  `HappyCore/Call` ported: its own hosted ElevenLabs agent, its system prompt sent from the phone
   (`CallPrompt`) and v3's four client tools (`CallTool`), no permission
   or question tool, hearing only new words and stopping errors from the last
   four conversations visited or messaged, and a read brings one up to date
@@ -40,8 +49,7 @@ Preserve credential and push compatibility on upgrades.
   window, the top app bar first, down by its height, taking the top inset.
   A full-screen dialog goes through `PageDialog` or `WindowDialog` so that it
   carries the bar.
-  It ends when the app leaves the foreground, another account opens or the
-  relay's voice starts. For launch it connects to a public agent by its ID
+  It ends when the app leaves the foreground or another account opens. For launch it connects to a public agent by its ID
   (`PublicAgentCallGrants`), a connection mechanism and not authentication;
   the ID comes from `HAPPY_CALL_AGENT_V3_ID`, `-Phappy.callAgentV3Id` or the
   ignored `local.properties` (`happy.callAgentV3Id`) into
@@ -1777,17 +1785,15 @@ SDK's own) stay on disk, unread.
   restore a new version makes of a subscription that names no one
   (`migrate`, once, only without `pro`).
 - `AppGraph.offers` (`Offers`) is the one offer presenter, drawn by the one
-  `OfferHost` in `HappyApp`: voice's welcome and used-up sheets and the relay
-  voice's Required sheet (`voice_must_pay`, unreachable while that voice is
-  off). One sheet at a time; `ask` answers Start (the welcome's only), Pro
+  `OfferHost` in `HappyApp`: voice's welcome and used-up sheets. One sheet
+  at a time; `ask` answers Start (the welcome's only), Pro
   or Dismissed. Support Happy is a pushed page, not a sheet (`SupportRoute`,
   `SupportScreen`; a Happy account's Support us and an agent connection's
   boba row, which is that page's only Support us): "Pledge <price>/month"
   over Subscribe, always there and greyed out while nothing is on sale,
   then Restore Purchases and Manage subscriptions as quiet links.
-- Grants are client-side. The server checks no subscription; its 2-hour
-  hard cap on every account's voice is a cost safety net, never sold, only
-  said.
+- Grants are client-side. The server checks no subscription, and no call
+  asks the relay server for voice time.
 - Debug builds treat About's Support row as Pro, as RN does; that grants no
   voice.
 
@@ -1796,20 +1802,9 @@ grace and identity.
 
 ## Voice
 
-`AppGraph.voice` owns one `VoiceEngine`, switched off for now (see the top).
-When on, it requests microphone permission
-before allocating a server conversation, applies server denial/paywall rules,
-and connects the ElevenLabs transport. `AppGraph.subscription` provides real Pro
-state and `AppGraph.offers` the sheets (`VoicePaywall`); debug-only Support us
-behavior does not grant voice Pro.
-Usage and credentials re-authenticate with the account secret when voice uses
-a different server. Voice language codes come from `VoiceLanguages`.
-
-`StoreVoiceContext` forwards normalized messages, permission prompts, ready
-events and focused-session context. Histories load lazily with a 50-row cap;
-events arriving during SDK connection are buffered. Client tools validate
-their parameters and use the existing sender/permission RPCs for the bound
-account. Logout, failed start and stop invalidate callbacks and close the call.
+Every call, an agent connection's or a Happy CLI account's, is
+`AppGraph.calls` (`call/`, `ui/call/`); see the scope above and
+`docs/agent-voice-call.md`.
 
 `vendor/elevenlabs/UPSTREAM.md` records the pinned MIT source archive and the
 audio lifecycle patch. LiveKit owns audio focus and device routing; call mute

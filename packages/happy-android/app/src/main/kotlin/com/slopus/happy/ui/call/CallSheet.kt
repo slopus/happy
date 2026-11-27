@@ -163,8 +163,7 @@ fun CallSheet(
     val subscribed = sheet.offer == Offer.Subscribed
     val used = when (sheet) {
         is OfferSheet.Used -> if (subscribed) paidNote(sheet.freeAgain) else usedNote(context, sheet.freeAgain)
-        is OfferSheet.Required -> if (subscribed) null else usedNote(context, null)
-        else -> null
+        is OfferSheet.Welcome -> null
     }
     ModalBottomSheet(
         onDismissRequest = onDismiss,

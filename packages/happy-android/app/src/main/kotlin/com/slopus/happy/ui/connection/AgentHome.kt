@@ -8,7 +8,7 @@ import com.slopus.happy.call.CallControl
 import androidx.compose.material3.FloatingActionButtonDefaults
 import com.slopus.happy.BuildConfig
 import androidx.compose.ui.platform.LocalContext
-import com.slopus.happy.ui.voice.rememberMicrophonePermission
+import com.slopus.happy.ui.call.rememberMicrophonePermission
 import com.slopus.happy.ui.call.CallFixtures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.semantics.contentDescription

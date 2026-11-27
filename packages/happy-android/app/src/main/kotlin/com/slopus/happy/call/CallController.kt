@@ -37,23 +37,22 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * The agent connection's voice call (iOS `CallController`): started from
- * home's voice button, shown as the bar across the window's top
- * (`ui/call/CallFrame`), bound to the one connection it started on. It ends
- * when the app leaves the foreground, and when another account opens. What
- * each call said is kept for the connection's next one ([CallHistory]), and a
- * call that ends unasked plays [CallDropSound]. Apart from the relay's voice
- * ([stopRelayVoice]), whose call it stops first.
+ * The voice call (iOS `CallController`): started from an agent
+ * connection's home or a Happy CLI account's ([LegacyCallTargets]), shown
+ * as the bar across the window's top (`ui/call/CallFrame`), bound to the one
+ * account it started on. It ends when the app leaves the foreground, and when
+ * another account opens. What each call said is kept for that account's next
+ * one ([CallHistory]), and a call that ends unasked plays [CallDropSound].
+ * Both kinds of account count against the one [allowance].
  */
 class CallController(
     private val appContext: Context,
     private val sessions: AgentSessions,
     foreground: StateFlow<Boolean>,
-    /** The open account's id: a call bound to another connection ends. */
+    /** The open account's id, of either kind: a call bound to another account ends. */
     openAccount: Flow<String?>,
-    /** The relay's voice is on: one call at a time, the newer wins. */
-    relayVoiceActive: Flow<Boolean>,
-    private val stopRelayVoice: suspend () -> Unit,
+    /** Happy CLI accounts, as calls hold them. */
+    private val cli: LegacyCallAccounts,
     /** The subscription: the month of hours it gives. */
     private val subscription: Subscription,
     /** The app's offer sheets: voice's welcome and used-up sheet among them. */
@@ -72,7 +71,7 @@ class CallController(
     val level: StateFlow<Float> = mutableLevel.asStateFlow()
     private var session: CallSession? = null
     private var context: CallContext? = null
-    private var targets: ConnectionCallTargets? = null
+    private var targets: HeldCallTargets? = null
     /** What follows this call (its state, home, its conversations); cancelled with it. */
     private var calling: CoroutineScope? = null
     private var connectionId: String? = null
@@ -86,7 +85,6 @@ class CallController(
         // Leaving the foreground hangs up: no microphone behind the person's back.
         foreground.filter { !it }.onEach { hangUp(CallEnding.Background) }.launchIn(scope)
         openAccount.drop(1).distinctUntilChanged().onEach { id -> if (state.value.isShown && id != connectionId) close() }.launchIn(scope)
-        relayVoiceActive.distinctUntilChanged().filter { it }.onEach { if (state.value.isLive) close() }.launchIn(scope)
         // Subscribed while the used-up sheet is up: it goes once there is time again.
         subscription.pro.filter { it }.onEach {
             if (offers.sheet.value is OfferSheet.Used && allowance.remaining(System.currentTimeMillis()) > 0) offers.close(OfferResult.Pro)
@@ -94,27 +92,52 @@ class CallController(
     }
 
     /**
-     * The voice button: a call on this connection, or the one already on.
-     * While a subscription is on sale, a device's first tap is voice's
-     * welcome instead, once: its "Start Voice Session" calls, and from then
-     * on the button does. With nothing on sale there is no welcome.
+     * An agent connection's voice button: a call on this connection, or the
+     * one already on ([begin]).
      */
-    fun start(connection: String, microphone: suspend () -> Boolean) {
-        if (state.value.isLive && connectionId == connection) return
+    fun start(connection: String, microphone: suspend () -> Boolean) = begin(connection, microphone) {
+        val account = sessions.session(connection) ?: return@begin null
+        Bound(
+            ConnectionCallTargets(account, appContext.resources::failureText, Typesetter.of(appContext)) { screen },
+            sessions.keptFile(connection, HISTORY_FILE),
+        ) { person(account) }
+    }
+
+    /**
+     * A Happy CLI account's voice button, on its home: a call
+     * on this account, its sessions the conversations, or the one already on.
+     */
+    fun startCli(account: String, microphone: suspend () -> Boolean) = begin(account, microphone) {
+        val targets = LegacyCallTargets(cli.account(account) ?: return@begin null) { screen }
+        // No teams on Happy CLI: nobody to name.
+        Bound(targets, cli.historyFile(account)) { null }
+    }
+
+    /** What a call is bound to: the account's targets, where its history is kept, and who the call talks to in a team. */
+    private class Bound(val targets: HeldCallTargets, val historyFile: java.io.File?, val person: suspend () -> String?)
+
+    /**
+     * The voice button: a call on [account], or the one already on. While a
+     * subscription is on sale, a device's first tap is voice's welcome
+     * instead, once: its "Start Voice Session" calls, and from then on the
+     * button does. With nothing on sale there is no welcome.
+     */
+    private fun begin(account: String, microphone: suspend () -> Boolean, bind: () -> Bound?) {
+        if (state.value.isLive && connectionId == account) return
         if (offers.sheet.value != null) return
         if (offers.welcomes()) {
             // Its "Start Voice Session" calls; closing it starts nothing.
-            scope.launch { if (offers.ask(OfferSheet.Welcome(offers.offer)) == OfferResult.Start) start(connection, microphone) }
+            scope.launch { if (offers.ask(OfferSheet.Welcome(offers.offer)) == OfferResult.Start) begin(account, microphone, bind) }
             return
         }
         close()
-        val account = sessions.session(connection) ?: return
-        connectionId = connection
-        val targets = ConnectionCallTargets(account, appContext.resources::failureText, Typesetter.of(appContext)) { screen }
+        val bound = bind() ?: return
+        connectionId = account
+        val targets = bound.targets
         val context = CallContext(targets)
-        val history = CallHistory(sessions.keptFile(connection, HISTORY_FILE)?.let(::FileCallHistoryStore))
+        val history = CallHistory(bound.historyFile?.let(::FileCallHistoryStore))
         val call = CallSession(
-            scope, grants, permission = { stopRelayVoice(); microphone() }, now = SystemClock::elapsedRealtime, allowance = allowance, history = history,
+            scope, grants, permission = microphone, now = SystemClock::elapsedRealtime, allowance = allowance, history = history,
         ) { grant, request, events ->
             ElevenLabsCallConnection.connect(appContext, scope, grant, request, events)
         }
@@ -149,8 +172,8 @@ class CallController(
             val update = context.directoryUpdate()
             if (session === call) call.deliver(update)
         }
-        account.feed.onEach { feed ->
-            if (session === call && context.directoryChanged(CallTarget.from(feed)) && session === call) settle.changed()
+        targets.directoryChanges.onEach { directory ->
+            if (session === call && context.directoryChanged(directory) && session === call) settle.changed()
         }.launchIn(calling)
         call.state.onEach { state ->
             if (session !== call) return@onEach
@@ -168,7 +191,7 @@ class CallController(
             }
         }
         call.start(language = null, context = {
-            context.initial(history.slots, person(account)).also { hold(context.followed(), targets) }
+            context.initial(history.slots, bound.person()).also { hold(context.followed(), targets) }
         }, tool = {
             context.handle(it).also {
                 // A message makes where it went one the call hears from.
@@ -193,7 +216,7 @@ class CallController(
     }
 
     /** Exactly the conversations the call hears from stay read: one that dropped out of the last visited is let go. */
-    private suspend fun hold(followed: List<String>, targets: ConnectionCallTargets) {
+    private suspend fun hold(followed: List<String>, targets: HeldCallTargets) {
         for (id in targets.following) if (id !in followed) targets.follow(id, false)
         for (id in followed) if (id !in targets.following) targets.follow(id, true)
     }

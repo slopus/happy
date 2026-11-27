@@ -268,11 +268,17 @@ class CallContext(
         val header = "Now: ${local(now(), zone)} (the person's local time)\nfocusRevision: $focusRevision" +
             person?.let { "\n" + personText(it) }.orEmpty()
         val turns = state?.let(::recent)?.toMutableList() ?: mutableListOf()
+        // On Happy CLI, new work by voice only where a computer with Happy Agent can start it.
+        val newWorkText = if (targets.account == CallAccount.HappyCli) {
+            if (targets.startsWork()) CLI_NEW_WORK_BLOCK else CLI_NEW_WORK_TEXT
+        } else {
+            NEW_WORK_TEXT
+        }
         var budget = Limits.DIRECTORY_BYTES
         var recapBudget = Limits.RECAP_BYTES
         val at = now()
         fun text(telling: Boolean = false): String =
-            listOfNotNull(header, recap(previous, at, recapBudget), screen(state, turns), directoryText(budget, telling), NEW_WORK_TEXT, DESTINATIONS_TEXT)
+            listOfNotNull(header, recap(previous, at, recapBudget), screen(state, turns), directoryText(budget, telling), newWorkText, DESTINATIONS_TEXT)
                 .joinToString("\n\n")
         while (text().utf8Size() > Limits.TOTAL_BYTES && turns.size > 1) turns.removeAt(0)
         while (text().utf8Size() > Limits.TOTAL_BYTES && budget > 512) budget /= 2
@@ -913,6 +919,7 @@ class CallContext(
         val key = "${kind.wire}:$name\u0000$text"
         val messageId = unsettled[key] ?: ConversationApi.clientId()
         val earlier = startedBy[messageId]?.let { drafts[it] ?: directory[it] }
+        if (earlier == null) targets.newWorkRefusal(kind, name)?.let { return CallToolResult.refused(it) }
         val work = earlier ?: targets.draft(kind, name) ?: return CallToolResult.refused("New work couldn't be started.")
         suspend fun refused(result: CallToolResult): CallToolResult {
             if (earlier == null) targets.discard(work.agentId)
@@ -1237,6 +1244,23 @@ class CallContext(
             A name after a colon names it: $NEW_BOT_REF:Release helper.
         """.trimIndent()
 
+        /** How the first context says new work starts on a Happy CLI account where a computer with Happy Agent can start it: a bot is always named there. */
+        val CLI_NEW_WORK_BLOCK = """
+            New work (message's to; listed nowhere until its first message makes it):
+            - $NEW_TASK_REF — a new task, the message its first
+            - $NEW_BOT_REF:<name> — a new bot, named, the message its first
+            A name after a colon names it: $NEW_BOT_REF:Release helper.
+        """.trimIndent()
+
+        /** The first context's line for new work on a Happy CLI account where no computer can start it by voice. */
+        const val CLI_NEW_WORK_TEXT = "New work: can't be started by voice on Happy CLI; the person starts sessions in the app."
+        /** Happy CLI's refusals of new work ([CallTargets.newWorkRefusal]). */
+        const val CLI_NEW_WORK_REFUSED = "New work can't be started by voice on Happy CLI; start a session in the app."
+        const val CLI_NEW_WORK_SEVERAL = "More than one computer can start it; start it in the app."
+        const val CLI_BOT_NAME = "A new bot needs a name here; ask what to call it."
+        /** A model or effort the computer keeps as it is. */
+        const val MODEL_LOCKED = "This session's model can't be changed (it's locked on the computer)."
+
         /** Where the first context says `navigate` goes. */
         val DESTINATIONS_TEXT = """
             Destinations (navigate's to):
@@ -1505,6 +1529,7 @@ class CallContext(
                 if (listed.isNotEmpty()) value["models"] = models(listed)
                 return AskedMode(refusal = CallToolResult.json(JsonObject(value), isError = true))
             }
+            if ((asked.isNotEmpty() && state.modelLocked) || (level.isNotEmpty() && state.effortLocked)) return refused(MODEL_LOCKED, emptyList())
             if (state.models.isEmpty()) return refused("This computer's models can't be read now, so the model and effort can't change.", emptyList())
             var chosen = state.mode?.let { mode -> state.models.firstOrNull { it.id == mode.modelId } }
             if (asked.isNotEmpty()) {

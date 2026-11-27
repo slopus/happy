@@ -70,6 +70,8 @@ sealed interface AgentEvent {
     data class Message(val message: String) : AgentEvent
     data class LimitReached(val endsAt: Long) : AgentEvent
     data object Ready : AgentEvent
+    /** A turn that ended in an error: its [Ready], and the turn it ended stays marked failed. Never rendered. */
+    data object TurnFailed : AgentEvent
     /** The agent took the message with server id [ref] into context. Never rendered. */
     data class UserMessageAccepted(val ref: String) : AgentEvent
     data class UserMessageRejected(val ref: String, val reason: String) : AgentEvent

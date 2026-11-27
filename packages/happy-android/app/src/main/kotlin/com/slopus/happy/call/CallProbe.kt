@@ -20,6 +20,9 @@ object CallProbe {
     private val mutableTools = MutableStateFlow<List<ToolRun>>(emptyList())
     val tools: StateFlow<List<ToolRun>> = mutableTools.asStateFlow()
 
+    /** The app's own call while it is live, for a device check to type the person's turns into ([ElevenLabsCallConnection.type]). */
+    @Volatile var live: ElevenLabsCallConnection? = null
+
     private val mutableSent = MutableStateFlow<List<Sent>>(emptyList())
     /** Every contextual update (and the device check's typed turns) sent, with its UTF-8 size. */
     val sent: StateFlow<List<Sent>> = mutableSent.asStateFlow()

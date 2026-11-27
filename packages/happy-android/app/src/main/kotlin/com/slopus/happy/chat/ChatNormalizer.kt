@@ -116,7 +116,7 @@ object ChatNormalizer {
                 message(Body.Event(AgentEvent.UserMessageAccepted(ev.ref)), sidechain = false, turn = null, usage = null)
             is SessionEvent.Rejected ->
                 message(Body.Event(AgentEvent.UserMessageRejected(ev.ref, ev.reason)), sidechain = false, turn = null, usage = null)
-            SessionEvent.TurnEnd -> message(Body.Event(AgentEvent.Ready), sidechain = false, usage = null)
+            is SessionEvent.TurnEnd -> message(Body.Event(if (ev.failed) AgentEvent.TurnFailed else AgentEvent.Ready), sidechain = false, usage = null)
             is SessionEvent.Service -> message(
                 Body.Agent(if (isUsageOnlyServiceEvent) emptyList() else listOf(AgentContent.Text(ev.text, e.id, parentUUID))),
             )

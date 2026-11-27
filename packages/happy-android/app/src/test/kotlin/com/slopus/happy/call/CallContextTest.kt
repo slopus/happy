@@ -1705,6 +1705,64 @@ class CallContextTest {
         // Titles from home carry no control characters at all.
         assertEquals("a b c\u200Dd", CallTarget.clean("a\u0001b\nc\u200Dd"))
     }
+
+    // A Happy CLI account
+
+    /** Backend on a Happy CLI account, where [starts] says whether a computer with Happy Agent can start new work. */
+    private fun cli(starts: Boolean = true) = backend().also {
+        it.account = CallAccount.HappyCli
+        it.starts = starts
+    }
+
+    @Test
+    fun aHappyCliCallOffersNewWorkOnlyWhereAComputerCanStartIt() = runBlocking {
+        val able = CallContext(cli()).initial()
+        assertTrue(able.contains(CallContext.CLI_NEW_WORK_BLOCK))
+        assertFalse(able.contains(CallContext.NEW_WORK_TEXT))
+        val unable = CallContext(cli(starts = false)).initial()
+        assertTrue(unable.contains(CallContext.CLI_NEW_WORK_TEXT))
+        assertFalse(unable.contains(CallContext.CLI_NEW_WORK_BLOCK))
+        // An agent connection's call says what it always did.
+        assertTrue(CallContext(backend()).initial().contains(CallContext.NEW_WORK_TEXT))
+    }
+
+    @Test
+    fun newWorkTheAccountRefusesIsNeverDrafted() = runBlocking {
+        val targets = cli()
+        targets.refusal = { kind, name -> if (kind == CallTarget.Kind.Bot && name.isBlank()) CallContext.CLI_BOT_NAME else null }
+        val context = CallContext(targets)
+        context.initial()
+        val unnamed = context.tool("message", """{"to":"new-bot","text":"Watch the release"}""")
+        assertTrue(unnamed.isError)
+        assertEquals(CallContext.CLI_BOT_NAME, obj(unnamed.text).str("reason"))
+        assertTrue(targets.made.isEmpty())
+        assertTrue(targets.sends.isEmpty())
+        // Named, it starts.
+        assertEquals("queued", obj(context.tool("message", """{"to":"new-bot:Release helper","text":"Watch the release"}""").text).str("status"))
+        assertEquals(listOf(CallTarget.Kind.Bot to "Release helper"), targets.made.toList())
+        // No computer can: refused with why, nothing drafted.
+        targets.refusal = { _, _ -> CallContext.CLI_NEW_WORK_REFUSED }
+        val task = context.tool("message", """{"to":"new-task","text":"Find papers"}""")
+        assertEquals(CallContext.CLI_NEW_WORK_REFUSED, obj(task.text).str("reason"))
+        assertEquals(1, targets.made.size)
+    }
+
+    @Test
+    fun aLockedModelOrEffortIsRefusedAndTheRestStillChanges() = runBlocking {
+        val targets = modelled()
+        targets.states["b"] = targets.states.getValue("b").copy(modelLocked = true)
+        val context = CallContext(targets)
+        context.initial()
+        val model = context.tool("message", """{"to":"s2","text":"go","model":"sonnet"}""")
+        assertTrue(model.isError)
+        assertEquals(CallContext.MODEL_LOCKED + " Nothing was sent.", obj(model.text).str("reason"))
+        // The effort isn't locked: it changes.
+        assertEquals("low", obj(context.tool("message", """{"to":"s2","text":"go","effort":"low"}""").text).str("effort"))
+        targets.states["b"] = targets.states.getValue("b").copy(modelLocked = false, effortLocked = true)
+        assertTrue(context.tool("message", """{"to":"s2","text":"again","effort":"max"}""").isError)
+        assertEquals(listOf(FakeCallTargets.Sent("b", "go", targets.sends.single().id, CallModeChange(effort = "low"))), targets.sends.toList())
+    }
+
 }
 
 /** Conversations as a call reaches them, in memory. */
@@ -1713,6 +1771,13 @@ class FakeCallTargets(
     val states: MutableMap<String, CallTargetState>,
     private val focus: String?,
 ) : CallTargets {
+    /** The account the call is on, and what it says of new work there ([CallTargets.newWorkRefusal], [CallTargets.startsWork]). */
+    @Volatile override var account: CallAccount = CallAccount.Agent
+    @Volatile var refusal: (CallTarget.Kind, String) -> String? = { _, _ -> null }
+    @Volatile var starts = true
+    override suspend fun newWorkRefusal(kind: CallTarget.Kind, name: String) = refusal(kind, name)
+    override suspend fun startsWork() = starts
+
     data class Sent(val agentId: String, val text: String, val id: String, val change: CallModeChange? = null)
 
     private val lock = Mutex()

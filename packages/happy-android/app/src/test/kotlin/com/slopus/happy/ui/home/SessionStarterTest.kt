@@ -459,7 +459,7 @@ class SessionStarterTest {
         assertEquals(StartResult.Started("s1"), h.starter.start(task = true, confirmDirectory = yes))
         val request = h.machines.spawns.single()
         assertEquals("rig", request.agent)
-        assertEquals(HappyAgentSpawnTarget.Task, request.happyAgentTarget)
+        assertEquals(HappyAgentSpawnTarget.Task(), request.happyAgentTarget)
         assertEquals("""{"kind":"task"}""", request.happyAgentTarget!!.toJson().toString())
         assertEquals("request-1", request.clientRequestId)
         assertEquals(listOf("s1" to "Ship the release"), h.sent)

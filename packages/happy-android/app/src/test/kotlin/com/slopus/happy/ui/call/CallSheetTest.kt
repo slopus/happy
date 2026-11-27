@@ -112,21 +112,6 @@ class CallSheetTest {
         assertTrue(intro.due)
     }
 
-    /** The relay's voice refused without the subscription: voice's sheet, no free way on, its start greyed out. */
-    @Test
-    fun theRelaysRequiredSheetHasNoFreeWayOn() {
-        var started = 0
-        rule.setHappyContent { CallSheet(OfferSheet.Required(Offer.OnSale("9,99 €")), onStart = { started++ }, onDismiss = {}, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }) }
-        rule.waitForIdle()
-        rule.node(CallSheetTags.PAYWALL).assertExists()
-        for (line in listOf("Talk to your agents", "Support Happy for 9,99 €/month", "2 hours of real-time voice included")) text(line).assertExists()
-        rule.node(CallSheetTags.SUBSCRIBE).assertExists()
-        rule.node(CallSheetTags.RESTORE).assertExists()
-        rule.node(CallSheetTags.SESSION).assertIsNotEnabled().performClick()
-        rule.waitForIdle()
-        assertEquals(0, started)
-    }
-
     /** Support Happy's page sells the same subscription as a pledge, with no voice session, and manages it in the store. */
     @Test
     fun supportSellsTheSameSubscriptionWithoutVoice() {

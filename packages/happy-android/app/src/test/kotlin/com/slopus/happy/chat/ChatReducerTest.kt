@@ -423,6 +423,13 @@ class ChatReducerTest {
         assertTrue(result.hasReadyEvent)
     }
 
+    @Test fun `a failed turn's end is its ready event and marks the turn failed`() {
+        val result = state.reduce(eventMsg("end-1", AgentEvent.TurnFailed, 1000).copy(turn = "t1"), eventMsg("end-2", AgentEvent.Ready, 1001).copy(turn = "t2"))
+        assertEquals(0, result.messages.size)
+        assertTrue(result.hasReadyEvent)
+        assertEquals(setOf("t1"), state.failedTurns)
+    }
+
     @Test fun `hides turn-start lifecycle messages`() {
         assertEquals(0, state.reduce(eventMsg("turn-start-1", AgentEvent.Message("Turn started"), 1000)).messages.size)
     }

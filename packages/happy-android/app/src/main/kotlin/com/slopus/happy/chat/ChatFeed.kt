@@ -81,6 +81,8 @@ data class ChatSnapshot(
     val isLoadingOlder: Boolean = false,
     val todos: List<TodoItem>? = null,
     val usage: ContextUsage? = null,
+    /** The turns that ended in an error. */
+    val failedTurns: Set<String> = emptySet(),
 )
 
 /**
@@ -144,7 +146,7 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
             changed = true
         }
         if (!changed && snapshot.hasMoreOlder == page.hasMoreOlder && snapshot.isLoadingOlder == page.isLoadingOlder &&
-            snapshot.loaded == page.loaded
+            snapshot.loaded == page.loaded && snapshot.failedTurns.size == reducer.failedTurns.size
         ) {
             return snapshot
         }
@@ -178,6 +180,7 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
             isLoadingOlder = page.isLoadingOlder,
             todos = reducer.todos,
             usage = reducer.usage,
+            failedTurns = reducer.failedTurns.toSet(),
         )
         return snapshot
     }

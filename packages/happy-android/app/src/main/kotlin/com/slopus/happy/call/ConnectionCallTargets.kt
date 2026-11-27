@@ -16,7 +16,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -69,7 +71,7 @@ class ConnectionCallTargets(
     /** The process's, as the screen's: the rows are laid out once, whoever made the conversation. */
     private val typesetter: RowTypesetter?,
     private val screen: () -> CallScreen?,
-) : CallTargets {
+) : HeldCallTargets {
     private class Held(val hold: HeldConversations.Hold, var watch: Job? = null) {
         val conversation: Conversation get() = hold.conversation
     }
@@ -78,12 +80,11 @@ class ConnectionCallTargets(
     /** New work the call started, off screen, until it is let go with the call. */
     private val started = HashMap<String, Held>()
     private val watching = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    /** A followed conversation changed. */
-    var onChange: ((CallTargetState) -> Unit)? = null
+    override var onChange: ((CallTargetState) -> Unit)? = null
     /** Ended with its call: nothing is held, opened or sent after. */
     private var closed = false
 
-    fun close() {
+    override fun close() {
         closed = true
         for (hold in held.values) release(hold)
         held.clear()
@@ -94,7 +95,9 @@ class ConnectionCallTargets(
         onChange = null
     }
 
-    val focusedNow: String? get() = screen()?.focused
+    override val focusedNow: String? get() = screen()?.focused
+
+    override val directoryChanges: Flow<List<CallTarget>> get() = session.feed.map(CallTarget::from)
 
     private fun target(agentId: String): CallTarget? = CallTarget.from(session.feed.value).firstOrNull { it.agentId == agentId }
 
@@ -292,8 +295,7 @@ class ConnectionCallTargets(
         return true
     }
 
-    /** The conversations held for the call. */
-    val following: List<String> get() = held.keys.toList()
+    override val following: List<String> get() = held.keys.toList()
 
     override suspend fun follow(agentId: String, following: Boolean) = onMain {
         if (following) {

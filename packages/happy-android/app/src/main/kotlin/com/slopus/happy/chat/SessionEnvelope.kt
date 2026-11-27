@@ -76,7 +76,8 @@ internal sealed interface SessionEvent {
     data class File(val ref: String, val name: String, val size: JsonElement, val image: JsonObject?) : SessionEvent
     data object TurnStart : SessionEvent
     data object Start : SessionEvent
-    data object TurnEnd : SessionEvent
+    /** A turn's end; [failed] when it ended in an error. */
+    data class TurnEnd(val failed: Boolean = false) : SessionEvent
     data object Stop : SessionEvent
     data class Accepted(val ref: String) : SessionEvent
     data class Rejected(val ref: String, val reason: String) : SessionEvent
@@ -118,7 +119,7 @@ internal sealed interface SessionEvent {
             }
             "turn-start" -> TurnStart
             "start" -> Start
-            "turn-end" -> if (ev["status"].str in TURN_END_STATUSES) TurnEnd else null
+            "turn-end" -> if (ev["status"].str in TURN_END_STATUSES) TurnEnd(ev["status"].str == "failed") else null
             "stop" -> Stop
             "user-message-accepted" -> {
                 if (ev["id"].str == null || ev["runId"].str == null) null else Accepted(ev["ref"].str ?: return null)
