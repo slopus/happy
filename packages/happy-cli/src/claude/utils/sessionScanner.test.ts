@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createSessionScanner } from './sessionScanner'
 import { RawJSONLines } from '../types'
 import type { ClaudeGoalStatusTranscriptEvent } from '../claudeGoalStatus'
-import { mkdir, writeFile, appendFile, rm, readFile } from 'node:fs/promises'
+import { mkdir, writeFile, appendFile, rm, readFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
@@ -388,6 +388,38 @@ describe('sessionScanner', () => {
     expect(collectedMessages.map((message) => message.type)).toEqual(['user', 'assistant'])
     await new Promise((resolve) => setTimeout(resolve, 500))
     expect(collectedMessages).toHaveLength(2)
+  })
+
+  it('follows a transcript that EnterWorktree relocates to another project dir', async () => {
+    // EnterWorktree moves the live transcript from the starting cwd's project
+    // dir to the worktree's, appends a `relocated` record, and keeps writing
+    // there.
+    const fixture = await readFile(join(__dirname, '__fixtures__', '0-say-lol-session.jsonl'), 'utf-8')
+    const [userLine, assistantLine] = fixture.split('\n').filter((line) => line.trim())
+    const sessionId = '7f1d0c4e-2a5b-4c8e-9d3f-6b2a1e0c9d47'
+    const worktreeDir = join(testDir, '.claude', 'worktrees', 'wt')
+    const worktreeProjectDir = getProjectPath(worktreeDir)
+    const oldFile = join(projectDir, `${sessionId}.jsonl`)
+    const newFile = join(worktreeProjectDir, `${sessionId}.jsonl`)
+
+    await writeFile(oldFile, userLine + '\n')
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+    })
+    scanner.onNewSession(sessionId)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(collectedMessages.map((message) => message.type)).toEqual(['user'])
+
+    await mkdir(worktreeProjectDir, { recursive: true })
+    await rename(oldFile, newFile)
+    await appendFile(newFile, JSON.stringify({ type: 'relocated', sessionId, relocatedCwd: worktreeDir }) + '\n')
+    await appendFile(newFile, assistantLine + '\n')
+    // The periodic sync re-resolves the path within one 3s interval.
+    await new Promise((resolve) => setTimeout(resolve, 3_500))
+
+    expect(collectedMessages.map((message) => message.type)).toEqual(['user', 'assistant'])
   })
 
   it('revives a same-id session after its directory becomes watchable again', async () => {
