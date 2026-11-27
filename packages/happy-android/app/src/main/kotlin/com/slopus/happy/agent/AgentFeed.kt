@@ -14,7 +14,7 @@ sealed interface AgentFeedRow {
         override val key get() = "section-${section.key}"
     }
 
-    /** Desktop's fixed Artifacts row, first on home: the agent's artifacts, newest first. */
+    /** Desktop's fixed Artifacts row, under Activity: the agent's artifacts, newest first. */
     data object Artifacts : AgentFeedRow {
         override val key get() = "artifacts"
     }
@@ -29,7 +29,7 @@ sealed interface AgentFeedRow {
         override val key get() = "pipelines"
     }
 
-    /** Desktop's Feed row under Artifacts, while the computer keeps a feed for the person: how many entries they haven't seen. */
+    /** Desktop's Feed row (Activity), first on home, while the computer keeps a feed for the person: how many entries they haven't seen. */
     data class Feed(val unread: Int) : AgentFeedRow {
         override val key get() = "feed"
     }
@@ -155,9 +155,10 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
 
         /**
          * iOS's home (SidebarRows.swift), in the agent's own orders, never
-         * by activity, so nothing moves while nothing is done: Happy Cloud's
-         * shared bot ([BotKind.Shared]), Artifacts and
-         * the Surfaces the person joined (in their own order), the other bots
+         * by activity, so nothing moves while nothing is done: desktop's places
+         * (Activity, Artifacts, Plugins, Pipelines, Todos), the Surfaces the
+         * person joined (in their own order) and Happy Cloud's shared bot
+         * ([BotKind.Shared]), then the other bots
          * (catalog order), then the tasks in the person's list (their
          * order), then the projects, each a folder over its root
          * workspace's conversations, then each worktree's folder over its
@@ -279,14 +280,14 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 )
             }
 
-            // Happy Cloud's shared bot is a place of its own, first among them; only owners are sent one.
+            // Happy Cloud's shared bot is a place of its own, the last of them; only owners are sent one.
             val (shared, listed) = bots.partition { BotKind.of(it) == BotKind.Shared }
+            // Desktop's order: Activity, Artifacts, then the rest.
             section(AgentFeedSection.Places) {
-                shared.forEach(::botRows)
+                feedUnread?.let { rows += AgentFeedRow.Feed(it) }
                 rows += AgentFeedRow.Artifacts
                 if (plugins) rows += AgentFeedRow.Plugins
                 if (pipelines) rows += AgentFeedRow.Pipelines
-                feedUnread?.let { rows += AgentFeedRow.Feed(it) }
                 rows += AgentFeedRow.Todos
                 catalog.surfaces.values
                     .filter { it.string("status") != "archived" && it["archivedAt"].isNullish() }
@@ -303,6 +304,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                         val locked = Surface.parse(surface)?.showsLock == true
                         rows += AgentFeedRow.Surface(id, surface.string("name").orEmpty(), type, locked)
                     }
+                shared.forEach(::botRows)
             }
             section(AgentFeedSection.Bots) { listed.forEach(::botRows) }
             section(AgentFeedSection.Tasks) {

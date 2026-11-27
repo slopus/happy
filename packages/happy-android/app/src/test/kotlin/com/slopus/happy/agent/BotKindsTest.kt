@@ -61,10 +61,11 @@ class BotKindsTest {
     }
 
     @Test
-    fun anOwnerHasTheSharedBotFirstAmongThePlacesAndThePersonalOnesUnderBots() {
-        val feed = AgentFeed.derive(catalog(Wire.bootstrap(bots = listOf(writer, shared, researcher))))
+    fun anOwnerHasTheSharedBotLastAmongThePlacesAndThePersonalOnesUnderBots() {
+        val surfaces = listOf(Wire.surface("s1", "Roadmap", "document"))
+        val feed = AgentFeed.derive(catalog(Wire.bootstrap(bots = listOf(writer, shared, researcher), surfaces = surfaces)), feedUnread = 1)
         assertEquals(
-            listOf("section-places", "agent-achief", "artifacts", "todos", "section-bots", "agent-aresearch", "agent-awriter"),
+            listOf("section-places", "feed", "artifacts", "todos", "surface-s1", "agent-achief", "section-bots", "agent-aresearch", "agent-awriter"),
             feed.rows.map { it.key },
         )
         val chief = feed.conversations.first { it.agentId == "achief" }
@@ -88,7 +89,7 @@ class BotKindsTest {
         val personalAdmin = bot("p", "Builder", "personal", admin = true, orderKey = "2")
         val feed = AgentFeed.derive(catalog(Wire.bootstrap(bots = listOf(sharedPlain, personalAdmin))))
         assertEquals(
-            listOf("section-places", "agent-as", "artifacts", "todos", "section-bots", "agent-ap"),
+            listOf("section-places", "artifacts", "todos", "agent-as", "section-bots", "agent-ap"),
             feed.rows.map { it.key },
         )
     }

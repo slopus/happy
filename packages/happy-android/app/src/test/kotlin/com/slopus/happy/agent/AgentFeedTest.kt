@@ -85,6 +85,12 @@ class AgentFeedTest {
     }
 
     @Test
+    fun thePlacesComeInDesktopsOrderActivityThenArtifacts() {
+        val keys = AgentFeed.derive(catalog(sample), feedUnread = 2, plugins = true, pipelines = true).rows.map { it.key }.take(6)
+        assertEquals(listOf("section-places", "feed", "artifacts", "plugins", "pipelines", "todos"), keys)
+    }
+
+    @Test
     fun aServerWithPipelinesListsThemUnderPlugins() {
         val places = { plugins: Boolean, pipelines: Boolean -> AgentFeed.derive(catalog(sample), plugins = plugins, pipelines = pipelines).rows.map { it.key }.take(5) }
         assertEquals(listOf("section-places", "artifacts", "plugins", "pipelines", "todos"), places(true, true))

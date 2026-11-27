@@ -2825,8 +2825,9 @@ A Happy Cloud bot carries `kind` (happy-cluster's bot object; a Happy Agent
 daemon sends none, and its bots stay as they were). `agent/Bots.kt` reads it
 (`BotKind`, `botEditable`) and edits one (`BotEditForm`, `BotEditor`).
 
-- **Where:** a `shared` bot (only owners are sent it) is the first row of
-  home's places card, above Artifacts, opening its conversation; `personal`
+- **Where:** a `shared` bot (only owners are sent it) is the last row of
+  home's places card, after desktop's order there (Activity, Artifacts,
+  Plugins, Pipelines, Todos, then joined Surfaces), opening its conversation; `personal`
   bots are the Bots section, each `agent` the caller's own conversation.
   Placement follows `kind` alone and editing `editable` alone, never
   `isAdmin` or `systemKey` (any pair of kind and admin reads). An unknown
