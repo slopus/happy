@@ -9,6 +9,9 @@
     <string name="agent_home_empty_body">Rozpocznij czat z tym agentem, a pojawi się tutaj.</string>
     <string name="agent_home_revoked">Ten telefon został usunięty w Happy Agent. Połącz agenta ponownie, aby z niego korzystać.</string>
     <string name="agent_home_update_required">Ten agent wymaga nowszej wersji Happy. Zaktualizuj aplikację, aby z niego korzystać.</string>
+    <string name="agent_home_archive_workspace">Zarchiwizuj przestrzeń</string>
+    <string name="agent_home_archive_workspace_title">Zarchiwizować „%1$s”?</string>
+    <string name="agent_home_archive_workspace_message">Jej czaty też zostaną zarchiwizowane, a to, co w niej działa, zostanie zatrzymane. Jej folder zostanie usunięty, a zarchiwizowanej przestrzeni nie można przywrócić.</string>
     <string name="agent_artifacts_untitled">Bez tytułu</string>
     <string name="agent_surface_add_todo">Dodaj zadanie</string>
     <string name="agent_surface_no_todos">Na razie nic tu nie ma.</string>

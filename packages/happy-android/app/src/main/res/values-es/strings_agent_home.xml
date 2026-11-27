@@ -9,6 +9,9 @@
     <string name="agent_home_empty_body">Empieza un chat con este agente y aparecerá aquí.</string>
     <string name="agent_home_revoked">Este teléfono se quitó en Happy Agent. Vuelve a conectar el agente para usarlo.</string>
     <string name="agent_home_update_required">Este agente necesita una versión más reciente de Happy. Actualiza la app para usarlo.</string>
+    <string name="agent_home_archive_workspace">Archivar espacio</string>
+    <string name="agent_home_archive_workspace_title">¿Archivar «%1$s»?</string>
+    <string name="agent_home_archive_workspace_message">Sus chats también se archivan y lo que se esté ejecutando en él se detiene. Su carpeta se elimina y un espacio archivado no se puede recuperar.</string>
     <string name="agent_artifacts_untitled">Sin título</string>
     <string name="agent_surface_add_todo">Añadir tarea</string>
     <string name="agent_surface_no_todos">Aún no hay nada aquí.</string>

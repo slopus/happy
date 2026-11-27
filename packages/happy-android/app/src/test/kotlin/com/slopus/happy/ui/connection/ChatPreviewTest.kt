@@ -66,15 +66,27 @@ class ChatPreviewTest {
         onAdd = {},
     )
 
-    private fun show(dark: Boolean = false, preview: Boolean = true) = rule.setHappyContent(dark) {
-        AgentHomeScreen(
-            "Studio",
-            AgentFeed.derive(AgentHomeLayoutTest.catalog(AgentHomeLayoutTest.sample)),
-            AgentLinkStatus.Connected,
-            AccountMenu(),
-            actions,
-            preview = if (preview) { row -> previewed += row.agentId; Box(Modifier.fillMaxSize().testTag(INSIDE)) } else null,
+    /** With [archived], the person may archive (who may start work); each archived row's agent ID lands there. */
+    private fun show(dark: Boolean = false, preview: Boolean = true, archived: MutableList<String>? = null) {
+        val acting = if (archived == null) actions else AgentHomeActions(
+            onOpenConversation = { opened += it },
+            onCompose = {},
+            onSettings = {},
+            onSettingsRow = {},
+            onSwitchAccount = {},
+            onAdd = {},
+            onArchive = { row -> archived += row.agentId },
         )
+        rule.setHappyContent(dark) {
+            AgentHomeScreen(
+                "Studio",
+                AgentFeed.derive(AgentHomeLayoutTest.catalog(AgentHomeLayoutTest.sample)),
+                AgentLinkStatus.Connected,
+                AccountMenu(),
+                acting,
+                preview = if (preview) { row -> previewed += row.agentId; Box(Modifier.fillMaxSize().testTag(INSIDE)) } else null,
+            )
+        }
     }
 
     private fun hold(agentId: String) {
@@ -121,6 +133,41 @@ class ChatPreviewTest {
         rule.onAllNodesWithTag(ChatPreviewTags.SCRIM).assertCountEquals(0)
         // A press held long is a tap, as before.
         assertEquals(listOf("at2"), opened)
+    }
+
+    @Test
+    fun archiveSitsUnderTheCardOfARowThatMayBeArchivedAndATapPutsThePreviewAwayAndArchives() {
+        val archived = mutableListOf<String>()
+        show(archived = archived)
+        hold("at2")
+        // HoldLayout's menu: 10 under the card from its left edge, one 48 row at most 220 wide.
+        val card = rule.node(ChatPreviewTags.CARD).bounds
+        assertBox("archive", rule.node(ChatPreviewTags.ARCHIVE).bounds, card.left, card.bottom + ChatPreviewSpec.spacing, ChatPreviewSpec.menuWidth, ChatPreviewSpec.menuHeight)
+        // The phone has room for it under the card, which keeps its place.
+        assertBox("card", card, 12.dp, ((891 - 460) / 2f).dp, 387.dp, 460.dp)
+        rule.onNodeWithText("Archive").assertExists()
+        rule.node(ChatPreviewTags.ARCHIVE).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("at2"), archived)
+        assertTrue(opened.isEmpty())
+        rule.onAllNodesWithTag(ChatPreviewTags.CARD).assertCountEquals(0)
+    }
+
+    @Test
+    fun aBotsRowAndAViewersHomeHaveNoArchiveUnderTheCard() {
+        // A bot is never archived from home.
+        show(archived = mutableListOf())
+        hold("ab1")
+        rule.node(ChatPreviewTags.CARD).assertExists()
+        rule.onAllNodesWithTag(ChatPreviewTags.ARCHIVE).assertCountEquals(0)
+    }
+
+    @Test
+    fun aViewerWhoMayNotStartWorkHasNoArchiveUnderTheCard() {
+        show()
+        hold("at2")
+        rule.node(ChatPreviewTags.CARD).assertExists()
+        rule.onAllNodesWithTag(ChatPreviewTags.ARCHIVE).assertCountEquals(0)
     }
 
     @Test

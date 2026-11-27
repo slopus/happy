@@ -52,6 +52,26 @@ class AgentFeedTest {
     )
 
     @Test
+    fun rowsNameWhatTheirArchiveArchivesAsDesktopDoes() {
+        val rows = AgentFeed.derive(catalog(sample)).conversations.associate { it.agentId to it.archive }
+        // Never a bot; its subtasks one conversation at a time.
+        assertEquals(null, rows.getValue("ab1"))
+        assertEquals(null, rows.getValue("ab2"))
+        assertEquals(ArchiveTarget("agent", "as1"), rows.getValue("as1"))
+        assertEquals(ArchiveTarget("agent", "as2"), rows.getValue("as2"))
+        // A task by its task ID; a project's or worktree's chat by its agent.
+        assertEquals(ArchiveTarget("task", "t1"), rows.getValue("at1"))
+        assertEquals(ArchiveTarget("task", "t2"), rows.getValue("at2"))
+        assertEquals(ArchiveTarget("agent", "ap1"), rows.getValue("ap1"))
+        assertEquals(ArchiveTarget("agent", "aw1"), rows.getValue("aw1"))
+
+        // A task the person may not archive offers none, nor do its subtasks.
+        val locked = JsonObject(Wire.task("t9", "Theirs", Wire.agent("at9", subtasks = listOf(Wire.agent("as9", subtask = true, parent = "at9")))) + ("canArchive" to JsonPrimitive(false)))
+        val theirs = AgentFeed.derive(catalog(Wire.bootstrap(tasks = listOf(locked), memberships = listOf(Wire.membership("t9", "1"))))).conversations
+        assertEquals(listOf("at9" to null, "as9" to null), theirs.map { it.agentId to it.archive })
+    }
+
+    @Test
     fun conversationsComeInTheAgentsOwnOrders() {
         val feed = AgentFeed.derive(catalog(sample))
         assertEquals(

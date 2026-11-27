@@ -97,6 +97,7 @@ import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.components.rememberThumbHash
 import com.slopus.happy.ui.home.BlockedDotColor
 import com.slopus.happy.ui.home.LocalHomeRowObserver
+import com.slopus.happy.ui.home.SwipeToArchive
 import com.slopus.happy.ui.home.UnreadDotColor
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -379,6 +380,10 @@ fun LazyListScope.agentHomeRows(
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
     onOpenPipelines: () -> Unit = {},
+    /** A conversation row's swipe archives what its [AgentFeedRow.Conversation.archive] names; null offers no swipe. */
+    onArchive: ((AgentFeedRow.Conversation) -> Unit)? = null,
+    /** A worktree workspace row's swipe asks to archive what its [AgentFeedRow.Folder.archive] names; null offers no swipe. */
+    onArchiveWorkspace: ((AgentFeedRow.Folder) -> Unit)? = null,
 ) {
     items(items, key = { it.key }, contentType = { (it as? AgentHomeItem.Row)?.row?.let { row -> row::class } ?: it::class }) { item ->
         val motion = if (reduceMotion) Modifier else Modifier.animateItem(
@@ -397,6 +402,8 @@ fun LazyListScope.agentHomeRows(
             is AgentHomeItem.Row -> AgentHomeCardRow(
                 item.drawn(), motion, selected != null && selected == item.row.panelKey(), AgentHomeTags.row(item.key),
                 onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, onOpenFeed, onOpenTodos, onOpenPlugins, onOpenPipelines,
+                onArchive = onArchive,
+                onArchiveWorkspace = onArchiveWorkspace,
             )
         }
     }
@@ -422,6 +429,8 @@ internal fun AgentHomeCardRow(
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
     onOpenPipelines: () -> Unit = {},
+    onArchive: ((AgentFeedRow.Conversation) -> Unit)? = null,
+    onArchiveWorkspace: ((AgentFeedRow.Folder) -> Unit)? = null,
 ) {
     HomeCardRow(
         place = HomeCardPlace(item.first, item.last),
@@ -432,8 +441,19 @@ internal fun AgentHomeCardRow(
         selected = selected,
     ) {
         when (val row = item.row) {
-            is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold)
-            is AgentFeedRow.Folder -> FolderRow(row)
+            // Swiped left, a row the person may archive uncovers Archive, as the server list's rows do.
+            is AgentFeedRow.Conversation -> SwipeToArchive(
+                enabled = onArchive != null && row.archive != null,
+                onArchive = { onArchive?.invoke(row) },
+                modifier = Modifier.fillMaxSize(),
+            ) { ConversationRow(row, onOpen, onHold) }
+            // Swiped left, a worktree's workspace uncovers Archive workspace, which asks before it archives (AgentHome).
+            is AgentFeedRow.Folder -> if (row.archive == null) FolderRow(row) else SwipeToArchive(
+                enabled = onArchiveWorkspace != null,
+                onArchive = { onArchiveWorkspace?.invoke(row) },
+                modifier = Modifier.fillMaxSize(),
+                workspace = true,
+            ) { FolderRow(row) }
             AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), { TileMark(Ionicon.DocumentTextOutline, RowTile.Purple) }, onOpenArtifacts)
             AgentFeedRow.Plugins -> PlaceRow(stringResource(R.string.plugins_title), { TileMark(Ionicon.ExtensionPuzzleOutline, RowTile.Orange) }, onOpenPlugins)
             AgentFeedRow.Pipelines -> PlaceRow(stringResource(R.string.pipelines_title), { TileMark(Ionicon.GitNetworkOutline, RowTile.Teal) }, onOpenPipelines)
@@ -770,6 +790,9 @@ fun AgentHomeList(
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
     onOpenPipelines: () -> Unit = {},
+    onArchive: ((AgentFeedRow.Conversation) -> Unit)? = null,
+    /** A worktree workspace row's swipe asks to archive it; null offers no swipe. */
+    onArchiveWorkspace: ((AgentFeedRow.Folder) -> Unit)? = null,
 ) {
     val reduceMotion = rememberReduceMotion()
     // The call brings a conversation's row on screen here before it presses it ([VoiceTouch.rows]).
@@ -789,7 +812,10 @@ fun AgentHomeList(
         contentPadding = contentPadding,
     ) {
         header?.invoke(this)
-        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected, onOpenFeed, onOpenTodos, onOpenPlugins, onOpenPipelines)
+        agentHomeRows(
+            items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected, onOpenFeed, onOpenTodos, onOpenPlugins, onOpenPipelines, onArchive,
+            onArchiveWorkspace = onArchiveWorkspace,
+        )
         item(key = "bottom", contentType = "bottom") { bottom() }
     }
 }
