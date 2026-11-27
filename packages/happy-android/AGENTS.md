@@ -1371,7 +1371,10 @@ change its wire behaviour on Android alone.
   on in `debug` and `preview`, off in `release` and `bench`), kept in prefs
   `happy-cloud` only once the switch is turned, so a phone that never turns
   it follows each build's default. The switch is a card above Privacy on
-  both kinds of Settings, and nowhere else: never on Start or in onboarding.
+  both kinds of Settings, in developer mode only (ten taps on Version), and
+  nowhere else: outside developer mode no card, footer or search result,
+  never on Start or in onboarding. Entering or leaving developer mode
+  changes nothing but whether it shows.
   Its invite links' intent filters sit on the main manifest's disabled
   `HappyCloudLinks` alias, which the switch enables; servers already added
   keep working either way.

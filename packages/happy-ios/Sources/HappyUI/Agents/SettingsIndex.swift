@@ -48,7 +48,10 @@ enum SettingsIndex {
     static var agentVoice: Entry { Entry(id: "agent-voice", title: Strings.AgentVoice.title, glyph: "mic-outline", tile: .orange) }
     static var supportUs: Entry { Entry(id: "support-us", title: Strings.SupportUs.title, glyph: "heart-outline", tile: .red) }
     static var dataStorage: Entry { Entry(id: "data-storage", title: Strings.DataStorage.title, glyph: "server-outline", tile: .green) }
-    /// This phone's Happy Cloud switch, a card of its own above Privacy (`HappyCloud.isOffered`).
+    /// This phone's Happy Cloud switch, a card of its own above Privacy in
+    /// developer mode only (`HappyCloud.isOffered`). Not in the lists
+    /// below, which home's search reads: only Settings' own search, in
+    /// developer mode, finds it.
     static var happyCloud: Entry { Entry(id: "happy-cloud", title: HappyCloud.name, glyph: "cloud-outline", tile: .indigo) }
     /// Privacy, a page of its own: this phone's Analytics switch.
     static var privacySettings: Entry { Entry(id: "privacy-settings", title: Strings.SettingsAccount.privacy, glyph: "lock-closed-outline", tile: .blue) }
@@ -71,7 +74,7 @@ enum SettingsIndex {
     /// is Data and Storage's. Disconnect is left
     /// out: a search doesn't offer to take the computer away.
     static var computer: [Entry] {
-        [appearance, hideProjects, shimmerInLowPower, groupToolCalls, profile, changeAgentName, changeAgentAvatar, agentVoice, dataStorage, connection, supportBoba, agents, usage, dictationOpensTask, multilingualDictation, happyCloud, privacySettings, analytics, connectAgent, addAccount] + aboutRows
+        [appearance, hideProjects, shimmerInLowPower, groupToolCalls, profile, changeAgentName, changeAgentAvatar, agentVoice, dataStorage, connection, supportBoba, agents, usage, dictationOpensTask, multilingualDictation, privacySettings, analytics, connectAgent, addAccount] + aboutRows
     }
 
     /// Cloud has no project settings; paired and self-hosted agents keep them.
@@ -83,7 +86,7 @@ enum SettingsIndex {
     /// their order: the same places as a computer's, with the account's own
     /// pages beside them. Sign out is left out, as Disconnect is.
     static var happyAccount: [Entry] {
-        [account, backupRestore, appearance, language, agentVoice, agents, dataStorage, connection, scanTerminal, enterTerminal, supportUs, happyCloud, privacySettings, analytics] + aboutRows
+        [account, backupRestore, appearance, language, agentVoice, agents, dataStorage, connection, scanTerminal, enterTerminal, supportUs, privacySettings, analytics] + aboutRows
     }
 
     /// The About page's rows.

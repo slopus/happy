@@ -547,7 +547,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             return ([
                 accountRows(),
             ] + serverRows + groups + [
-                [happyCloudRow()],
+                happyCloudRow(),
                 [Row(Index.privacySettings, action: { [weak self] in self?.open(.privacy) })],
                 aboutRows(),
             ] + removal).filter { !$0.isEmpty }
@@ -570,11 +570,11 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 Row(Index.enterTerminal, accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: false) }),
             ],
             [Row(Index.supportUs, action: { [weak self] in self?.open(.supportUs) })],
-            [happyCloudRow()],
+            happyCloudRow(),
             [Row(Index.privacySettings, action: { [weak self] in self?.open(.privacy) })],
             aboutRows(),
             [Row(id: "sign-out", title: Strings.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: false) })],
-        ]
+        ].filter { !$0.isEmpty }
     }
 
     /// Support Happy, under Profile: the boba, still, that Happy is open
@@ -783,13 +783,17 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     /// This phone's Happy Cloud switch, whatever is signed in, a card of
     /// its own above Privacy: whether the app offers Happy Cloud's ways in.
-    private func happyCloudRow() -> SettingsRow {
+    /// In developer mode only (Kirill); none otherwise, so neither the
+    /// page nor its search shows it. Developer mode only shows it: the
+    /// value is the switch's either way.
+    private func happyCloudRow() -> [SettingsRow] {
+        guard context.account.localSettings.devModeEnabled else { return [] }
         let entry = SettingsIndex.happyCloud
-        return SettingsRow(id: entry.id, title: entry.title, icon: (entry.glyph, entry.tile), accessory: .toggle,
+        return [SettingsRow(id: entry.id, title: entry.title, icon: (entry.glyph, entry.tile), accessory: .toggle,
                            isOn: HappyCloud.isOffered(in: context.variant), toggled: { [weak self] on in
             HappyCloud.setOffered(on)
             self?.rebuild()
-        }, footer: Strings.HappyCloud.switchFooter)
+        }, footer: Strings.HappyCloud.switchFooter)]
     }
 
     /// This phone's own analytics switch, whatever is signed in, on the

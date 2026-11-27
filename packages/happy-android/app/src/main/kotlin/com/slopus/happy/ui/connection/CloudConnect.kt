@@ -96,13 +96,16 @@ object HappyCloudSwitchTags {
 /**
  * Settings' Happy Cloud switch, a card of its own above Privacy on both
  * kinds of account's Settings ([com.slopus.happy.config.HappyCloudSetting]),
- * its one place;
- * null where the build has no Happy Cloud, and the card is left out.
+ * its one place, and only in developer mode (ten taps on Version, Kirill);
+ * null otherwise and where the build has no Happy Cloud: no card, no
+ * footer, nothing for search to find. Developer mode only shows it: the
+ * value is the switch's either way.
  */
 @Composable
 fun rememberHappyCloudSwitch(graph: AppGraph): Boolean? {
     val on by graph.happyCloud.enabled.collectAsStateWithLifecycle()
-    return on.takeIf { graph.cloudAccount != null }
+    val local by graph.localSettings.values.collectAsStateWithLifecycle()
+    return on.takeIf { graph.cloudAccount != null && local.devModeEnabled }
 }
 
 /** [rememberHappyCloudSwitch]'s card: the switch and what it offers. */

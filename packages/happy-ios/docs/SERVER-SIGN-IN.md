@@ -105,8 +105,10 @@ split contract (v1, frozen 2026-11-15).
   `happy-cloud` only once the switch is turned, so a phone that never turns
   it follows each build's default. While off, none of these entries show,
   no invite link opens, and `connectToCloud` does nothing. The switch is a
-  card above Privacy in Settings, and nowhere else: never on Start or in
-  onboarding.
+  card above Privacy in Settings, in developer mode only (ten taps on
+  Version), and nowhere else: outside developer mode no card, footer or
+  search result (home's search included), never on Start or in onboarding.
+  Entering or leaving developer mode changes nothing but whether it shows.
 - **Screens.** Desktop's steps and words (happy-desktop
   `CloudConnectScreen.tsx`), every one a full-screen page on the first
   screen's grain gradient, under the standard bar with Back: Welcome, Sign

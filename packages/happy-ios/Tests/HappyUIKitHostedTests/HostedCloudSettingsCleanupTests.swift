@@ -163,8 +163,7 @@ final class HostedCloudSettingsCleanupTests: XCTestCase {
             XCTAssertEqual(cards[first + 2].first, SettingsIndex.agents.id)
             XCTAssertEqual(cards[first + 2].contains(SettingsIndex.providers.id), agentsGroup, "\(cards)")
             XCTAssertEqual(settings.shownHeaders, ["AGENTS"])
-            XCTAssertEqual(cards[first + 3], [SettingsIndex.happyCloud.id])
-            XCTAssertEqual(cards[first + 4], [SettingsIndex.privacySettings.id])
+            XCTAssertEqual(cards[first + 3], [SettingsIndex.privacySettings.id])
             XCTAssertEqual(cards.last, ["disconnect"])
         }
     }
@@ -181,32 +180,73 @@ final class HostedCloudSettingsCleanupTests: XCTestCase {
             defaults.removeObject(forKey: "happy-cloud")
             let (rigged, id) = try await rig(server: nil)
             let context = AppContext(account: rigged.account, variant: variant, version: "test")
+            let plain = SettingsViewController(context: context, computer: id)
+            _ = try await host(plain)
+            XCTAssertNil(plain.shownRow(SettingsIndex.happyCloud.id), "the switch shows outside developer mode")
+            XCTAssertFalse(plain.shownRowTitles.joined().contains(HappyCloud.name), "\(plain.shownRowTitles)")
+            let search = try XCTUnwrap(plain.navigationItem.searchController)
+            plain.willPresentSearchController(search)
+            search.searchBar.text = "Happy Cloud"
+            plain.updateSearchResults(for: search)
+            XCTAssertFalse(plain.shownRowIDs.joined().contains(SettingsIndex.happyCloud.id), "Settings' search finds the switch outside developer mode")
+            plain.willDismissSearchController(search)
+            let offered = HappyCloud.isOffered(in: variant)
+            context.account.localSettings.devModeEnabled = true
+            XCTAssertEqual(HappyCloud.isOffered(in: variant), offered, "developer mode changed Happy Cloud")
             let settings = SettingsViewController(context: context, computer: id)
             let navigation = try await host(settings)
             XCTAssertEqual(settings.shownRow(SettingsIndex.happyCloud.id)?.isOn, variant == .preview, "\(variant)")
             XCTAssertNil(defaults.object(forKey: "happy-cloud"), "kept before the switch was turned")
-            capture(settings, navigation, "settings-happy-cloud-\(variant)-default")
+            let at = capture(settings, navigation, "settings-happy-cloud-\(variant)-default")
+            let found = try XCTUnwrap(settings.navigationItem.searchController)
+            settings.willPresentSearchController(found)
+            found.searchBar.text = "Happy Cloud"
+            settings.updateSearchResults(for: found)
+            XCTAssertTrue(settings.shownRowIDs.joined().contains(SettingsIndex.happyCloud.id), "Settings' search doesn't find the switch in developer mode")
+            settings.willDismissSearchController(found)
             settings.shownRow(SettingsIndex.happyCloud.id)?.toggled?(variant != .preview)
             XCTAssertEqual(defaults.object(forKey: "happy-cloud") as? Bool, variant != .preview)
             XCTAssertEqual(HappyCloud.isOffered(in: variant), variant != .preview)
             XCTAssertEqual(settings.shownRow(SettingsIndex.happyCloud.id)?.isOn, variant != .preview)
             capture(settings, navigation, "settings-happy-cloud-\(variant)-turned")
+            context.account.localSettings.devModeEnabled = false
+            XCTAssertEqual(HappyCloud.isOffered(in: variant), variant != .preview, "leaving developer mode changed Happy Cloud")
+            let after = SettingsViewController(context: context, computer: id)
+            let afterNavigation = try await host(after)
+            XCTAssertNil(after.shownRow(SettingsIndex.happyCloud.id), "the switch stays after developer mode is left")
+            // The same place on the page, developer mode off: no card.
+            capture(after, afterNavigation, "settings-happy-cloud-\(variant)-devmode-off", at: at)
         }
+        // Home's search reads these; the switch is in neither.
+        XCTAssertFalse(SettingsIndex.computer.contains { $0.id == SettingsIndex.happyCloud.id })
+        XCTAssertFalse(SettingsIndex.happyAccount.contains { $0.id == SettingsIndex.happyCloud.id })
     }
 
-    /// The page scrolled to the Happy Cloud card, for a person to look at.
-    private func capture(_ settings: SettingsViewController, _ navigation: UINavigationController, _ name: String) {
-        guard let window = navigation.view.window, let scroll = settings.view.subviews.compactMap({ $0 as? UIScrollView }).first,
-              let toggle = Self.subview(UISwitch.self, in: scroll, where: { $0.accessibilityIdentifier == "settings-toggle:\(SettingsIndex.happyCloud.id)" })
-        else { return XCTFail("no Happy Cloud switch on the page") }
-        let at = toggle.convert(toggle.bounds, to: scroll)
-        scroll.setContentOffset(CGPoint(x: 0, y: max(-scroll.adjustedContentInset.top, at.midY - scroll.bounds.height / 2)), animated: false)
+    /// The page at `offset`, for a person to look at.
+    private func capture(_ settings: SettingsViewController, _ navigation: UINavigationController, _ name: String, at offset: CGFloat) {
+        guard let window = navigation.view.window, let scroll = settings.view.subviews.compactMap({ $0 as? UIScrollView }).first
+        else { return XCTFail("no Settings page") }
+        scroll.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
         window.layoutIfNeeded()
         let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
         let shot = XCTAttachment(image: image)
         shot.name = name
         shot.lifetime = .keepAlways
         add(shot)
+    }
+
+    /// The page scrolled to the Happy Cloud card, for a person to look at.
+    @discardableResult
+    private func capture(_ settings: SettingsViewController, _ navigation: UINavigationController, _ name: String) -> CGFloat {
+        // The cards fill in at layout; after a search they were none.
+        settings.view.layoutIfNeeded()
+        guard let scroll = settings.view.subviews.compactMap({ $0 as? UIScrollView }).first,
+              let toggle = Self.subview(UISwitch.self, in: scroll, where: { $0.accessibilityIdentifier == "settings-toggle:\(SettingsIndex.happyCloud.id)" })
+        else { XCTFail("no Happy Cloud switch on the page"); return 0 }
+        let at = toggle.convert(toggle.bounds, to: scroll)
+        let offset = max(-scroll.adjustedContentInset.top, at.midY - scroll.bounds.height / 2)
+        capture(settings, navigation, name, at: offset)
+        return offset
     }
 
     private static func subview<View: UIView>(_ type: View.Type, in view: UIView, where match: (View) -> Bool) -> View? {
