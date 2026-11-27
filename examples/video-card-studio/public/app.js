@@ -191,10 +191,11 @@ function renderGallery(finished) {
     for (const [index, card] of job.manifest.cards.entries()) {
       const number = index + 1;
       const url = `/api/jobs/${job.id}/${card.file}`;
+      const original = `/api/jobs/${job.id}/original/${card.file}`;
       const figure = el('figure', 'card');
       const cardHeading = el('div', 'card-heading');
       const sourceTime = link(`${time(card.start)}–${time(card.end)}`, `${job.url}?t=${Math.floor(card.start)}`, 'card-time'); sourceTime.target = '_blank'; sourceTime.rel = 'noopener noreferrer';
-      const download = link('', url, 'card-download');
+      const download = link('', original, 'card-download');
       download.download = `${job.bvid}-${card.file}`;
       download.setAttribute('aria-label', `下载第 ${number} 张 PNG`);
       download.title = '下载 PNG';
@@ -204,7 +205,7 @@ function renderGallery(finished) {
       download.onclick = event => void downloadCard(event, download, cardFeedback);
       cardHeading.append(el('strong', 'card-index', `第 ${number} 张`), sourceTime, download);
 
-      const preview = link('', url, 'card-preview');
+      const preview = link('', original, 'card-preview');
       preview.target = '_blank'; preview.rel = 'noopener';
       preview.setAttribute('aria-label', `查看第 ${number} 张原图`);
       const img = el('img');

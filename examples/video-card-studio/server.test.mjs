@@ -146,11 +146,32 @@ test('slow anonymous downloads are bounded by a stream concurrency limit', async
   const dataDir = await mkdtemp(join(tmpdir(), 'card-download-'));
   const studio = await createStudio({ dataDir, workerToken: randomBytes(32).toString('hex'), taskId: randomUUID(), maxDownloads: 1,
     createDispatcher: () => ({ connect() {}, wake() {}, stop() {}, connectionState: () => 'connected' }) });
-  const origin = await studio.listen(), id = randomUUID(); let slow;
+  const origin = await studio.listen(), id = randomUUID(); let slow, slowOriginal;
   try {
-    studio.store.submit(id, 'BV1xx411c7mD'); studio.store.update(id, { state: 'completed', manifest: { cards: [] } });
-    await mkdir(join(dataDir, 'assets', id)); await writeFile(join(dataDir, 'assets', id, 'cards.zip'), randomBytes(16 * 1024 * 1024));
+    const image = png();
+    studio.store.submit(id, 'BV1xx411c7mD'); studio.store.update(id, { state: 'completed', manifest: { cards: [{ file: 'card-001.png' }, { file: 'card-002.png' }] } });
+    await mkdir(join(dataDir, 'assets', id));
+    await writeFile(join(dataDir, 'assets', id, 'card-001.png'), image);
+    await writeFile(join(dataDir, 'assets', id, 'cards.zip'), randomBytes(16 * 1024 * 1024));
     await new Promise((resolve, reject) => { slow = get(`${origin}/api/jobs/${id}/cards.zip`, res => { res.pause(); resolve(); }); slow.on('error', reject); });
     assert.equal((await fetch(`${origin}/api/jobs/${id}/cards.zip`)).status, 429);
-  } finally { slow?.destroy(); await studio.close(); }
+    assert.equal((await fetch(`${origin}/api/jobs/${id}/card-001.png`)).status, 429);
+    assert.equal((await fetch(`${origin}/api/jobs/${id}/original/card-003.png`)).status, 404);
+    const original = await fetch(`${origin}/api/jobs/${id}/original/card-001.png`);
+    assert.equal(original.status, 200);
+    assert.match(original.headers.get('content-disposition'), /^inline;/);
+    assert.deepEqual(Buffer.from(await original.arrayBuffer()), image);
+    // The seeded placeholder only needs to hold an HTTP stream open for the limit check.
+    await writeFile(join(dataDir, 'assets', id, 'card-002.png'), randomBytes(16 * 1024 * 1024));
+    await new Promise((resolve, reject) => {
+      slowOriginal = get(`${origin}/api/jobs/${id}/original/card-002.png`, res => { res.pause(); resolve(res.statusCode); });
+      slowOriginal.on('error', reject);
+    }).then(status => assert.equal(status, 200));
+    assert.equal((await fetch(`${origin}/api/jobs/${id}/original/card-001.png`)).status, 429);
+  } finally {
+    slowOriginal?.destroy();
+    slow?.destroy();
+    await studio.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
 });

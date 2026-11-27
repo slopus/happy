@@ -105,19 +105,23 @@ export async function createStudio(options) {
       }
       const jobMatch = path.match(/^\/api\/jobs\/([a-f0-9-]{36})$/);
       if (req.method === 'GET' && jobMatch) { send(200, { job: store.get(jobMatch[1]) }); return; }
-      const download = path.match(/^\/api\/jobs\/([a-f0-9-]{36})\/(cards\.zip|card-\d{3}\.png)$/);
+      const download = path.match(/^\/api\/jobs\/([a-f0-9-]{36})\/(?:(original\/)?(card-\d{3}\.png)|(cards\.zip))$/);
       if (req.method === 'GET' && download) {
-        const job = store.get(download[1]); if (job.state !== 'completed' || !job.manifest) throw new StudioError('result-not-ready', 409);
-        if (downloads >= (options.maxDownloads ?? 8)) throw new StudioError('download-limit', 429);
+        const [, id, original, image, archive] = download;
+        const job = store.get(id); if (job.state !== 'completed' || !job.manifest) throw new StudioError('result-not-ready', 409);
+        if (image && !job.manifest.cards.some(card => card.file === image)) throw new StudioError('artifact-not-found', 404);
+        // Give direct image actions one bounded slot even while previews are filling the regular pool.
+        const limit = (options.maxDownloads ?? 8) + (original ? 1 : 0);
+        if (downloads >= limit) throw new StudioError('download-limit', 429);
         downloads++; downloadSlot = true;
-        if (download[2] !== 'cards.zip' && !job.manifest.cards.some(card => card.file === download[2])) throw new StudioError('artifact-not-found', 404);
-        const target = join(artifactDir(job.id), download[2]);
-        if (download[2] === 'cards.zip') await locked(job.id, async () => {
+        const filename = image ?? archive;
+        const target = join(artifactDir(job.id), filename);
+        if (archive) await locked(job.id, async () => {
           try { await stat(target); } catch (error) { if (error.code !== 'ENOENT') throw error; await writeZipArchive(artifactDir(job.id), job.manifest.cards); }
         });
         const info = await stat(target);
-        res.writeHead(200, { 'content-type': download[2] === 'cards.zip' ? 'application/zip' : 'image/png', 'content-length': info.size,
-          'content-disposition': `${download[2] === 'cards.zip' ? 'attachment' : 'inline'}; filename="${job.bvid}-${download[2]}"` });
+        res.writeHead(200, { 'content-type': archive ? 'application/zip' : 'image/png', 'content-length': info.size,
+          'content-disposition': `${archive ? 'attachment' : 'inline'}; filename="${job.bvid}-${filename}"` });
         await pipeline(createReadStream(target), res); return;
       }
       if (path.startsWith('/internal/')) {

@@ -212,15 +212,16 @@ test('three result images render as individually numbered PNG cards', () => {
   assert.equal(figures.length, 3);
   for (const [index, figure] of figures.entries()) {
     const url = `/api/jobs/${job.id}/${files[index]}`;
+    const original = `/api/jobs/${job.id}/original/${files[index]}`;
     assert.equal(figure.querySelector('.card-index').textContent, `第 ${index + 1} 张`);
     const preview = figure.querySelector('.card-preview');
     assert.equal(preview.querySelector('img').src, url);
-    assert.equal(preview.href, url);
+    assert.equal(preview.href, original);
     assert.equal(preview.target, '_blank');
     assert.equal(preview.getAttribute('aria-label'), `查看第 ${index + 1} 张原图`);
-    assert.deepEqual(figure.querySelectorAll('a').filter(link => link.href === url && !link.download), [preview]);
+    assert.deepEqual(figure.querySelectorAll('a').filter(link => !link.download && link.href.endsWith(files[index])), [preview]);
     const download = figure.querySelector('.card-download');
-    assert.equal(download.href, url);
+    assert.equal(download.href, original);
     assert.equal(download.download, `${job.bvid}-${files[index]}`);
     assert.equal(download.textContent, '');
     assert.equal(download.getAttribute('aria-label'), `下载第 ${index + 1} 张 PNG`);
