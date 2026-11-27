@@ -314,13 +314,18 @@ routes: no token from it, and no usage read from it or written to it.
   `source: voice`, and shows in the chat as a typed message would. Only a
   session that runs on its computer takes one. A stopped or offline session
   reads but refuses: "That conversation can't take a message now." One
-  waiting for the person refuses as an agent connection's does.
+  waiting for the person refuses as an agent connection's does. The checks
+  run again after a model switch, right before the message is queued. The
+  account's link needn't be up: like the composer's, the outbox sends the
+  message once it is. A send is held under its message ID from the
+  moment it begins, so the same words again (a retry after "uncertain")
+  share it and never go twice; a refused one can be tried again.
 - **Model and effort.** These are the composer's chips (`ComposerModes`),
   model IDs as the composer keys them. A switch goes as the chips send it
   (`sessionSetAgentModes`), before the message. If the session's computer
   locks the model or reasoning (`RigCatalog`), the call refuses: "This
-  session's model can't be changed (it's locked on the computer)." Nothing
-  is sent.
+  session's model can't be changed (it's locked on the computer). Nothing
+  was sent."
 - **New work.** `new-task` and `new-bot:<name>` start Happy Agent work as
   compose does (`NewSessionLaunch.resolve`, `SessionStarter`). The work
   starts on the computer compose has picked if its Happy Agent makes that
@@ -333,8 +338,8 @@ routes: no token from it, and no usage read from it or written to it.
   - "New work can't be started by voice on Happy CLI; start a session in the
     app." (no computer can)
 
-  When no computer can start anything, the first context's new-work block
-  is one line instead: "New work: can't be started by voice on Happy CLI;
+  Tasks and bots are checked one at a time. When neither can start, the
+  first context's new-work block is one line instead: "New work: can't be started by voice on Happy CLI;
   the person starts sessions in the app."
 - **Moving between screens.** navigate pushes the session's chat, and back
   and home are the stack's own, as on an agent connection.

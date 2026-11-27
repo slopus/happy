@@ -180,9 +180,9 @@ final class CallHappyCLITests: XCTestCase {
 
     private static let fix = CallTarget(agentId: "s1", title: "Fix", kind: .conversation, status: .idle)
 
-    private func targets(refusal: String? = nil, state: CallTargetState? = nil) -> HappyCLITargets {
+    private func targets(refusal: String? = nil, refusals: [CallTarget.Kind: String] = [:], state: CallTargetState? = nil) -> HappyCLITargets {
         let inner = FakeCallTargets(directory: [Self.fix], states: ["s1": state ?? CallTargetState(target: Self.fix)], focus: nil)
-        return HappyCLITargets(inner, refusal: refusal)
+        return HappyCLITargets(inner, refusal: refusal, refusals: refusals)
     }
 
     func testTheFirstContextSaysWhetherNewWorkStarts() async {
@@ -191,6 +191,14 @@ final class CallHappyCLITests: XCTestCase {
         let unable = await CallContext(targets: targets(refusal: CallContext.HappyCLI.noNewWork)).initial()
         XCTAssertTrue(unable.contains(CallContext.HappyCLI.noNewWorkText), unable)
         XCTAssertFalse(unable.contains("new-task —"), unable)
+        // A computer that makes only tasks and another only bots: each kind still starts.
+        let split = targets(refusals: [.task: CallContext.HappyCLI.noNewWork, .bot: CallContext.HappyCLI.noNewWork])
+        let none = await CallContext(targets: split).initial()
+        XCTAssertTrue(none.contains(CallContext.HappyCLI.noNewWorkText), none)
+        let tasksOnly = await CallContext(targets: targets(refusals: [.bot: CallContext.HappyCLI.noNewWork])).initial()
+        XCTAssertTrue(tasksOnly.contains("new-task —"), tasksOnly)
+        let botsOnly = await CallContext(targets: targets(refusals: [.task: CallContext.HappyCLI.noNewWork])).initial()
+        XCTAssertTrue(botsOnly.contains("new-task —"), botsOnly)
     }
 
     func testNewWorkIsRefusedWithTheReason() async {
@@ -217,7 +225,7 @@ final class CallHappyCLITests: XCTestCase {
         let ok = await tool(started, "message", #"{"to":"new-bot:Scout","text":"hello"}"#)
         XCTAssertFalse(ok.isError, ok.text)
         let asked = await named.asked
-        XCTAssertEqual(asked, [.bot])
+        XCTAssertEqual(asked, [.task, .bot, .bot], "each kind for the first context, then the bot asked for")
     }
 
     func testALockedModelIsRefusedAndNothingGoes() async {
@@ -228,7 +236,8 @@ final class CallHappyCLITests: XCTestCase {
         _ = await context.initial()
         let refused = await tool(context, "message", #"{"to":"s1","text":"go","model":"opus"}"#)
         XCTAssertTrue(refused.isError)
-        XCTAssertTrue(refused.text.contains(CallContext.HappyCLI.locked), refused.text)
+        let reason = (try? JSONSerialization.jsonObject(with: Data(refused.text.utf8)) as? [String: Any])?["reason"] as? String
+        XCTAssertEqual(reason, CallContext.HappyCLI.locked + " Nothing was sent.")
         let plain = await tool(context, "message", #"{"to":"s1","text":"go"}"#)
         XCTAssertFalse(plain.isError, plain.text)
         let sends = await targets.inner.sends
@@ -252,17 +261,19 @@ final class CallHappyCLITests: XCTestCase {
 private actor HappyCLITargets: CallTargets {
     let inner: FakeCallTargets
     private let refusal: String?
+    private let refusals: [CallTarget.Kind: String]
     private(set) var asked: [CallTarget.Kind?] = []
 
-    init(_ inner: FakeCallTargets, refusal: String?) {
+    init(_ inner: FakeCallTargets, refusal: String?, refusals: [CallTarget.Kind: String] = [:]) {
         self.inner = inner
         self.refusal = refusal
+        self.refusals = refusals
     }
 
     nonisolated var account: CallAccount { .happyCLI }
     func newWorkRefusal(_ kind: CallTarget.Kind?) async -> String? {
         if kind != nil { asked.append(kind) }
-        return refusal
+        return kind.flatMap { refusals[$0] } ?? refusal
     }
     func directory() async -> [CallTarget] { await inner.directory() }
     func state(of agentId: String) async -> CallTargetState? { await inner.state(of: agentId) }

@@ -40,8 +40,10 @@ final class LegacyCallTargets: LiveCallTargets {
     private var modes: [String: ComposerModes] = [:]
     /// When this phone last read a session from the server during the call.
     private var checked: [String: Double] = [:]
-    /// Sends by the call's message ID: the same one again went the first time.
-    private var sent: [String: String] = [:]
+    /// Sends by the call's message ID, under way or queued: the same ID
+    /// again, a retry after "uncertain", shares that send and never goes a
+    /// second time. A refused one is let go, so a retry tries again.
+    private var sends: [String: Task<CallSendOutcome, Never>] = [:]
     /// New work the call started, by the call's ID for it.
     private var started: [String: Started] = [:]
     private final class Started {
@@ -252,17 +254,29 @@ final class LegacyCallTargets: LiveCallTargets {
 
     func send(_ agentId: String, text: String, id: String, change: CallModeChange?) async -> CallSendOutcome {
         guard !closed else { return .refused("The call has ended.") }
+        // Under an ID already going or gone: that send's answer.
+        while let earlier = sends[id] {
+            if await earlier.value == .queued { return .queued }
+        }
+        // Held before anything waits, so a retry can only share it.
+        let sending = Task { @MainActor [weak self] () -> CallSendOutcome in
+            guard let self else { return .refused("The call has ended.") }
+            let outcome = await self.attempt(agentId, text: text, change: change)
+            if outcome != .queued { self.sends[id] = nil }
+            return outcome
+        }
+        sends[id] = sending
+        // The tool's deadline reaches the send, as if it ran here.
+        return await withTaskCancellationHandler { await sending.value } onCancel: { sending.cancel() }
+    }
+
+    private func attempt(_ agentId: String, text: String, change: CallModeChange?) async -> CallSendOutcome {
         if let work = started[agentId], work.sessionId == nil { return await start(work, text: text, change: change) }
-        // Under an ID it already went under, it went the first time.
-        if sent[id] != nil { return .queued }
         let sessionId = real(agentId)
         guard let record = records[sessionId], target(agentId) != nil else { return .refused("No such conversation.") }
-        guard record.active, record.decryptable, !record.isArchived else { return .refused("That conversation can't take a message now.") }
-        guard !(record.hasPendingPermissionRequests || record.hasPendingCommunications) else {
-            return .refused("It's waiting for the person in the app; answer there first.")
-        }
+        if let refusal = Self.refusal(record) { return .refused(refusal) }
         // Past the tool's deadline, or the call over: it doesn't go.
-        guard !Task.isCancelled else { return .refused("No answer in time.") }
+        guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
         if let change, let patch = patch(change, for: record) {
             // As the composer's pickers switch it: its composer state, then the session's metadata.
             let actions = session.actions, realtime = session.realtime
@@ -271,15 +285,28 @@ final class LegacyCallTargets: LiveCallTargets {
             } catch {
                 return .refused("The model couldn't be switched; nothing was sent.")
             }
+            // The switch was a wait: the call, the deadline and the session as they are now.
+            guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
+            guard let now = records[sessionId], target(agentId) != nil else { return .refused("No such conversation.") }
+            if let refusal = Self.refusal(now) { return .refused(refusal) }
         }
         let sender = session.sender
         // Off the main thread, and not cancelled once begun: kept on the phone, it went.
         let localId = await Task.detached {
             try? await sender.send(OutgoingMessage(text: text, source: .voice), sessionId: sessionId)
         }.value
-        guard let localId else { return .refused("It couldn't be kept on this phone.") }
-        sent[id] = localId
-        return .queued
+        return localId == nil ? .refused("It couldn't be kept on this phone.") : .queued
+    }
+
+    /// Why a session can't take a message now, as its record stands. Like
+    /// the composer's send, the link needn't be up: the outbox keeps it and
+    /// sends it once it is.
+    private static func refusal(_ record: SessionRecord) -> String? {
+        guard record.active, record.decryptable, !record.isArchived else { return "That conversation can't take a message now." }
+        guard !(record.hasPendingPermissionRequests || record.hasPendingCommunications) else {
+            return "It's waiting for the person in the app; answer there first."
+        }
+        return nil
     }
 
     /// `change` as the composer's chips make it (`ComposerModes.patch`).
@@ -398,9 +425,10 @@ final class LegacyCallTargets: LiveCallTargets {
         if following {
             guard !closed, feeds[agentId] == nil, target(agentId) != nil else { return }
             let sessionId = real(agentId)
-            await readModes(sessionId)
             let feed = session.chatFeed
+            // Held before anything waits: a second follow finds it, and close or unfollow cancels it.
             feeds[agentId] = Task.detached { [weak self] in
+                await self?.readModes(sessionId)
                 for await snapshot in feed.snapshots(sessionId: sessionId) {
                     guard let self else { return }
                     await self.received(snapshot, of: agentId)

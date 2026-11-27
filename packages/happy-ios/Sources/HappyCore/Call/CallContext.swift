@@ -294,9 +294,12 @@ public actor CallContext {
                 if heard[focus] == nil { listen(state) }
             }
         }
-        let newWork = switch targets.account {
-        case .agent: Self.newWorkText
-        case .happyCLI: await targets.newWorkRefusal(nil) == nil ? HappyCLI.newWorkText : HappyCLI.noNewWorkText
+        var newWork = Self.newWorkText
+        if targets.account == .happyCLI {
+            // Each kind on its own: one computer may make only tasks, another only bots.
+            let tasks = await targets.newWorkRefusal(.task) == nil
+            let bots = await targets.newWorkRefusal(.bot) == nil
+            newWork = tasks || bots ? HappyCLI.newWorkText : HappyCLI.noNewWorkText
         }
         let header = "Now: \(Self.local(now(), in: timeZone)) (the person's local time)\nfocusRevision: \(focusRevision)"
             + (person.map { "\n" + Self.personText($0) } ?? "")
@@ -1240,14 +1243,12 @@ public actor CallContext {
         let model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         let effort = effort.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !model.isEmpty || !effort.isEmpty else { return AskedMode() }
-        if !model.isEmpty && state.modelLocked || !effort.isEmpty && state.effortLocked {
-            return AskedMode(refusal: .refused(HappyCLI.locked))
-        }
         func refused(_ reason: String, _ listed: [CallModel]) -> AskedMode {
             var value: [String: Any] = ["ok": false, "reason": reason + " Nothing was sent."]
             if !listed.isEmpty { value["models"] = Self.models(listed) }
             return AskedMode(refusal: .json(value, isError: true))
         }
+        if !model.isEmpty && state.modelLocked || !effort.isEmpty && state.effortLocked { return refused(HappyCLI.locked, []) }
         guard !state.models.isEmpty else {
             return refused("This computer's models can't be read now, so the model and effort can't change.", [])
         }
