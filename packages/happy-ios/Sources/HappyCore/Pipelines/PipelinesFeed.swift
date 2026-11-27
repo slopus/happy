@@ -152,7 +152,7 @@ public actor PipelinesFeed {
     }
 
     private func landPipelines(_ result: Result<[PipelineSummary], Error>) {
-        // Turned off for the account: the screen leaves, with nothing said.
+        // Uninstalled for the account: the screen leaves, with nothing said.
         if case .failure(let error) = result, AccountFeatures.refused(error) { pipelinesRead = Coalesced(); return }
         switch result {
         case .success(let pipelines):

@@ -58,8 +58,10 @@ final class PluginMarks {
 }
 
 /// Desktop's Plugins page (HappyAgentPluginsPage): what the team has
-/// installed, then every plugin the server offers. A row opens the plugin.
-/// Opened from home's Plugins row under Artifacts, on a Happy Cloud server.
+/// installed, then every plugin the server offers, then Happy's own
+/// features, each installed or not for the person's account. A row opens
+/// the plugin. Opened from home's Plugins row under Artifacts, on a Happy
+/// Cloud server.
 final class PluginsViewController: SettingsPageViewController {
     private let session: Session
     private var watch: Watch?
@@ -99,7 +101,8 @@ final class PluginsViewController: SettingsPageViewController {
     private func cards(_ catalog: PluginCatalog) -> [[SettingsRow]] {
         typealias Text = Strings.Plugins
         var cards: [[SettingsRow]] = []
-        if let installations = catalog.installations {
+        let integrations = Set(catalog.integrations.map(\.id))
+        if let installations = catalog.installations?.filter({ catalog.plugin($0.pluginId)?.kind != .feature }) {
             var card = installations.map { installation in
                 var row = SettingsRow(id: "installation-\(installation.id)", title: installation.title, action: { [weak self] in self?.open(installation.pluginId) })
                 row.subtitle = Text.status(installation)
@@ -114,7 +117,7 @@ final class PluginsViewController: SettingsPageViewController {
             card[0].header = Text.installed
             cards.append(card)
         }
-        var available = catalog.plugins.map { plugin in
+        var available = catalog.plugins.filter { integrations.contains($0.id) }.map { plugin in
             var row = SettingsRow(id: "plugin-\(plugin.id)", title: plugin.name,
                                   value: catalog.installations(of: plugin.id).isEmpty ? nil : Text.installedValue,
                                   action: { [weak self] in self?.open(plugin.id) })
@@ -129,6 +132,20 @@ final class PluginsViewController: SettingsPageViewController {
             available[available.count - 1].footer = catalog.installations == nil ? Text.membersCantSeeInstalled : Text.membersCantInstall
         }
         cards.append(available)
+        // Every member's own, whatever `canManage` says.
+        var features = catalog.features.map { plugin in
+            var row = SettingsRow(id: "plugin-\(plugin.id)", title: plugin.name, value: catalog.installed(plugin) ? Text.installedValue : Text.notInstalledValue,
+                                  action: { [weak self] in self?.open(plugin.id) })
+            row.subtitle = plugin.description.isEmpty ? nil : plugin.description
+            row.subtitleLines = 2
+            mark(plugin.image, in: &row)
+            return row
+        }
+        if !features.isEmpty {
+            features[0].header = Text.features
+            features[features.count - 1].footer = Text.featuresHint
+            cards.append(features)
+        }
         return cards
     }
 
@@ -200,6 +217,7 @@ final class PluginViewController: SettingsPageViewController {
         guard plugin != nil || !installations.isEmpty else {
             return [[SettingsRow(id: "plugin-missing", title: Text.notOffered, accessory: .none, dimmed: true)]]
         }
+        if let plugin, plugin.kind == .feature { return featureCards(plugin, catalog: catalog) }
         var head = SettingsRow(id: "plugin-head", title: catalog.name(of: pluginId), accessory: .none)
         head.subtitle = plugin.map { Text.version($0.version) }
         mark(plugin?.image ?? installations.first?.image, in: &head)
@@ -215,6 +233,36 @@ final class PluginViewController: SettingsPageViewController {
         }
         if let tools = plugin?.tools, !tools.isEmpty {
             var card = tools.map { tool in
+                var row = SettingsRow(id: "tool-\(tool.name)", title: tool.name, accessory: .none)
+                row.subtitle = tool.summary.isEmpty ? nil : tool.summary
+                row.subtitleLines = 0
+                return row
+            }
+            card[0].header = Text.tools
+            cards.append(card)
+        }
+        return cards
+    }
+
+    /// A feature plugin: what it is, then Install or Uninstall for the
+    /// person's own account, which anyone may do; nothing to set up, sign
+    /// in to or label. Uninstalling says that it deletes nothing.
+    private func featureCards(_ plugin: Plugin, catalog: PluginCatalog) -> [[SettingsRow]] {
+        typealias Text = Strings.Plugins
+        let installed = catalog.installed(plugin)
+        var head = SettingsRow(id: "plugin-head", title: plugin.name, value: installed ? Text.installedValue : Text.notInstalledValue, accessory: .none)
+        head.subtitle = plugin.version.isEmpty ? nil : Text.version(plugin.version)
+        mark(plugin.image, in: &head)
+        head.footer = plugin.description.isEmpty ? nil : plugin.description
+        var act = installed
+            ? acting(SettingsRow(id: "plugin-uninstall", title: Text.uninstall, icon: ("trash", .action), accessory: .none, destructive: true,
+                                 action: { [weak self] in self?.confirmUninstall(plugin, catalog: catalog) }))
+            : acting(SettingsRow(id: "plugin-install", title: Text.install, icon: ("add", .action), accessory: .none,
+                                 action: { [weak self] in self?.installFeature(plugin) }))
+        act.footer = installed ? Text.uninstallKeeps(plugin.name) : Text.installBrings(plugin.name)
+        var cards: [[SettingsRow]] = [[head], [act]]
+        if !plugin.tools.isEmpty {
+            var card = plugin.tools.map { tool in
                 var row = SettingsRow(id: "tool-\(tool.name)", title: tool.name, accessory: .none)
                 row.subtitle = tool.summary.isEmpty ? nil : tool.summary
                 row.subtitleLines = 0
@@ -303,6 +351,33 @@ final class PluginViewController: SettingsPageViewController {
         run("plugin-install", failure: Strings.Plugins.installFailed, { try await $0.installPlugin(pluginId) }) { [weak self] installation in
             guard installation.status != .active, plugin.authMethods.count == 1, let method = plugin.authMethods.first else { return }
             self?.setUp(installation, method: method)
+        }
+    }
+
+    /// Installs a feature plugin for the person's account; installed
+    /// already, the server answers it as it is.
+    func installFeature(_ plugin: Plugin) {
+        let (pluginId, engine) = (plugin.id, session.engine)
+        run("plugin-install", failure: Strings.Plugins.installFailed, { try await $0.installPlugin(pluginId) }) { _ in
+            Task { await engine.refreshFeatures() }
+        }
+    }
+
+    func confirmUninstall(_ plugin: Plugin, catalog: PluginCatalog) {
+        typealias Text = Strings.Plugins
+        let alert = UIAlertController(title: Text.uninstallTitle(plugin.name), message: Text.uninstallKeeps(plugin.name), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
+        alert.addAction(UIAlertAction(title: Text.uninstall, style: .destructive) { [weak self] _ in self?.uninstallFeature(plugin, catalog: catalog) })
+        present(alert, animated: true)
+    }
+
+    /// Its installation's ID is the plugin's (API.md, "Feature plugins");
+    /// one already uninstalled counts as uninstalled.
+    func uninstallFeature(_ plugin: Plugin, catalog: PluginCatalog) {
+        let id = catalog.installations(of: plugin.id).first?.id ?? plugin.id
+        let engine = session.engine
+        run("plugin-uninstall", failure: Strings.Plugins.uninstallFailed, { try await $0.removePluginInstallation(id) }) { _ in
+            Task { await engine.refreshFeatures() }
         }
     }
 

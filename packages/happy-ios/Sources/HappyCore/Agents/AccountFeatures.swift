@@ -1,33 +1,33 @@
 import Foundation
 import HappyWire
 
-// Account features on a Happy Cloud server (API.md, "Account features"):
-// what a person turned off for their whole account, in every team they are
-// in. Off hides a feature from that person and deletes nothing. The one
-// feature today is `pipelines`; every feature is on until turned off.
+// Feature plugins on a Happy Cloud server (API.md, "Feature plugins"): a
+// person installs or uninstalls one of Happy's own features for their whole
+// account, in every team they are in, through the plugin routes. Uninstalled
+// hides the feature from that person and deletes nothing. The one feature
+// today is `pipelines`; every feature is available until its plugin is
+// uninstalled.
 
-/// One feature as it is for the account (`Feature`).
+/// One feature as it is for the account (`GET /v0/features`).
 public struct AccountFeature: Equatable, Sendable, Codable {
     public var id: String
-    public var name: String
-    public var enabled: Bool
+    public var available: Bool
 
-    public init(id: String, name: String, enabled: Bool) {
+    public init(id: String, available: Bool) {
         self.id = id
-        self.name = name
-        self.enabled = enabled
+        self.available = available
     }
 }
 
-/// The account's features, as `GET /v0/account/features` last answered or
-/// the last `account.features.updated` said.
+/// What is available to the account, as `GET /v0/features` last answered or
+/// the last `features.updated` said.
 public struct AccountFeatures: Equatable, Sendable {
     public static let pipelines = "pipelines"
     /// The event that carries the whole list, private to the person.
-    public static let updated = "account.features.updated"
+    public static let updated = "features.updated"
 
-    /// Nil on a server without the list (`404`, `501`), or before it is
-    /// read: every feature is on.
+    /// Nil on a server without feature plugins (no `capabilities.features`,
+    /// or `404`, `501`), or before it is read: every feature is available.
     public var list: [AccountFeature]?
 
     public init(_ list: [AccountFeature]? = nil) {
@@ -36,30 +36,30 @@ public struct AccountFeatures: Equatable, Sendable {
 
     public func feature(_ id: String) -> AccountFeature? { list?.first { $0.id == id } }
 
-    /// On unless the account turned it off.
-    public func enabled(_ id: String) -> Bool { feature(id)?.enabled ?? true }
+    /// Available unless the account uninstalled its plugin.
+    public func available(_ id: String) -> Bool { feature(id)?.available ?? true }
 
     /// `{ features }`, an answer's or an event's payload; one entry this
     /// app can't read drops out. Nil when there is no list at all.
     public static func read(_ value: JSONValue?) -> [AccountFeature]? {
         guard let entries = value?["features"]?.arrayValue else { return nil }
         return entries.compactMap { entry in
-            guard let id = entry["id"]?.stringValue, let enabled = entry["enabled"]?.boolValue else { return nil }
-            return AccountFeature(id: id, name: entry["name"]?.stringValue ?? id, enabled: enabled)
+            guard let id = entry["id"]?.stringValue, let available = entry["available"]?.boolValue else { return nil }
+            return AccountFeature(id: id, available: available)
         }
     }
 
-    /// `feature` turned off here, as a refusal says it is, the rest as they were.
-    public func turningOff(_ id: String) -> AccountFeatures {
+    /// `feature` made unavailable here, as a refusal says it is, the rest as they were.
+    public func unavailable(_ id: String) -> AccountFeatures {
         var list = list ?? []
-        if let index = list.firstIndex(where: { $0.id == id }) { list[index].enabled = false }
-        else { list.append(AccountFeature(id: id, name: id, enabled: false)) }
+        if let index = list.firstIndex(where: { $0.id == id }) { list[index].available = false }
+        else { list.append(AccountFeature(id: id, available: false)) }
         return AccountFeatures(list)
     }
 
-    /// A route of a feature the person turned off answers `403`
-    /// `feature_not_installed`, before anything else is checked: the
-    /// feature is off, not an error to show.
+    /// A route of a feature whose plugin the person uninstalled answers
+    /// `403` `feature_not_installed`, before anything else is checked: the
+    /// feature is unavailable, not an error to show.
     public static func refused(_ error: any Error) -> Bool {
         if case AgentClientError.status(403, "feature_not_installed"?, _) = error { return true }
         return false
@@ -67,7 +67,7 @@ public struct AccountFeatures: Equatable, Sendable {
 }
 
 /// Hears every route's `403 feature_not_installed` (`AgentClient.send`):
-/// the engine takes the feature as off.
+/// the engine takes the feature as unavailable.
 public final class FeatureRefusals: @unchecked Sendable {
     private let lock = NSLock()
     private var listener: (@Sendable (String) -> Void)?
@@ -85,10 +85,12 @@ public final class FeatureRefusals: @unchecked Sendable {
 }
 
 extension AgentClient {
-    /// The account's features; nil from a server without them (`404`,
-    /// `501`), where every feature is on.
+    /// What is available to the account; nil from a server without feature
+    /// plugins (its health says no `features`, or `404`, `501`), where
+    /// every feature is available.
     public func accountFeatures() async throws -> [AccountFeature]? {
-        do { return AccountFeatures.read(try await decode(JSONValue.self, "GET", "/v0/account/features")) ?? [] }
+        guard try await health().capabilities?.features == true else { return nil }
+        do { return AccountFeatures.read(try await decode(JSONValue.self, "GET", "/v0/features")) ?? [] }
         catch AgentClientError.status(404, _, _), AgentClientError.status(501, _, _) { return nil }
     }
 }

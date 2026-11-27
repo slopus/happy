@@ -139,7 +139,7 @@ public actor PipelineNodeLogFeed {
             state.loading = false
             publish()
         } catch where AccountFeatures.refused(error) {
-            // Turned off for the account: the screen leaves, with nothing said.
+            // Uninstalled for the account: the screen leaves, with nothing said.
         } catch {
             state.loading = false
             state.failed = true

@@ -5,6 +5,11 @@ import HappyWire
 /// not: compiled into the server, it gives agents tools. Its auth lists
 /// only the ways in that work on this server.
 public struct Plugin: Decodable, Equatable, Sendable, Identifiable {
+    /// `integration`: a service the team installs and signs in to.
+    /// `feature`: one of Happy's own features, which each person installs
+    /// or uninstalls for their whole account (API.md, "Feature plugins").
+    public enum Kind: String, Equatable, Sendable { case integration, feature }
+
     public struct Tool: Decodable, Equatable, Sendable {
         public var name: String
         public var summary: String
@@ -27,14 +32,19 @@ public struct Plugin: Decodable, Equatable, Sendable, Identifiable {
     /// Whether an installation does nothing until it signs in.
     public var authRequired: Bool
     public var authMethods: [PluginAuthMethod]
+    /// A kind this app doesn't know is an integration's.
+    public var kind: Kind
+    /// Whether the caller's account has it, as the server lists a feature
+    /// plugin; nil where the listing doesn't say.
+    public var installed: Bool?
 
     public init(id: String, name: String, description: String = "", version: String = "", image: PluginImage? = nil,
-                tools: [Tool] = [], authRequired: Bool = false, authMethods: [PluginAuthMethod] = []) {
+                tools: [Tool] = [], authRequired: Bool = false, authMethods: [PluginAuthMethod] = [], kind: Kind = .integration, installed: Bool? = nil) {
         self.id = id; self.name = name; self.description = description; self.version = version; self.image = image
-        self.tools = tools; self.authRequired = authRequired; self.authMethods = authMethods
+        self.tools = tools; self.authRequired = authRequired; self.authMethods = authMethods; self.kind = kind; self.installed = installed
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, description, version, image, tools, auth }
+    enum CodingKeys: String, CodingKey { case id, name, description, version, image, tools, auth, kind, installed }
     struct Auth: Decodable { var required: Bool?; var methods: [Lossy<PluginAuthMethod>]? }
 
     public init(from decoder: Decoder) throws {
@@ -48,6 +58,8 @@ public struct Plugin: Decodable, Equatable, Sendable, Identifiable {
         let auth = try? c.decodeIfPresent(Auth.self, forKey: .auth)
         authRequired = auth?.required ?? false
         authMethods = (auth?.methods ?? []).compactMap(\.value)
+        kind = (try? c.decodeIfPresent(String.self, forKey: .kind)).flatMap(Kind.init(rawValue:)) ?? .integration
+        installed = try? c.decodeIfPresent(Bool.self, forKey: .installed)
     }
 }
 
@@ -192,6 +204,18 @@ public struct PluginCatalog: Equatable, Sendable {
 
     public func installations(of pluginId: String) -> [PluginInstallation] {
         (installations ?? []).filter { $0.pluginId == pluginId }
+    }
+
+    /// Happy's own features, which every member installs or uninstalls for
+    /// themselves, whatever `canManage` says.
+    public var features: [Plugin] { plugins.filter { $0.kind == .feature } }
+    /// What the team installs and signs in to.
+    public var integrations: [Plugin] { plugins.filter { $0.kind == .integration } }
+
+    /// Whether the person's account has a feature plugin: as the listing
+    /// says, else by its installation.
+    public func installed(_ plugin: Plugin) -> Bool {
+        plugin.installed ?? !installations(of: plugin.id).isEmpty
     }
 
     /// One plugin's name and picture, from the catalog or, once the server

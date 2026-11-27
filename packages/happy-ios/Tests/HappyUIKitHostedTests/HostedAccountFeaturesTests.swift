@@ -6,50 +6,84 @@ import HappyWire
 import UIKit
 import XCTest
 
-/// A Happy Cloud server that runs pipelines and keeps the account's
-/// feature switches (API.md, "Account features"), as happy-cluster's
-/// `worktree/feature-plugins` first laid them out: `GET
-/// /v0/account/features`, `account.features.updated` on the stream, and
-/// pipelines routes that answer `403 feature_not_installed` while off.
+/// A Happy Cloud server that runs pipelines with feature plugins (API.md,
+/// "Feature plugins", happy-cluster bb18ee94): the Pipelines plugin in the
+/// catalog, its installation `pipelines`, `GET /v0/features`,
+/// `plugins.changed` and `features.updated` on the stream, and pipelines
+/// routes that answer `403 feature_not_installed` while it is uninstalled.
 private final class FeaturesCloud: AgentTransport, @unchecked Sendable {
     private let lock = NSLock()
-    private var on = true
-    /// Pipelines routes refuse without the list or an event having said so.
-    private var refusing = false
+    private var installed = true
     private var streams: [AsyncThrowingStream<Data, Error>.Continuation] = []
-    private var heard: [(method: String, path: String, body: JSONValue?)] = []
+    private var heard: [(method: String, path: String)] = []
+    private var cursor = 1
 
-    static let refusal = #"{"error":"Pipelines are turned off for your account. Turn them on in your account settings to use them again.","code":"feature_not_installed","feature":"pipelines"}"#
+    static let refusal = #"{"error":"Pipelines are not installed for your account. Install the Pipelines plugin to use them again.","code":"feature_not_installed","feature":"pipelines","plugin":"pipelines"}"#
+    static let health = #"{"ready":true,"capabilities":{"pipelines":true,"plugins":true,"features":true}}"#
     static let bootstrap = #"""
     {"cursor":"cursor-1","profile":{"userId":"me","name":"Robin"},"userSettings":[],"projects":[],"workspaces":[],"tasks":[],"taskMemberships":[],"surfaces":[],
      "bots":[{"id":"happy","name":"Happy","systemKey":"chief_of_staff","status":"active","agent":{"id":"bot-agent","workspaceId":"bot-work","status":"idle"}}],
-     "health":{"ready":true,"capabilities":{"pipelines":true,"plugins":true}}}
+     "health":\#(health)}
     """#
+    static let installation = #"{"id":"pipelines","plugin":"pipelines","pluginName":"Pipelines","kind":"feature","ordinal":1,"label":null,"status":"active","reason":null,"authMethod":null,"toolPrefix":"","image":null,"available":true}"#
 
-    func refuse() { lock.withLock { refusing = true } }
-
-    private func list(_ on: Bool) -> String {
-        #"{"features":[{"id":"pipelines","name":"Pipelines","enabled":\#(on)}]}"#
+    /// The plugin writes heard, as `METHOD path`.
+    var writes: [String] {
+        lock.withLock { heard.filter { $0.method != "GET" && $0.path.hasPrefix("/v0/plugins") }.map { "\($0.method) \($0.path)" } }
     }
+    /// Uninstalled with no event reaching this phone.
+    func uninstallUnheard() { lock.withLock { installed = false } }
 
-    /// The switch flipped on another device: every stream hears it.
-    func flip(_ enabled: Bool) {
-        let streams = lock.withLock { on = enabled; return self.streams }
-        let event = #"{"cursor":"cursor-2","type":"account.features.updated","occurredAt":1795737600000,"payload":\#(list(enabled))}"#
-        for stream in streams { stream.yield(Data("id: cursor-2\nevent: message\ndata: \(event)\n\n".utf8)) }
+    private static func features(_ installed: Bool) -> String { #"{"features":[{"id":"pipelines","available":\#(installed)}]}"# }
+
+    /// Installed or uninstalled, here or on another device: both events
+    /// the server journals, on every stream.
+    func change(installed: Bool) {
+        let (streams, cursor) = lock.withLock { () -> ([AsyncThrowingStream<Data, Error>.Continuation], Int) in
+            self.installed = installed
+            self.cursor += 2
+            return (self.streams, self.cursor)
+        }
+        let changed = #"{"cursor":"cursor-\#(cursor - 1)","type":"plugins.changed","occurredAt":1795737600000,"payload":{"installationId":"pipelines"}}"#
+        let updated = #"{"cursor":"cursor-\#(cursor)","type":"features.updated","occurredAt":1795737600000,"payload":\#(Self.features(installed))}"#
+        for stream in streams {
+            stream.yield(Data("id: cursor-\(cursor - 1)\nevent: message\ndata: \(changed)\n\n".utf8))
+            stream.yield(Data("id: cursor-\(cursor)\nevent: message\ndata: \(updated)\n\n".utf8))
+        }
     }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
-        let (on, refusing) = lock.withLock {
-            heard.append((method, path, body.flatMap { try? JSONValue.decode($0) }))
-            return (self.on, self.refusing)
+        let installed = lock.withLock {
+            heard.append((method, path))
+            return self.installed
         }
-        func answer(_ text: String, _ status: Int = 200) -> HTTP1Response { HTTP1Response(status: status, body: Data(text.utf8)) }
+        // Happy's JSON: a 403 without it is the edge asking to sign in again.
+        func answer(_ text: String, _ status: Int = 200) -> HTTP1Response {
+            HTTP1Response(status: status, headers: ["content-type": "application/json"], body: Data(text.utf8))
+        }
         switch (method, path) {
         case ("GET", "/v0/bootstrap/desktop"): return answer(Self.bootstrap)
-        case ("GET", "/v0/account/features"): return answer(list(on))
+        case ("GET", "/v0/health"): return answer(Self.health)
+        case ("GET", "/v0/features"): return answer(Self.features(installed))
+        case ("GET", "/v0/plugins"):
+            return answer(#"""
+            {"plugins":[
+              {"id":"github","name":"GitHub","kind":"integration","description":"Repositories, issues and pull requests.","version":"1.0.0","tools":[],"auth":{"required":true,"methods":[]}},
+              {"id":"pipelines","name":"Pipelines","kind":"feature","installed":\#(installed),"description":"Fixed graphs of work that agents author and run to completion.","version":"1.0.0",
+               "tools":[{"name":"run_pipeline","summary":"Starts a run of a pipeline."},{"name":"list_pipelines","summary":"Lists the team’s pipelines."}],"auth":{"required":false,"methods":[]}}]}
+            """#)
+        case ("GET", "/v0/plugins/installations"):
+            return answer(#"{"installations":[\#(installed ? Self.installation : "")],"canManage":false}"#)
+        case ("POST", "/v0/plugins/installations"):
+            if installed { return answer(#"{"installation":\#(Self.installation)}"#) }
+            change(installed: true)
+            return answer(#"{"installation":\#(Self.installation)}"#, 201)
+        case ("DELETE", "/v0/plugins/installations/pipelines"):
+            guard installed else { return answer(#"{"error":"Not found"}"#, 404) }
+            change(installed: false)
+            return answer(#"{"deleted":true,"secretsDeleted":0,"storageEntriesDeleted":0,"cleanedUpOutside":false}"#)
         case ("GET", "/v0/pipelines"):
-            guard on, !refusing else { return answer(Self.refusal, 403) }
+            guard installed else { return answer(Self.refusal, 403) }
             let now = Date().timeIntervalSince1970 * 1000
             return answer(#"""
             {"pipelines":[
@@ -57,7 +91,7 @@ private final class FeaturesCloud: AgentTransport, @unchecked Sendable {
               {"id":"triage","name":"Issue triage","description":"Labels new issues","head":{"number":2},"enabled":true,"lastRun":{"id":"run-1","state":"succeeded","createdAt":\#(now - 3_600_000),"endedAt":\#(now - 3_500_000)}}]}
             """#)
         case ("GET", _) where path.hasPrefix("/v0/pipeline-runs"):
-            guard on, !refusing else { return answer(Self.refusal, 403) }
+            guard installed else { return answer(Self.refusal, 403) }
             let now = Date().timeIntervalSince1970 * 1000
             return answer(#"""
             {"runs":[
@@ -84,8 +118,9 @@ private final class FeaturesCloud: AgentTransport, @unchecked Sendable {
     }
 }
 
-/// Pipelines turned off for the whole account: home stops listing them,
-/// an open Pipelines screen leaves, and a refused route turns them off
+/// The Pipelines plugin uninstalled for the whole account: home stops
+/// listing Pipelines, an open Pipelines screen leaves, the Plugins screen
+/// installs and uninstalls it, and a refused route makes them unavailable
 /// without saying an error.
 @MainActor
 final class HostedAccountFeaturesTests: XCTestCase {
@@ -159,10 +194,10 @@ final class HostedAccountFeaturesTests: XCTestCase {
 
     private func pipelineScreens(_ rig: Rig) -> Int { rig.shell.stack.filter { $0 is PipelinesScreen }.count }
 
-    /// Turned off on another device while Pipelines and a run are open:
+    /// Uninstalled on another device while Pipelines and a run are open:
     /// the event takes the row away and both screens leave in one move,
-    /// back to home; turned on again, the row comes back.
-    func testTurnedOffElsewhereClosesThePipelinesScreensAndHidesTheRow() async throws {
+    /// back to home; installed again, the row comes back.
+    func testUninstalledElsewhereClosesThePipelinesScreensAndHidesTheRow() async throws {
         let rig = try await rig()
         try await settled(rig.navigation)
         shoot(rig.window, "1-home-pipelines-on")
@@ -175,7 +210,7 @@ final class HostedAccountFeaturesTests: XCTestCase {
         try await settled(rig.navigation)
         XCTAssertEqual(pipelineScreens(rig), 2)
 
-        rig.cloud.flip(false)
+        rig.cloud.change(installed: false)
         try await until("the row gone") { !Self.listsPipelines(rig.session.home) }
         try await until("the screens gone") { self.pipelineScreens(rig) == 0 }
         try await settled(rig.navigation)
@@ -183,20 +218,73 @@ final class HostedAccountFeaturesTests: XCTestCase {
         XCTAssertNil(rig.session.home.error)
         shoot(rig.window, "3-home-pipelines-off")
 
-        rig.cloud.flip(true)
+        rig.cloud.change(installed: true)
         try await until("the row back") { Self.listsPipelines(rig.session.home) }
         try await settled(rig.navigation)
         shoot(rig.window, "4-home-pipelines-back")
     }
 
-    /// Off without this phone having heard: the screen's read is refused
-    /// `403 feature_not_installed`, which turns Pipelines off here and
-    /// closes the screen, with no error said.
+    /// The Plugins screen lists Pipelines under Features for a member who
+    /// can't manage plugins; its page uninstalls it (`DELETE`), saying
+    /// that nothing is deleted, and installs it again (`POST`), with no
+    /// setup, sign-in or label. Home's row follows.
+    func testThePluginsScreenInstallsAndUninstallsPipelines() async throws {
+        let rig = try await rig()
+        let plugins = PluginsViewController(session: rig.session)
+        rig.navigation.pushViewController(plugins, animated: true)
+        try await settled(rig.navigation)
+        try await until("Pipelines listed") { plugins.shownRow("plugin-pipelines") != nil }
+        let listed = try XCTUnwrap(plugins.shownRow("plugin-pipelines"))
+        XCTAssertEqual(listed.value, Strings.Plugins.installedValue)
+        XCTAssertEqual(listed.header, Strings.Plugins.features)
+        XCTAssertNil(plugins.shownRow("installation-pipelines"), "a feature isn't one of the team's installations")
+        shoot(rig.window, "5-plugins-pipelines-installed")
+
+        plugins.tapRow("plugin-pipelines")
+        try await settled(rig.navigation)
+        let page = try XCTUnwrap(rig.navigation.topViewController as? PluginViewController)
+        try await until("Uninstall offered") { page.shownRow("plugin-uninstall") != nil }
+        XCTAssertNil(page.shownRow("plugin-install"))
+        XCTAssertEqual(page.shownRow("plugin-uninstall")?.footer, Strings.Plugins.uninstallKeeps("Pipelines"))
+        XCTAssertFalse(page.shownRowIDs.joined().contains { $0.hasPrefix("installation-") }, "\(page.shownRowIDs)")
+        shoot(rig.window, "6-plugin-page-installed")
+
+        page.uninstallFeature(try XCTUnwrap(rig.session.plugins.state.catalog?.plugin("pipelines")), catalog: try XCTUnwrap(rig.session.plugins.state.catalog))
+        try await until("Install offered") { page.shownRow("plugin-install") != nil }
+        try await until("home without Pipelines") { !Self.listsPipelines(rig.session.home) }
+        XCTAssertEqual(rig.cloud.writes, ["DELETE /v0/plugins/installations/pipelines"])
+        try await Task.sleep(for: .milliseconds(400))
+        shoot(rig.window, "7-plugin-page-uninstalled")
+
+        rig.navigation.popViewController(animated: true)
+        try await settled(rig.navigation)
+        try await until("listed as not installed") { plugins.shownRow("plugin-pipelines")?.value == Strings.Plugins.notInstalledValue }
+        shoot(rig.window, "8-plugins-pipelines-uninstalled")
+        rig.navigation.popToRootViewController(animated: true)
+        try await settled(rig.navigation)
+        shoot(rig.window, "9-home-without-pipelines")
+
+        let again = PluginViewController(session: rig.session, pluginId: "pipelines")
+        rig.navigation.pushViewController(again, animated: true)
+        try await settled(rig.navigation)
+        try await until("Install offered") { again.shownRow("plugin-install") != nil }
+        again.installFeature(try XCTUnwrap(rig.session.plugins.state.catalog?.plugin("pipelines")))
+        try await until("home with Pipelines") { Self.listsPipelines(rig.session.home) }
+        try await until("Uninstall offered again") { again.shownRow("plugin-uninstall") != nil }
+        XCTAssertEqual(rig.cloud.writes, ["DELETE /v0/plugins/installations/pipelines", "POST /v0/plugins/installations"])
+        rig.navigation.popToRootViewController(animated: true)
+        try await settled(rig.navigation)
+        shoot(rig.window, "10-home-with-pipelines")
+    }
+
+    /// Uninstalled without this phone having heard: the screen's read is
+    /// refused `403 feature_not_installed`, which makes Pipelines
+    /// unavailable here and closes the screen, with no error said.
     func testARefusedReadClosesTheScreenWithoutAnError() async throws {
         let rig = try await rig()
-        rig.cloud.refuse()
+        rig.cloud.uninstallUnheard()
         rig.navigation.pushViewController(PipelinesViewController(session: rig.session), animated: true)
-        try await until("Pipelines off here") { !rig.session.home.features.enabled(AccountFeatures.pipelines) }
+        try await until("Pipelines unavailable here") { !rig.session.home.features.available(AccountFeatures.pipelines) }
         try await until("the screen gone") { self.pipelineScreens(rig) == 0 }
         try await settled(rig.navigation)
         XCTAssertFalse(Self.listsPipelines(rig.session.home))

@@ -28,8 +28,8 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var draining = false
     /// An action the computer refused, said for a moment while it rolls back.
     public var notice: String?
-    /// What the person turned off for their account (cloud only): what
-    /// is off is listed nowhere, and its screens close.
+    /// What is available to the person's account (cloud only): a feature
+    /// whose plugin they uninstalled is listed nowhere, and its screens close.
     public var features = AccountFeatures()
     public init() {}
 }
@@ -78,11 +78,11 @@ public actor SyncEngine {
     /// The server runs pipelines (`capabilities.pipelines`, cloud only):
     /// home lists them under Plugins. Kept beside `plugins`.
     private var pipelines = false
-    /// What the person turned off for their whole account (cloud only):
-    /// read on every connect and on coming back to the foreground,
-    /// replaced by each `account.features.updated`, kept for the next
-    /// launch. A route that answers `403 feature_not_installed` turns its
-    /// feature off here too.
+    /// What is available to the person's whole account, by its feature
+    /// plugins (cloud only): read on every connect and on coming back to
+    /// the foreground, replaced by each `features.updated`, kept for the
+    /// next launch. A route that answers `403 feature_not_installed` makes
+    /// its feature unavailable here too.
     private var features = AccountFeatures()
     /// One read of them at a time; news meanwhile reads them once more after.
     private var featuresRead = (reading: false, again: false)
@@ -968,8 +968,13 @@ public actor SyncEngine {
 
     // MARK: Account features
 
-    /// Reads the account's features again; a read that fails keeps what
-    /// was read, and a server without them has every feature on.
+    /// Reads what is available again, as after the person installs or
+    /// uninstalls a feature plugin, beside the event that says so.
+    public func refreshFeatures() { readFeatures() }
+
+    /// Reads what is available to the account again; a read that fails
+    /// keeps what was read, and a server without feature plugins has every
+    /// feature available.
     private func readFeatures() {
         guard cloud, !stopped else { return }
         guard !featuresRead.reading else { featuresRead.again = true; return }
@@ -994,17 +999,17 @@ public actor SyncEngine {
         guard next != features else { return }
         features = next
         let kept: JSONValue = next.list.map { list in
-            .object(["features": .array(list.map { .object(["id": .string($0.id), "name": .string($0.name), "enabled": .bool($0.enabled)]) })])
+            .object(["features": .array(list.map { .object(["id": .string($0.id), "available": .bool($0.available)]) })])
         } ?? .object([:])
         try? await database().commit(.init(value: kept, cursor: nil), named: "features")
         derive()
     }
 
-    /// A route answered that `feature` is off for the account: it is off
-    /// here at once, and the list is read again.
+    /// A route answered that `feature` is unavailable to the account: it
+    /// is here at once, and the list is read again.
     private func refused(_ feature: String) async {
-        guard cloud, !stopped, features.enabled(feature) else { return }
-        await adopt(features.turningOff(feature))
+        guard cloud, !stopped, features.available(feature) else { return }
+        await adopt(features.unavailable(feature))
         readFeatures()
     }
 
@@ -1146,7 +1151,7 @@ public actor SyncEngine {
         snapshot.loaded = desktop != nil
         snapshot.features = features
         if let desktop {
-            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow, plugins: plugins, pipelines: pipelines && features.enabled(AccountFeatures.pipelines)))
+            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow, plugins: plugins, pipelines: pipelines && features.available(AccountFeatures.pipelines)))
             agentRows = [:]
             for index in snapshot.allRows.indices {
                 snapshot.allRows[index].lineChanges = snapshot.allRows[index].workspaceId.flatMap { gitSnapshots[$0]?.visible }

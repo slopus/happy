@@ -190,7 +190,7 @@ public actor PipelineRunFeed {
             state.loading = false
             publish()
         } catch where AccountFeatures.refused(error) {
-            // Turned off for the account: the screen leaves, with nothing said.
+            // Uninstalled for the account: the screen leaves, with nothing said.
         } catch {
             state.failed = true
             state.loading = false

@@ -127,6 +127,9 @@ extension AgentWire {
             public var plugins: Bool?
             /// The pipeline routes (`/v0/pipelines`, `/v0/pipeline-runs`); missing is none.
             public var pipelines: Bool?
+            /// Feature plugins, `GET /v0/features` and `features.updated`;
+            /// missing is every feature available.
+            public var features: Bool?
             /// Saves Gen UI secret actions' forms
             /// (`POST /v0/artifacts/:id/versions/:n/actions`); missing is none.
             public var artifactSecretActions: Bool?

@@ -176,7 +176,7 @@ public actor PipelineFeed {
     }
 
     private func landPipeline(_ detail: Result<PipelineDetail?, Error>, versions: Result<[PipelineVersion], Error>?) {
-        // Turned off for the account: the screen leaves, with nothing said.
+        // Uninstalled for the account: the screen leaves, with nothing said.
         var refused = false
         if case .failure(let error) = detail { refused = AccountFeatures.refused(error) }
         if case .failure(let error)? = versions { refused = refused || AccountFeatures.refused(error) }
