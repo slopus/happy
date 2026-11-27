@@ -62,8 +62,9 @@ class SettingsSearchTest {
 
     private val done = mutableListOf<String>()
 
-    private fun showHappy() = rule.setHappyContent {
+    private fun showHappy(happyCloud: Boolean? = null) = rule.setHappyContent {
         SettingsScreen(
+            happyCloud = happyCloud,
             profile = SettingsFixtures.profile,
             about = AboutInfo("1.8.0 (412)"),
             accounts = SettingsFixtures.accounts,
@@ -83,6 +84,29 @@ class SettingsSearchTest {
     private fun resultTitles(): List<String> {
         val rows = rule.onAllNodesWithTag(ItemTags.TITLE, useUnmergedTree = true).fetchSemanticsNodes()
         return rows.map { it.config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString("") { t -> t.text } }
+    }
+
+    /**
+     * Happy Cloud's switch outside developer mode ([com.slopus.happy.ui.connection.rememberHappyCloudSwitch]
+     * gives null): no card, no footer, and search finds nothing.
+     */
+    @Test
+    fun happyCloudsSwitchIsAbsentOutsideDeveloperMode() {
+        showHappy(happyCloud = null)
+        rule.onAllNodesWithText("Happy Cloud", substring = true, useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(com.slopus.happy.ui.connection.HappyCloudSwitchTags.SWITCH, useUnmergedTree = true).assertCountEquals(0)
+        search("Happy Cloud")
+        assertTrue(resultTitles().none { "Cloud" in it })
+        rule.node(SettingsSearchTags.NOTHING_FOUND).assertExists()
+    }
+
+    /** In developer mode the switch is a card of its own, and search finds it. */
+    @Test
+    fun happyCloudsSwitchShowsInDeveloperMode() {
+        showHappy(happyCloud = false)
+        rule.onAllNodesWithTag(com.slopus.happy.ui.connection.HappyCloudSwitchTags.SWITCH, useUnmergedTree = true).assertCountEquals(1)
+        search("Happy Cloud")
+        assertTrue(resultTitles().toString(), "Happy Cloud" in resultTitles())
     }
 
     @Test
