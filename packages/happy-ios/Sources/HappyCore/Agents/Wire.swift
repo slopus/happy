@@ -1051,12 +1051,15 @@ extension AgentWire {
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             agent = try container.decode(Agent.self, forKey: .agent)
-            mode = try container.decodeIfPresent(Mode.self, forKey: .mode)
-            draft = try container.decodeIfPresent(Draft.self, forKey: .draft)
-            pending = try container.decodeIfPresent([Message].self, forKey: .pending).map { Message.localIds($0, at: "pending") }
-            cursor = try container.decodeIfPresent(String.self, forKey: .cursor)
-            subagents = try container.decodeIfPresent([Agent].self, forKey: .subagents)
-            context = try container.decodeIfPresent(ContextUsage.self, forKey: .context)
+            // Only the agent is needed to open its conversation: a part
+            // this build can't read is none, as Android's `Bootstrap.parse`
+            // has it, never a read that fails on every try.
+            mode = (try? container.decodeIfPresent(Mode.self, forKey: .mode)) ?? nil
+            draft = (try? container.decodeIfPresent(Draft.self, forKey: .draft)) ?? nil
+            pending = ((try? container.decodeIfPresent([Message].self, forKey: .pending)) ?? nil).map { Message.localIds($0, at: "pending") }
+            cursor = (try? container.decodeIfPresent(String.self, forKey: .cursor)) ?? nil
+            subagents = ((try? container.decodeIfPresent([Lossy<Agent>].self, forKey: .subagents)) ?? nil).map { $0.compactMap(\.value) }
+            context = (try? container.decodeIfPresent(ContextUsage.self, forKey: .context)) ?? nil
             // One command that can't be read never costs the conversation.
             slashCommands = SlashCommand.catalog(try container.decodeIfPresent(JSONValue.self, forKey: .slashCommands))
         }

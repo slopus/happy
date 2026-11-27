@@ -865,11 +865,15 @@ public actor Conversation {
         reads += 1
         snapshot.synced = false
         snapshot.error = Store.describe(error)
-        Happenings.errorShown(.conversationLoad, error)
         snapshot.loaded = true
         let held = heldEvents ?? []
         heldEvents = nil
         for event in held { receive(event, publishes: false) }
+        // Kept rows show over a failed read, which is asked again by
+        // itself; only an empty chat on screen is one seen to fail.
+        if visible, transcript.runs.isEmpty, transcript.pending.isEmpty, outgoing.isEmpty {
+            Happenings.errorShown(.conversationLoad, error)
+        }
         publish()
     }
 

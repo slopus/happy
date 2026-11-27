@@ -70,7 +70,9 @@ Errors and results:
 - `error_shown`: any other error a person saw. At most one per area and
   code every 10 minutes per device; the ones in between are dropped, not
   counted. A failed create is not one: it is its `*_created` event
-  with `result: failed`.
+  with `result: failed`. A Happy Agent conversation's failed history read
+  (`conversation_load`) is one only when the chat is on screen with
+  nothing to show; over the rows the phone kept, or off screen, it is not.
 - `app_crashed`: the app died abnormally. Reported at the next launch from
   the OS's exit records, of which only the exception type or signal and the
   app version are read. On Android a JVM crash also carries its exception's
