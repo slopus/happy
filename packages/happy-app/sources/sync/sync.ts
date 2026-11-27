@@ -4,6 +4,7 @@ import { observeRoleConfigurationRealtimeMessage, observeRoleConfigurationSavedM
 import { isAgyConfigPending } from './agyConfigPending';
 import { createScheduledTasksController } from './scheduledTasks';
 import { resolveComposerReferences, parseComposerDraft, composerReferenceDisplay, buildComposerReferenceExcerpt } from './composerReferences';
+import { getUserMessageDisplayText } from '@/components/messageDisplayText';
 import { saveSessionWarmMessageTime } from './sessionWarmCache';
 import { getConversationMessageTime } from './sessionConversationTime';
 import { getUserMessageTime } from './sessionUserActivity';
@@ -1945,7 +1946,10 @@ class Sync {
                 if (!row) continue;
                 const message = normalizeRawMessage(row.id, row.localId, row.createdAt, row.content);
                 if (!message || message.isSidechain) continue;
-                if (message.role === 'user') lines.push({ at: message.createdAt, role: 'User', text: message.meta?.displayText ?? message.content.text });
+                if (message.role === 'user') {
+                    const text = getUserMessageDisplayText(message.meta?.displayText ?? message.content.text);
+                    if (text.trim()) lines.push({ at: message.createdAt, role: 'User', text });
+                }
                 if (message.role === 'agent') for (const part of message.content) if (part.type === 'text') lines.push({ at: message.createdAt, role: 'Assistant', text: part.text });
             }
             if (!result.data.hasMore || lines.some(line => line.role === 'User')) break;

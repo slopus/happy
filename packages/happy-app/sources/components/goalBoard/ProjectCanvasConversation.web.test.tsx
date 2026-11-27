@@ -17,6 +17,7 @@ const fixture = vi.hoisted(() => {
 });
 vi.mock('@/auth/accountRuntime', () => ({ accountRuntimeCurrent: () => true, getRuntimeAccountSelection: () => fixture.account }));
 vi.mock('@/hooks/useSessionAttachmentDraft', () => ({ useSessionAttachmentDraft: () => undefined }));
+vi.mock('expo-crypto', () => ({ randomUUID: () => 'fixture-review-scope' }));
 vi.mock('@/hooks/useImagePicker', () => ({ MAX_FILE_SIZE: 50_000_000, MAX_IMAGES_PER_MESSAGE: 50 }));
 vi.mock('@/sync/storage', () => ({
     storage: (select: (state: { sessions: {} }) => unknown) => select({ sessions: {} }),

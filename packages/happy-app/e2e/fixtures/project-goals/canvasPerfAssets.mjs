@@ -39,6 +39,19 @@ function image(index) {
     return Buffer.concat([signature, chunk('IHDR', header), chunk('IDAT', deflateSync(raster, { level: 0 })), chunk('IEND', Buffer.alloc(0))]);
 }
 
+export async function seedCanvasMarkAssets(canvas, projectPath) {
+    let snapshot;
+    for (const [index, name] of ['标注测试 A.png', '标注测试 B.png'].entries()) {
+        const result = await canvas.import({
+            projectPath, name, mimeType: 'image/png', base64: image(index + missingPreviews).toString('base64'),
+        });
+        assert('canvas' in result, 'Synthetic mark asset upload must finish in one request');
+        snapshot = result.canvas;
+    }
+    assert.equal(snapshot?.assets.length, 2);
+    return snapshot.assets;
+}
+
 export async function seedCanvasPerfAssets(canvas, projectPath) {
     const bundleId = randomUUID();
     const assets = [];

@@ -20,6 +20,18 @@ export type MotionPhotoMetadata = {
     mimeType: 'video/mp4';
 };
 
+export type CanvasReviewAttachmentContext = {
+    canvasId: string;
+    mark: {
+        id: string;
+        number: number;
+        pageId: string;
+        bounds: { x: number; y: number; w: number; h: number };
+        ids: string[];
+    };
+    assets: { id: string; versionId: string; name: string }[];
+};
+
 export type AttachmentPreview = {
     /** Stable unique identifier for use as React key and for removal. */
     id: string;
@@ -35,6 +47,8 @@ export type AttachmentPreview = {
     kind?: AttachmentKind;
     /** Device-local copy owned by the staged message's storage namespace. */
     stagingKey?: string;
+    /** User-selected canvas mark identified by the attached preview image. */
+    canvasReview?: CanvasReviewAttachmentContext;
 };
 
 /** Result of a successful attachment upload — ready to build a file event. */

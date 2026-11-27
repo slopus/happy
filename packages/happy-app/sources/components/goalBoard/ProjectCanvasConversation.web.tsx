@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { randomUUID } from 'expo-crypto';
 import { accountRuntimeCurrent, getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { GOAL_CANVAS_LIMITS } from '@slopus/happy-wire';
 import { decryptBlob } from '@/encryption/blob';
@@ -16,15 +17,17 @@ import { generateThumbhash } from '@/utils/thumbhash';
 import { ProjectCanvas } from './ProjectCanvas';
 import type { ProjectCanvasConversationProps } from './ProjectCanvasConversation';
 import { collectProjectCanvasGeneratedResults } from './projectCanvasGeneratedImages';
+import type { CanvasReviewAttachmentContext } from '@/sync/attachmentTypes';
 
 export function ProjectCanvasConversation({ sessionId, ...workspace }: ProjectCanvasConversationProps) {
     const { machineId, projectPath } = workspace;
     const account = getRuntimeAccountSelection();
-    const setImages = useSessionAttachmentDraft(sessionId ?? '')?.setImages;
+    const { images, setImages } = useSessionAttachmentDraft(sessionId ?? '') ?? {};
     const { messages, isAtLatest } = useSessionMessages(sessionId ?? '');
     const flavor = storage(state => sessionId ? state.sessions[sessionId]?.metadata?.flavor : undefined);
     const canAttach = !!sessionId && !!setImages && (!flavor || ['claude', 'codex', 'opencode'].includes(flavor));
     const scope = React.useMemo(() => ({ machineId, projectPath, sessionId, account }), [machineId, projectPath, sessionId, account]);
+    const reviewScope = React.useMemo(() => randomUUID(), [scope]);
     const currentScope = React.useRef<typeof scope | null>(scope);
     React.useLayoutEffect(() => {
         currentScope.current = scope;
@@ -79,6 +82,34 @@ export function ProjectCanvasConversation({ sessionId, ...workspace }: ProjectCa
         if (!isCurrent() || full) throw new Error(t('projectCanvas.referenceError'));
     }, [scope, account, canAttach, setImages]);
 
+    const marks = React.useMemo(() => (images ?? []).flatMap(image => image.canvasReview ? [image.canvasReview] : []), [images]);
+    const review = React.useMemo(() => canAttach ? {
+        scope: reviewScope,
+        marks,
+        capacity: Math.max(0, MAX_IMAGES_PER_MESSAGE - (images?.length ?? 0)),
+        nextNumber: Math.max(0, ...marks.map(item => item.mark.number)) + 1,
+    } : undefined, [canAttach, images?.length, marks, reviewScope]);
+    const addReviewMark = React.useCallback(async (file: File, context: CanvasReviewAttachmentContext, signal: AbortSignal, expiresAt: number) => {
+        const isCurrent = () => !signal.aborted && Date.now() < expiresAt && currentScope.current === scope && accountRuntimeCurrent()
+            && getRuntimeAccountSelection() === account;
+        if (!canAttach || !setImages || !isCurrent() || file.size > MAX_FILE_SIZE) throw new Error('Canvas mark unavailable');
+        const preview = await fileToAttachmentPreview(file, generateThumbhash);
+        if (!preview) throw new Error('Canvas mark image unavailable');
+        let added = false;
+        setImages(current => {
+            if (!isCurrent() || current.length >= MAX_IMAGES_PER_MESSAGE
+                || current.some(image => image.canvasReview?.mark.id === context.mark.id
+                    || image.canvasReview?.mark.number === context.mark.number)) {
+                URL.revokeObjectURL(preview.uri);
+                return current;
+            }
+            added = true;
+            return [...current, { ...preview, id: `canvas-review:${context.mark.id}`, canvasReview: context }];
+        });
+        if (!added) throw new Error('Canvas mark could not be attached');
+    }, [account, canAttach, scope, setImages]);
+
     return <ProjectCanvas {...workspace} onReference={canAttach ? reference : undefined}
+        review={review} onReviewMark={review ? addReviewMark : undefined}
         generatedResults={generatedResults} readGeneratedResult={readGeneratedResult} />;
 }

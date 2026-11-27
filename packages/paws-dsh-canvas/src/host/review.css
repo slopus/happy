@@ -1,0 +1,126 @@
+.paws-review-tool {
+    position: absolute;
+    z-index: 2;
+    top: 53px;
+    left: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: calc(100% - 24px);
+    color: var(--tl-color-text);
+    font: 500 12px/1.35 system-ui, sans-serif;
+}
+
+.paws-review-tool__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 34px;
+    padding: 0 9px;
+    border: 1px solid var(--tl-color-divider);
+    border-radius: 8px;
+    background: var(--tl-color-panel);
+    color: inherit;
+    font: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.paws-review-tool__toggle:hover:not([aria-disabled="true"]) {
+    background: var(--tl-color-hint);
+}
+
+.paws-review-tool__toggle[aria-pressed="true"] {
+    color: var(--paws-review-ink);
+    border-color: var(--paws-review-ink);
+    background: color-mix(in srgb, var(--paws-review-ink) 12%, var(--tl-color-panel));
+}
+
+.paws-review-tool__toggle:focus-visible {
+    outline: 2px solid var(--tl-color-focus);
+    outline-offset: 2px;
+}
+
+.paws-review-tool__toggle[aria-disabled="true"] {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.paws-review-tool__status:not(:empty) {
+    padding: 5px 8px;
+    border: 1px solid var(--tl-color-divider);
+    border-radius: 7px;
+    background: var(--tl-color-panel);
+}
+
+.paws-review-tool__status[data-failed] {
+    color: var(--paws-review-ink);
+}
+
+.paws-review-surface {
+    position: absolute;
+    inset: 0;
+    touch-action: none;
+    pointer-events: auto;
+    cursor: crosshair;
+    outline: none;
+}
+
+.paws-review-surface[data-busy] {
+    cursor: progress;
+}
+
+.paws-review-marks {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    overflow: clip;
+    pointer-events: none;
+}
+
+.paws-review-mark {
+    position: absolute;
+    box-shadow: 0 0 0 1px #fff, 0 0 0 3px var(--paws-review-ink), 0 0 0 4px #fff;
+}
+
+.paws-review-mark[data-point]::before {
+    content: "";
+    display: block;
+    position: absolute;
+    inset: -6px auto auto -6px;
+    width: 12px;
+    height: 12px;
+    box-sizing: border-box;
+    border: 2px solid var(--paws-review-ink);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px #fff, inset 0 0 0 1px #fff;
+}
+
+.paws-review-mark[data-point] {
+    box-shadow: none;
+}
+
+.paws-review-mark[data-draft] {
+    opacity: 0.78;
+}
+
+.paws-review-mark__number {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: inline-grid;
+    place-content: center;
+    box-sizing: border-box;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 4px;
+    border: 1px solid #fff;
+    border-radius: 999px;
+    background: var(--paws-review-ink);
+    color: #fff;
+    font: 700 12px/1 system-ui, sans-serif;
+}
+
+.tl-theme__dark .paws-review-tool {
+    --paws-review-ink: #f4a18f;
+}

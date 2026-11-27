@@ -6,7 +6,7 @@ import {
 } from 'tldraw';
 import {
     PROJECT_CANVAS_SCENE_DOCUMENT_MAX_BYTES, readProjectCanvasCommand, readProjectCanvasFrameMessage,
-    readProjectCanvasSceneResult, type ProjectCanvasFrameMessage,
+    readProjectCanvasSceneResult, readProjectCanvasSync, type ProjectCanvasFrameMessage,
 } from '../protocol';
 import { readSceneDocument, writeSceneDocument } from './sceneDocument';
 import { createSceneSync } from './sceneSync';
@@ -15,6 +15,22 @@ const assetKey = `asset-${'a'.repeat(64)}-${'b'.repeat(64)}`;
 const assetId = AssetRecordType.createId(`ig-${assetKey}`);
 const shapeId = createShapeId(`ig-${assetKey}`);
 const pageId = PageRecordType.createId('page');
+
+test('review marks carry valid scoped page geometry and a bounded raster attachment', () => {
+    const mark = { id: 'mark-1', number: 1, pageId, bounds: { x: -20, y: 48, w: 180, h: 64 }, ids: [] };
+    const message = { type: 'paws-project-canvas/review-mark', sessionKey: 'board', reviewScope: 'chat', mark, expiresAt: 1_234, dataUrl: 'data:image/png;base64,AAAA' };
+    assert.deepEqual(readProjectCanvasFrameMessage(message), message);
+    assert.equal(readProjectCanvasFrameMessage({ ...message, reviewScope: '' }), undefined);
+    assert.equal(readProjectCanvasFrameMessage({ ...message, expiresAt: undefined }), undefined);
+    assert.equal(readProjectCanvasFrameMessage({ ...message, dataUrl: 'https://elsewhere.test/preview.png' }), undefined);
+    assert.equal(readProjectCanvasFrameMessage({ ...message, mark: { ...mark, bounds: { ...mark.bounds, h: 0 } } }), undefined);
+    assert.ok(readProjectCanvasFrameMessage({ ...message, mark: { ...mark, bounds: { ...mark.bounds, h: 0, w: 0 } } }));
+
+    const sync = { type: 'paws-project-canvas/sync', sessionKey: 'board', theme: 'light', assets: [],
+        review: { scope: 'chat', marks: [mark], capacity: 49, nextNumber: 2 } };
+    assert.deepEqual(readProjectCanvasSync(sync, 'https://paws.test'), sync);
+    assert.equal(readProjectCanvasSync({ ...sync, review: { ...sync.review, marks: [mark, mark] } }, 'https://paws.test'), undefined);
+});
 
 test('the scene preserves editable geometry and rejects outside resources', () => {
     const store = createTLStore({ shapeUtils: defaultShapeUtils, bindingUtils: defaultBindingUtils });

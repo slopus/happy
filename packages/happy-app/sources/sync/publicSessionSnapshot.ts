@@ -1,4 +1,5 @@
 import { v4 as uuid } from 'uuid';
+import { getUserMessageDisplayText } from '@/components/messageDisplayText';
 import { getBrowserStepRuns } from '@/components/rightPanel/browserStepRunsModel';
 import { getSkillNamesFromTool } from '@/utils/conversationActivity';
 import type { PublicSessionCover, PublicSessionSnapshotV2, PublicSessionThemePack } from '@slopus/happy-wire';
@@ -157,7 +158,7 @@ export function buildPublicSessionSnapshot(input: {
 
     const visit = (message: Message) => {
         if (message.kind === 'user-text') {
-            const markdown = (message.displayText ?? message.text).trim();
+            const markdown = getUserMessageDisplayText(message.displayText ?? message.text).trim();
             if (markdown) addMessage({ role: 'user', createdAt: message.createdAt, blocks: [{ type: 'text', markdown }] });
             return;
         }

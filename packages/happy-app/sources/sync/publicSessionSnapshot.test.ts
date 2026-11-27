@@ -56,6 +56,21 @@ describe('buildPublicSessionSnapshot', () => {
         expect(serialized).not.toContain('secret-password');
     });
 
+    it('excludes model context from shared user text without a separate display field', () => {
+        const messages: Message[] = [{
+            kind: 'user-text', id: 'steer', localId: null, createdAt: 1,
+            text: '<!-- happy:system-prompt:start -->\nCanvas review context\nprivate-canvas-id\n<!-- happy:system-prompt:end -->\n\nReview this point',
+        }, {
+            kind: 'user-text', id: 'plain', localId: null, createdAt: 2, text: 'Same visible text',
+        }];
+        const result = buildPublicSessionSnapshot({ title: 'Canvas review', messages, sharedAt: now, themePack: 'gingham' });
+        expect(result.snapshot.messages.map(message => message.blocks)).toEqual([
+            [{ type: 'text', markdown: 'Review this point' }],
+            [{ type: 'text', markdown: 'Same visible text' }],
+        ]);
+        expect(JSON.stringify(result.snapshot)).not.toContain('private-canvas-id');
+    });
+
     it('freezes canonical cover metadata into a literal V2 appearance', () => {
         const result = buildPublicSessionSnapshot({
             title: 'Covered session',

@@ -25,6 +25,22 @@ export interface ProjectCanvasScene {
     document: string;
 }
 
+export interface ProjectCanvasReviewMark {
+    id: string;
+    number: number;
+    pageId: string;
+    bounds: { x: number; y: number; w: number; h: number };
+    ids: string[];
+}
+
+export interface ProjectCanvasReviewState {
+    scope: string;
+    marks: ProjectCanvasReviewMark[];
+    capacity: number;
+    nextNumber: number;
+    rejectedId?: string;
+}
+
 export interface ProjectCanvasSync {
     type: 'paws-project-canvas/sync';
     sessionKey: string;
@@ -36,6 +52,7 @@ export interface ProjectCanvasSync {
     palette?: ProjectCanvasPalette;
     scene?: ProjectCanvasScene;
     visibleAssetIds?: string[];
+    review?: ProjectCanvasReviewState;
 }
 
 export interface ProjectCanvasPalette {
@@ -73,14 +90,17 @@ export type ProjectCanvasFrameMessage =
     | { type: 'paws-project-canvas/scene-error'; sessionKey: string; reason: 'conflict' | 'save' | 'invalid' }
     | { type: 'paws-project-canvas/import-files'; sessionKey: string; files: File[] }
     | { type: 'paws-project-canvas/import-failed'; sessionKey: string }
+    | { type: 'paws-project-canvas/review-mark'; sessionKey: string; reviewScope: string; mark: ProjectCanvasReviewMark; expiresAt: number; dataUrl: string }
     | { type: 'paws-project-canvas/clip'; sessionKey: string; ids: string[]; dataUrl: string };
 
 const assetId = /^asset-[a-f0-9]{64}$/;
 const versionId = /^[a-f0-9]{64}$/;
 const imageTypes = new Set<unknown>(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const maxAssets = 160;
+const maxReviewMarks = 50;
 export const PROJECT_CANVAS_PREVIEW_REQUEST_MAX = 16;
 export const PROJECT_CANVAS_ORIGINAL_REQUEST_MAX = 4;
+export const PROJECT_CANVAS_REVIEW_ACK_TIMEOUT_MS = 30_000;
 export const PROJECT_CANVAS_SCENE_DOCUMENT_MAX_BYTES = 384 * 1024;
 export const PROJECT_CANVAS_SCENE_DOCUMENT_VERSION = 1;
 const maxCoordinate = 1_000_000;
@@ -161,6 +181,38 @@ function idsOf(value: unknown): value is string[] {
         && new Set(value).size === value.length;
 }
 
+function reviewId(value: unknown): value is string {
+    return typeof value === 'string' && /^[A-Za-z0-9-]{1,80}$/.test(value);
+}
+
+function reviewNumber(value: unknown): value is number {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+function reviewMark(value: unknown): value is ProjectCanvasReviewMark {
+    if (!record(value) || !reviewId(value.id) || !reviewNumber(value.number)
+        || typeof value.pageId !== 'string' || !/^page:[A-Za-z0-9_-]{1,120}$/.test(value.pageId)
+        || !idsOf(value.ids) || !record(value.bounds)) return false;
+    const { x, y, w, h } = value.bounds;
+    return isCoordinate(x) && isCoordinate(y) && isCoordinate(w) && isCoordinate(h)
+        && ((w === 0 && h === 0) || (w > 0 && h > 0))
+        && isCoordinate(x + w) && isCoordinate(y + h);
+}
+
+function validReview(value: unknown): value is ProjectCanvasReviewState {
+    return record(value) && keyOf(value.scope) && reviewNumber(value.nextNumber)
+        && typeof value.capacity === 'number' && Number.isSafeInteger(value.capacity) && value.capacity >= 0 && value.capacity <= maxReviewMarks
+        && Array.isArray(value.marks) && value.marks.length <= maxReviewMarks && value.marks.every(reviewMark)
+        && new Set(value.marks.map(mark => mark.id)).size === value.marks.length
+        && new Set(value.marks.map(mark => mark.number)).size === value.marks.length
+        && (value.rejectedId === undefined || reviewId(value.rejectedId));
+}
+
+function clipDataUrl(value: unknown): value is string {
+    return typeof value === 'string' && value.length <= maxClipLength
+        && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(value);
+}
+
 function validPalette(value: unknown): value is ProjectCanvasPalette {
     if (!record(value) || Object.keys(value).length !== paletteKeys.length) return false;
     return paletteKeys.every(key => {
@@ -179,6 +231,7 @@ export function readProjectCanvasSync(value: unknown, origin: string): ProjectCa
         || (value.manifestRevision !== undefined && !isSceneRevision(value.manifestRevision))
         || (value.scene !== undefined && !validScene(value.scene))
         || (value.visibleAssetIds !== undefined && !idsOf(value.visibleAssetIds))
+        || (value.review !== undefined && !validReview(value.review))
         || !value.assets.every(asset => renderAsset(asset, origin))) return undefined;
     if (new Set(value.assets.map(asset => asset.id)).size !== value.assets.length) return undefined;
     return value as unknown as ProjectCanvasSync;
@@ -241,9 +294,11 @@ export function readProjectCanvasFrameMessage(value: unknown): ProjectCanvasFram
         return { type: value.type, sessionKey, files: value.files };
     }
     if (value.type === 'paws-project-canvas/import-failed') return { type: value.type, sessionKey };
-    if (value.type === 'paws-project-canvas/clip' && idsOf(value.ids)
-        && typeof value.dataUrl === 'string' && value.dataUrl.length <= maxClipLength
-        && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(value.dataUrl)) {
+    if (value.type === 'paws-project-canvas/review-mark' && keyOf(value.reviewScope)
+        && reviewMark(value.mark) && reviewNumber(value.expiresAt) && clipDataUrl(value.dataUrl)) {
+        return { type: value.type, sessionKey, reviewScope: value.reviewScope, mark: value.mark, expiresAt: value.expiresAt, dataUrl: value.dataUrl };
+    }
+    if (value.type === 'paws-project-canvas/clip' && idsOf(value.ids) && clipDataUrl(value.dataUrl)) {
         return { type: value.type, sessionKey, ids: value.ids, dataUrl: value.dataUrl };
     }
     return undefined;

@@ -12,12 +12,14 @@ import environmentHelpers from '../../../../../environments/environments.ts';
 const { createEnvironment, getEnvironmentConfig, setEnvironmentTemplate, startEnvironmentServices, seedEnvironment, startEnvironmentWeb, stopEnvironment, removeEnvironment } = environmentHelpers;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 const canvasPerf = process.argv.includes('--canvas-perf');
+const canvasMarks = process.argv.includes('--canvas-marks');
 const rpcOnly = canvasPerf && process.argv.includes('--rpc-only');
-const canvasSmoke = canvasPerf || process.argv.includes('--canvas');
+const canvasSmoke = canvasPerf || canvasMarks || process.argv.includes('--canvas');
 const canvasPerfRangeDelayMs = 700;
 const liveCanvas = canvasSmoke && process.argv.includes('--canvas-live-codex');
-assert(!canvasPerf || !liveCanvas, 'Canvas performance fixtures cannot start a model worker');
-const canvasReply = canvasSmoke && !canvasPerf ? process.env.PAWS_CANVAS_TEST_REPLY : undefined;
+assert(!(canvasPerf || canvasMarks) || !liveCanvas, 'Synthetic canvas fixtures cannot start a model worker');
+assert(!canvasPerf || !canvasMarks, 'Choose one synthetic canvas scenario per fixture');
+const canvasReply = canvasSmoke && !canvasPerf && !canvasMarks ? process.env.PAWS_CANVAS_TEST_REPLY : undefined;
 const canvasRun = canvasSmoke ? process.env.PAWS_CANVAS_TEST_RUN : undefined;
 if (canvasRun && !/^[a-z0-9-]{1,40}$/.test(canvasRun)) throw new Error('Invalid isolated canvas test run name');
 const output = path.join(root, 'packages/happy-app/test-results', canvasSmoke ? ['project-canvas', canvasRun].filter(Boolean).join('-') : 'project-goals');
@@ -68,6 +70,7 @@ async function main() {
     await put(path.join(taskB, 'PROMPT.md'), '# 首次执行\n这是合成的验收任务；只验证提交，不调用外部模型。');
     const encryption = await import('../../../../happy-cli/src/api/encryption.ts');
     const materialize = canvasSmoke ? (await import('../../../../happy-cli/src/codex/codexImageInput.ts')).materializeCodexImageItems : undefined;
+    const markReplyEnvelopes = canvasMarks ? (await import('../../../../happy-cli/src/codex/codexImmediateCommand.ts')).immediateCodexCommandEnvelopes : undefined;
     const { ApiSessionClient } = await import('../../../../happy-cli/src/api/apiSession.ts');
     const { RpcHandlerManager } = await import('../../../../happy-cli/src/api/rpc/RpcHandlerManager.ts');
     const { registerProjectGoalHandlers } = await import('../../../../happy-cli/src/modules/goalBoard/projectService.ts');
@@ -129,17 +132,27 @@ async function main() {
             const pending = attachments;
             attachments = [];
             void (async () => {
-                if (materialize && pending.length) {
+                const markTurn = markReplyEnvelopes && directory === projectPath;
+                if (materialize && (pending.length || markTurn)) {
                     const received = await Promise.all(pending);
                     const localImages = materialize(received);
                     const hashes = await Promise.all(localImages.map(async item => createHash('sha256').update(await fs.readFile(item.path)).digest('hex')));
-                    metrics.canvasTurns.push({ sessionId: session.id, names: received.map(item => item.name), hashes });
+                    metrics.canvasTurns.push({
+                        sessionId: session.id, names: received.map(item => item.name), hashes,
+                        ...(markTurn ? { localId: message.localId, text: message.content.text, images: localImages.length } : {}),
+                    });
                     if (canvasReply && hashes.length === received.length) {
                         const { ref, name, size, dims } = await client.uploadImageAttachment(canvasReply);
                         client.sendFileEvent(ref, name, size, dims, { source: 'generated', batchId: randomUUID() });
                     }
                 }
-                await client.updateAgentState(state => ({ ...state, turnStatus: { status: 'completed', turnId: randomUUID(), updatedAt: Date.now() } }));
+                if (markReplyEnvelopes && markTurn) {
+                    for (const envelope of markReplyEnvelopes('已收到画布标注验收消息（本地测试执行器）。', message.localId ? [message.localId] : undefined)) {
+                        client.sendSessionProtocolMessage(envelope);
+                    }
+                } else {
+                    await client.updateAgentState(state => ({ ...state, turnStatus: { status: 'completed', turnId: randomUUID(), updatedAt: Date.now() } }));
+                }
             })().catch(error => { if (canvasSmoke) metrics.canvasTurns.push({ error: String(error) }); });
         }, materialize ? event => {
             const { ref, name, mimeType } = event.content.data.ev;
@@ -157,6 +170,7 @@ async function main() {
         send: async (...args) => { await adapter.send(...args); metrics.submitted.push({ sessionId: args[0], localId: args[2] }); if (controls.loseSubmissionResponse) { controls.loseSubmissionResponse = false; throw new Error('Synthetic response loss after accepted submission'); } },
     });
     const perfAssets = canvasPerf ? await (await import('./canvasPerfAssets.mjs')).seedCanvasPerfAssets(service.canvas, projectPath) : undefined;
+    const markAssets = canvasMarks ? await (await import('./canvasPerfAssets.mjs')).seedCanvasMarkAssets(service.canvas, projectPath) : undefined;
     registerArtifactHandlers(manager, async () => store, undefined, async chosen => { assert(chosen.startsWith(home + '/')); });
     manager.onSocketConnect(machineSocket); await once(machineSocket, 'rpc-registered', event => event.method === `${machineId}:goalProjects`);
     machineSocket.emit('machine-alive', { machineId, time: Date.now() }); machineSocket.io.engine.on('packet', packet => { if (packet.type === 'ping') machineSocket.emit('machine-alive', { machineId, time: Date.now() }); });
@@ -170,6 +184,7 @@ async function main() {
         runtime.canvasPerf = { assets: perfAssets, originalDelayMs: canvasPerfRangeDelayMs, rpcOnly };
         if (rpcOnly) runtime.boundaries.app = 'not started in RPC-only mode';
     }
+    if (markAssets) runtime.canvasMarks = { assets: markAssets, worker: 'local-stub' };
     if (canvasSmoke && (liveCanvas || process.argv.includes('--canvas-tools'))) {
         const { startDaemonControlServer } = await import('../../../../happy-cli/src/daemon/controlServer.ts');
         const { createProjectCanvasControlHandler, invokeBoundProjectCanvas } = await import('../../../../happy-cli/src/daemon/projectCanvasLocal.ts');

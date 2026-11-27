@@ -9,7 +9,7 @@ import { Typography } from '@/constants/Typography';
 import { projectFileHash } from '@/sync/projectFileHash';
 import { useMachine } from '@/sync/storage';
 import { getCurrentLanguage, t } from '@/text';
-import { readProjectCanvasFrameMessage, type ProjectCanvasCommand, type ProjectCanvasSync } from '../../../../paws-dsh-canvas/src/protocol';
+import { PROJECT_CANVAS_REVIEW_ACK_TIMEOUT_MS, readProjectCanvasFrameMessage, type ProjectCanvasCommand, type ProjectCanvasSync } from '../../../../paws-dsh-canvas/src/protocol';
 import { GoalBoardButton } from './GoalBoardButton';
 import type { ProjectCanvasProps } from './ProjectCanvas';
 import { ProjectCanvasGeneratedPicker } from './ProjectCanvasGeneratedPicker.web';
@@ -54,7 +54,7 @@ export function ProjectCanvas(props: ProjectCanvasProps) {
 }
 
 function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile, fileMaximized, compactPane,
-    onSelectSurface, onReference, generatedResults, readGeneratedResult, framePath }: ProjectCanvasProps & { framePath: string }) {
+    onSelectSurface, onReference, generatedResults, readGeneratedResult, review, onReviewMark, framePath }: ProjectCanvasProps & { framePath: string }) {
     const { theme } = useUnistyles();
     const colors = theme.colors;
     const invalidation = (useMachine(machineId)?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision;
@@ -92,6 +92,10 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
     const importFromFrame = React.useRef<(files: File[]) => void>(() => {});
     const reference = React.useRef(onReference);
     reference.current = onReference;
+    const reviewContext = React.useRef({ review, onReviewMark });
+    reviewContext.current = { review, onReviewMark };
+    const reviewPending = React.useRef<{ id: string; scope: string } | null>(null);
+    const [rejectedReview, setRejectedReview] = React.useState<{ id: string; scope: string }>();
     const sessionKey = snapshot ? JSON.stringify([getActiveAccountKey(), machineId, snapshot.id]) : null;
     const locale = getCurrentLanguage().startsWith('zh') ? 'zh' : 'en';
     const lastInvalidation = React.useRef(invalidation);
@@ -291,12 +295,19 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
             ...(activeFilter === undefined ? {} : {
                 visibleAssetIds: snapshot.assets.filter(asset => (asset.categoryId ?? null) === activeFilter).map(asset => asset.id),
             }),
+            ...(review ? { review: {
+                scope: review.scope,
+                nextNumber: review.nextNumber,
+                capacity: review.capacity,
+                marks: review.marks.filter(item => item.canvasId === snapshot.id).map(item => item.mark),
+                ...(rejectedReview?.scope === review.scope ? { rejectedId: rejectedReview.id } : {}),
+            } } : {}),
             palette: { background: colors.groupped.background, surface: colors.surface, text: colors.text,
                 divider: colors.divider, accent: colors.textLink, surfaceSelected: colors.surfaceSelected },
             ...(licenseKey ? { licenseKey } : {}),
         };
         frame.current?.contentWindow?.postMessage(message, window.location.origin);
-    }, [activeFilter, frameReady, sessionKey, snapshot, displayImages, theme.dark, colors, locale]);
+    }, [activeFilter, frameReady, sessionKey, snapshot, displayImages, theme.dark, colors, locale, review, rejectedReview]);
 
     React.useEffect(() => {
         function receive(event: MessageEvent<unknown>) {
@@ -336,6 +347,40 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
             }
             if (message.type === 'paws-project-canvas/import-failed') {
                 setStatus('importError');
+                return;
+            }
+            if (message.type === 'paws-project-canvas/review-mark') {
+                const { review, onReviewMark } = reviewContext.current;
+                if (!review || !onReviewMark || message.reviewScope !== review.scope) return;
+                const attempt = { scope: review.scope, id: message.mark.id };
+                const snapshot = current.current;
+                const remaining = message.expiresAt - Date.now();
+                const assets = message.mark.ids.flatMap(id => {
+                    const asset = snapshot.assets.find(item => item.id === id);
+                    return asset ? [{ id, name: asset.name, versionId: asset.versionId }] : [];
+                });
+                if (reviewPending.current?.scope === review.scope || !review.capacity
+                    || message.mark.number !== review.nextNumber || assets.length !== message.mark.ids.length
+                    || remaining <= 0 || remaining > PROJECT_CANVAS_REVIEW_ACK_TIMEOUT_MS) {
+                    setRejectedReview(attempt);
+                    return;
+                }
+                reviewPending.current = attempt;
+                const signal = AbortSignal.any([active, AbortSignal.timeout(remaining)]);
+                void (async () => {
+                    try {
+                        const blob = await (await fetch(message.dataUrl, { signal })).blob();
+                        signal.throwIfAborted();
+                        if (reviewContext.current.review?.scope !== attempt.scope) return;
+                        const extension = blob.type === 'image/jpeg' ? 'jpg' : 'png';
+                        const file = new File([blob], `Canvas mark ${message.mark.number}.${extension}`, { type: blob.type });
+                        await onReviewMark(file, { canvasId: snapshot.id, mark: message.mark, assets }, signal, message.expiresAt);
+                    } catch {
+                        if (!active.aborted && reviewContext.current.review?.scope === attempt.scope) setRejectedReview(attempt);
+                    } finally {
+                        if (reviewPending.current === attempt) reviewPending.current = null;
+                    }
+                })();
                 return;
             }
             if (message.type === 'paws-project-canvas/scene') {

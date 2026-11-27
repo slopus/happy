@@ -1319,6 +1319,23 @@ describe('selected composer context reaches the real encrypted writer', () => {
         expect(storage.getState().sessionMessages['writer-session']).toBe(visible);
         expect(storage.getState().currentViewingSessionId).toBeNull();
     });
+    it('quotes only visible text from a native steering event', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const sessionEncryption = subject.encryption.getSessionEncryption('writer-session');
+        const hidden = '<!-- happy:system-prompt:start -->\nCanvas review context\nprivate-canvas-id\n<!-- happy:system-prompt:end -->';
+        vi.spyOn(sessionEncryption, 'createDetached').mockReturnValue({
+            decryptMessages: async (rows: any[]) => rows.map(row => ({ ...row, content: {
+                role: 'session', content: { type: 'session', data: {
+                    id: row.id, time: row.createdAt, role: 'user', ev: { t: 'text', text: hidden + '\n\nReview this point' },
+                } },
+            } })),
+        } as any);
+        mocks.apiRequest.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
+            messages: [{ id: 'codex-steer:source-message', seq: 10, createdAt: 10, localId: null, content: { t: 'encrypted', c: 'fake' } }],
+            hasMore: false,
+        }) });
+        await expect(sync.readComposerSessionContext('writer-session')).resolves.toBe('User: Review this point');
+    });
 });
 
 

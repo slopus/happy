@@ -4,6 +4,7 @@ import { DefaultStylePanel, ImageShapeUtil, Tldraw as UpstreamTldraw, TldrawUiPo
     type Editor, type TLAssetId, type TLImageShape, type TldrawProps, type TLUiStylePanelProps } from 'tldraw';
 import { currentSync } from './bridge';
 import { attachProjectEditor, projectShapeVisibility } from './editor';
+import { ProjectCanvasReview } from './ProjectCanvasReview';
 
 export * from 'tldraw';
 
@@ -69,6 +70,7 @@ export function Tldraw({ components, onMount, ...props }: Extract<TldrawProps, {
             stopUpstream?.();
         };
     }, [scope, onMount]);
-    return <UpstreamTldraw {...props} shapeUtils={projectShapeUtils} assetUrls={assetUrls} components={{ ...components, StylePanel: CanvasStylePanel }}
+    return <UpstreamTldraw {...props} shapeUtils={projectShapeUtils} assetUrls={assetUrls}
+        components={{ ...components, StylePanel: CanvasStylePanel, InFrontOfTheCanvas: ProjectCanvasReview }}
         getShapeVisibility={projectShapeVisibility} persistenceKey={scope ? `paws-dsh-image-canvas:1:${scope}` : undefined} onMount={mount} />;
 }

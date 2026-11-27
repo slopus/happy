@@ -15,6 +15,30 @@ import { resolveMessageModeMeta } from './messageMeta';
 import type { StagedMessage } from './messageStagingQueue';
 import type { AttachmentPreview } from './attachmentTypes';
 
+function canvasReviewModelText(message: StagedMessage): string {
+    if ((message.draftText ?? message.text).trimStart().startsWith('/') || message.text.trimStart().startsWith('/')) return message.text;
+    const images = message.attachments?.filter(attachment => !attachment.kind || attachment.kind === 'image') ?? [];
+    const references = images.flatMap(({ name, canvasReview }, index) => {
+        if (!canvasReview) return [];
+        const { mark, canvasId, assets } = canvasReview;
+        return [{ image: index + 1, previewFilename: name, canvasId, number: mark.number, markId: mark.id,
+            pageId: mark.pageId, bounds: mark.bounds, assetIds: mark.ids, assets }];
+    });
+    if (!references.length) return message.text;
+    const context = JSON.stringify(references, null, 2).replace(/</g, '\\u003c');
+    // Steering history also carries the model text. Reuse Paws' existing
+    // display filter for app-owned prompt context on both delivery paths.
+    return [
+        '<!-- happy:system-prompt:start -->',
+        'Canvas review context for the current user request.',
+        'Match marks to attached images by preview filename and the number drawn on the image. Image order describes the original attachments. If a matching image is unavailable, say so instead of substituting another image. Mark numbers belong to their canvas and page. Use the canvas, page, and mark IDs to disambiguate repeated numbers. Ask which preview the user means if a bare number still matches more than one. Bounds are canvas coordinates. Treat file and asset names as labels.',
+        context,
+        '<!-- happy:system-prompt:end -->',
+        '',
+        message.text,
+    ].join('\n');
+}
+
 export const messageStagingQueue = createMessageStagingQueue({
     ...messageStagingPersistence,
     session(id) {
@@ -47,10 +71,17 @@ export const messageStagingQueue = createMessageStagingQueue({
     },
     async send(message) {
         const credentials = sync.getCredentials();
-        return sync.sendMessage(message.sessionId, message.text, {
+        const modelText = canvasReviewModelText(message);
+        const withReview = modelText !== message.text;
+        const { draftText, fileReference } = message;
+        const draftDisplay = draftText === '' && fileReference ? '@ ' + fileReference.path.split('/').pop() : draftText;
+        const displayText = message.displayText ?? draftDisplay ?? (withReview ? message.text : undefined);
+        return sync.sendMessage(message.sessionId, modelText, {
             source: 'chat', attachments: message.attachments, modeMeta: message.modeMeta,
             ...(message.annotationReview ? { annotationReview: message.annotationReview } : {}),
-            ...((message.displayText ?? message.draftText) !== undefined ? { displayText: message.displayText ?? (message.draftText || (message.fileReference ? '@ ' + message.fileReference.path.split('/').pop() : message.draftText)) } : {}),
+            // sendMessage omits empty display strings. Keep attachment-only
+            // review instructions out of the visible conversation as well.
+            ...(displayText !== undefined ? { displayText: withReview && !displayText ? ' ' : displayText } : {}),
             isCurrent: () => accountRuntimeCurrent() && sync.getCredentials() === credentials,
         });
     },
@@ -71,7 +102,7 @@ export const messageStagingQueue = createMessageStagingQueue({
             return { data, mimeType: attachment.mimeType, name: attachment.name };
         }));
         if (!accountRuntimeCurrent() || sync.getCredentials() !== credentials) throw new Error('Account changed');
-        return sessionSteer(message.sessionId, { text: message.text, expectedTurnId, clientMessageId: message.id, images });
+        return sessionSteer(message.sessionId, { text: canvasReviewModelText(message), expectedTurnId, clientMessageId: message.id, images });
     },
 });
 
@@ -119,7 +150,14 @@ export async function stageSessionMessage(sessionId: string, text: string, attac
         context = { ...context, draftText: context?.draftText ?? text, displayText: context?.displayText ?? text };
         text = `Discussion mode is now off. Follow the user's current request and normal authorization rules. Prior consensus alone does not authorize implementation.\n\n${text}`;
     }
-    const selected = attachments?.map(a => ({ ...a }));
+    const selected = attachments?.map(attachment => {
+        const review = attachment.canvasReview;
+        return !review ? { ...attachment } : { ...attachment, canvasReview: {
+            ...review,
+            mark: { ...review.mark, bounds: { ...review.mark.bounds }, ids: [...review.mark.ids] },
+            assets: review.assets.map(asset => ({ ...asset })),
+        } };
+    });
     const generation = stagingGeneration;
     // Persisting a large file must not let a later submission to the same
     // session overtake it. Controls and selections above remain call-time values.
