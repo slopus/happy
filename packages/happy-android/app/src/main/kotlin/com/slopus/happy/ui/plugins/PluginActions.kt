@@ -53,6 +53,9 @@ object PluginActionTags {
     const val INSTALL = "plugins.install"
     const val HEADER = "plugins.installationHeader"
     const val REMOVE = "plugins.remove"
+    /** A feature plugin's Uninstall, under its picture. */
+    const val UNINSTALL = "plugins.uninstall"
+    const val FEATURE_NOTE = "plugins.featureNote"
     const val DISCONNECT = "plugins.disconnect"
     const val SAVE = "plugins.save"
     const val BROWSER_NOTE = "plugins.browserNote"
@@ -113,10 +116,12 @@ internal fun RefusalAlert(acts: PluginActs) {
  * Under a plugin's picture, for someone who may manage plugins: Install,
  * full width; Install again once one is installed and the plugin may be
  * installed more than once; a Happy Agent host's reason where it can't.
- * Others read who may.
+ * Others read who may. A feature plugin is everyone's own: Install, or
+ * once installed the quiet Uninstall ([onUninstall], which asks first),
+ * then what uninstalling does, which deletes nothing.
  */
 @Composable
-internal fun PluginInstallActions(plugin: Plugin, snapshot: PluginsSnapshot, acts: PluginActs, onInstall: () -> Unit) {
+internal fun PluginInstallActions(plugin: Plugin, snapshot: PluginsSnapshot, acts: PluginActs, onUninstall: () -> Unit = {}, onInstall: () -> Unit) {
     val installed = snapshot.installationsOf(plugin.key).isNotEmpty()
     Column(
         Modifier.fillMaxWidth().padding(horizontal = PluginsSpec.heroPadding).padding(top = 16.dp),
@@ -124,6 +129,17 @@ internal fun PluginInstallActions(plugin: Plugin, snapshot: PluginsSnapshot, act
     ) {
         val refused = plugin.installability as? Installability.Refused
         when {
+            plugin.feature -> {
+                RoundButton(
+                    title = stringResource(if (installed) R.string.plugins_uninstall else R.string.plugins_install),
+                    onClick = if (installed) onUninstall else onInstall,
+                    display = if (installed) RoundButtonDisplay.Inverted else RoundButtonDisplay.Default,
+                    loading = acts.pending == (if (installed) PluginActionTags.UNINSTALL else PluginActionTags.INSTALL),
+                    enabled = acts.pending == null,
+                    modifier = Modifier.fillMaxWidth().testTag(if (installed) PluginActionTags.UNINSTALL else PluginActionTags.INSTALL),
+                )
+                Note(stringResource(R.string.plugins_feature_note, plugin.name), Modifier.testTag(PluginActionTags.FEATURE_NOTE))
+            }
             !snapshot.canManage -> if (!installed) Note(stringResource(R.string.plugins_manage_note))
             refused != null -> Note(refused.reason ?: stringResource(R.string.plugins_not_installable))
             !installed || plugin.multiInstance -> RoundButton(
@@ -140,9 +156,20 @@ internal fun PluginInstallActions(plugin: Plugin, snapshot: PluginsSnapshot, act
 }
 
 @Composable
-private fun Note(text: String) {
-    Text(text, style = happyTextStyle(fontSize = 14, lineHeight = 20), color = HappyTheme.colors.textSecondary, modifier = Modifier.fillMaxWidth())
+private fun Note(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = happyTextStyle(fontSize = 14, lineHeight = 20), color = HappyTheme.colors.textSecondary, modifier = modifier.fillMaxWidth())
 }
+
+/** Asks before a feature plugin is uninstalled, saying that nothing is deleted. */
+@Composable
+internal fun uninstallAlert(plugin: Plugin, onUninstall: () -> Unit) = Alert(
+    stringResource(R.string.plugins_uninstall_title, plugin.name),
+    stringResource(R.string.plugins_uninstall_body, plugin.name),
+    listOf(
+        AlertButton(stringResource(R.string.common_cancel)),
+        AlertButton(stringResource(R.string.plugins_uninstall), destructive = true, onClick = onUninstall),
+    ),
+)
 
 /**
  * One installation's page: its state, then for someone who may manage it

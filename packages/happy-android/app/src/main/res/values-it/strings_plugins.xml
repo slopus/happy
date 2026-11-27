@@ -36,4 +36,8 @@
     <string name="plugins_field_required">Obbligatorio</string>
     <string name="plugins_not_installable">Happy Agent non può ancora installare questo plugin.</string>
     <string name="plugins_signed_in_browser">Completa l’accesso nel browser, poi torna qui.</string>
+    <string name="plugins_uninstall">Disinstalla</string>
+    <string name="plugins_uninstall_title">Disinstallare %1$s?</string>
+    <string name="plugins_uninstall_body">%1$s verrà nascosto a te in tutti i team di cui fai parte. Non viene eliminato nulla e reinstallandolo torna tutto.</string>
+    <string name="plugins_feature_note">Solo per te, in tutti i team di cui fai parte. Disinstallare nasconde %1$s e ne conserva tutti i dati: ciò che il tuo team ha creato resta e reinstallandolo torna tutto.</string>
 </resources>

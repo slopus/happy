@@ -36,4 +36,8 @@
     <string name="plugins_field_required">必填</string>
     <string name="plugins_not_installable">Happy Agent 暂时无法安装此插件。</string>
     <string name="plugins_signed_in_browser">请在浏览器中完成登录，然后回到这里。</string>
+    <string name="plugins_uninstall">卸载</string>
+    <string name="plugins_uninstall_title">卸载%1$s？</string>
+    <string name="plugins_uninstall_body">%1$s 将在你所在的每个团队中对你隐藏。不会删除任何内容，重新安装后一切都会恢复。</string>
+    <string name="plugins_feature_note">仅对你生效，适用于你所在的每个团队。卸载会隐藏%1$s并保留其所有数据：团队用它创建的内容仍会保留，重新安装后一切都会恢复。</string>
 </resources>

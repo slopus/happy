@@ -62,8 +62,15 @@ data class Plugin(
     /** Only the methods that work on this server. */
     val authMethods: List<PluginAuthMethod>,
     val installability: Installability,
-    /** It may be installed more than once (a cluster's plugins always may). */
+    /** It may be installed more than once (a cluster's integrations always may). */
     val multiInstance: Boolean,
+    /**
+     * A feature plugin (`kind: "feature"`): one of Happy's own features,
+     * available to the person while their account has it installed. Each
+     * member installs and uninstalls their own, whatever their role; there
+     * is nothing to set up, and uninstalling deletes nothing.
+     */
+    val feature: Boolean = false,
 )
 
 /** Where one installation stands. */
@@ -97,6 +104,8 @@ data class PluginInstallation(
     val image: PluginImage?,
     /** False for a plugin this server no longer offers: it can't be changed or removed then. */
     val available: Boolean,
+    /** The person's own installation of a feature plugin ([Plugin.feature]), whose ID is the plugin's. */
+    val feature: Boolean = false,
 )
 
 /** An account an installation signed in to, which disconnect may remove alone. */
@@ -114,6 +123,9 @@ data class PluginsSnapshot(
     fun plugin(key: String): Plugin? = plugins.firstOrNull { it.key == key }
 
     fun installationsOf(key: String): List<PluginInstallation> = installations.filter { it.pluginKey == key }
+
+    /** Whether the person may install or uninstall [plugin]: their own feature plugins always, anything else with the role for it. */
+    fun mayInstall(plugin: Plugin): Boolean = plugin.feature || canManage
 
     /** Plugins with no installation, by name: the catalog's rest. */
     val available: List<Plugin> get() = installations.map { it.pluginKey }.toSet().let { installed -> plugins.filter { it.key !in installed } }

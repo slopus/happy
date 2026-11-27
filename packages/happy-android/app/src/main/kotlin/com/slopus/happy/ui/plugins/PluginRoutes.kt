@@ -32,6 +32,7 @@ import com.slopus.happy.plugins.PluginConnection
 import com.slopus.happy.plugins.PluginsSource
 import com.slopus.happy.plugins.PluginsState
 import com.slopus.happy.ui.browser.openCustomTab
+import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.connection.LocalAgentPictures
 import com.slopus.happy.ui.page
@@ -76,8 +77,12 @@ fun NavGraphBuilder.pluginRoutes(nav: NavHostController, plugins: @Composable (c
     }
 }
 
-/** A page's plugins and the pictures they wear; [source] null where the connection is gone. */
-class PagePlugins(val source: PluginsSource?, val pictures: AgentPictures?)
+/**
+ * A page's plugins and the pictures they wear; [source] null where the
+ * connection is gone. [noteFeature] tells the connection a feature plugin
+ * was installed or uninstalled here, so its feature shows or hides at once.
+ */
+class PagePlugins(val source: PluginsSource?, val pictures: AgentPictures?, val noteFeature: (id: String, available: Boolean) -> Unit = { _, _ -> })
 
 /** One page's view of the connection's plugins, for as long as the page is on the stack. */
 internal class PluginsHolder(session: AgentSession?) : ViewModel() {
@@ -90,7 +95,7 @@ internal class PluginsHolder(session: AgentSession?) : ViewModel() {
 private fun rememberPlugins(graph: AppGraph, connectionId: String): PagePlugins {
     val session = remember(connectionId) { graph.agentSessions.session(connectionId) }
     val holder = viewModel { PluginsHolder(session) }
-    return PagePlugins(holder.source, session?.pictures)
+    return PagePlugins(holder.source, session?.pictures) { id, available -> session?.features?.note(id, available) }
 }
 
 /** Back from a sign-in in the browser, the server has finished it. */
@@ -117,6 +122,7 @@ private fun PluginPage(plugins: PagePlugins, nav: NavHostController, connectionI
     val acts = remember { PluginActs() }
     val scope = rememberCoroutineScope()
     val manage = (state as? PluginsState.Loaded)?.snapshot?.canManage == true
+    var uninstalling by remember { mutableStateOf<com.slopus.happy.plugins.Plugin?>(null) }
     CompositionLocalProvider(LocalAgentPictures provides plugins.pictures) {
         PluginScreen(
             state,
@@ -128,22 +134,36 @@ private fun PluginPage(plugins: PagePlugins, nav: NavHostController, connectionI
                     title = installationTitle(installation),
                     subtitle = statusWords(installation),
                     subtitleColor = statusColor(installation),
-                    onClick = if (manage) ({ nav.navigate(PluginInstallationRoute(connectionId, installation.id)) }) else null,
-                    showChevron = manage,
+                    // A feature plugin's has nothing to set up, sign in to or name.
+                    onClick = if (manage && !installation.feature) ({ nav.navigate(PluginInstallationRoute(connectionId, installation.id)) }) else null,
+                    showChevron = manage && !installation.feature,
                     modifier = Modifier.testTag(PluginsTags.installation(installation.id)),
                 )
             },
             actions = { plugin, snapshot ->
-                PluginInstallActions(plugin, snapshot, acts) {
+                PluginInstallActions(plugin, snapshot, acts, onUninstall = { uninstalling = plugin }) {
                     scope.launch {
                         var id: String? = null
+                        val installed = acts.run(PluginActionTags.INSTALL) { id = source.write { install(plugin) } }
+                        if (installed && plugin.feature) plugins.noteFeature(plugin.id, true)
                         // A plugin that does nothing until it signs in opens its installation, where that is done.
-                        if (acts.run(PluginActionTags.INSTALL) { id = source.write { install(plugin) } } && plugin.authRequired) {
+                        if (installed && plugin.authRequired) {
                             id?.let { nav.navigate(PluginInstallationRoute(connectionId, it)) }
                         }
                     }
                 }
             },
+        )
+    }
+    uninstalling?.let { plugin ->
+        HappyAlert(
+            uninstallAlert(plugin) {
+                val installation = (state as? PluginsState.Loaded)?.snapshot?.installationsOf(plugin.key)?.firstOrNull()?.id ?: plugin.id
+                scope.launch {
+                    if (acts.run(PluginActionTags.UNINSTALL) { source.write { remove(installation) } }) plugins.noteFeature(plugin.id, false)
+                }
+            },
+            onDismiss = { uninstalling = null },
         )
     }
     RefusalAlert(acts)

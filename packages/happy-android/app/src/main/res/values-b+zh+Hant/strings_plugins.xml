@@ -36,4 +36,8 @@
     <string name="plugins_field_required">必填</string>
     <string name="plugins_not_installable">Happy Agent 暫時無法安裝此外掛程式。</string>
     <string name="plugins_signed_in_browser">請在瀏覽器中完成登入，然後回到這裡。</string>
+    <string name="plugins_uninstall">解除安裝</string>
+    <string name="plugins_uninstall_title">解除安裝%1$s？</string>
+    <string name="plugins_uninstall_body">%1$s 將在你所在的每個團隊中對你隱藏。不會刪除任何內容，重新安裝後一切都會恢復。</string>
+    <string name="plugins_feature_note">僅對你生效，適用於你所在的每個團隊。解除安裝會隱藏%1$s並保留其所有資料：團隊用它建立的內容仍會保留，重新安裝後一切都會恢復。</string>
 </resources>

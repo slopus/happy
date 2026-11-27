@@ -150,12 +150,12 @@ class PipelinesTest {
     }
 
     /**
-     * Pipelines turned off for the account: a route's `403 feature_not_installed`
+     * The Pipelines plugin uninstalled for the account: a route's `403 feature_not_installed`
      * tells the session and is no failure; the page is leaving, and what showed stays.
      */
     @Test
     fun aRouteRefusedAsTurnedOffTellsTheSessionAndShowsNoError() = runTest {
-        val off = """{"error":"Pipelines are turned off for your account. Turn them on in your account settings to use them again.","code":"feature_not_installed","feature":"pipelines"}"""
+        val off = """{"error":"Pipelines are not installed for your account. Install the Pipelines plugin to use them again.","code":"feature_not_installed","feature":"pipelines","plugin":"pipelines"}"""
         val server = Server(
             mapOf(
                 "GET /v0/pipelines" to listOf(200 to pipelines, 403 to off),

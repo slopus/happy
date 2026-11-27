@@ -1,6 +1,6 @@
 package com.slopus.happy.pipelines
 
-import com.slopus.happy.agent.AccountFeature
+import com.slopus.happy.agent.Feature
 import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.decode
@@ -64,18 +64,18 @@ interface PipelinesBackend {
 }
 
 /**
- * The person turned Pipelines off for their account: a route of theirs
+ * The person uninstalled the Pipelines plugin: a route of theirs
  * answered `403 feature_not_installed`. Not a failure to show; the pages
  * leave.
  */
-class PipelinesTurnedOff : Exception("Pipelines are turned off for this account")
+class PipelinesTurnedOff : Exception("The Pipelines plugin isn't installed for this account")
 
 /**
  * happy-cluster API.md, "Pipelines". The readers are desktop's
  * (`pipelineRead.ts`), checked against production answers: what isn't the
  * shape is left out rather than guessed at, a name the server leaves out is
  * the ID, and an agent trigger without its agent is still an agent's run.
- * A route refused because the person turned Pipelines off tells
+ * A route refused because the person uninstalled the Pipelines plugin tells
  * [turnedOff] and throws [PipelinesTurnedOff].
  */
 class ClusterPipelines(private val client: AgentClient, private val turnedOff: () -> Unit = {}) : PipelinesBackend {
@@ -133,7 +133,7 @@ class ClusterPipelines(private val client: AgentClient, private val turnedOff: (
     private inline fun <T> call(request: () -> T): T = try {
         request()
     } catch (e: AgentApiException) {
-        if (!AccountFeature.refusedAsOff(e, AccountFeature.PIPELINES)) throw e
+        if (!Feature.notInstalled(e, Feature.PIPELINES)) throw e
         turnedOff()
         throw PipelinesTurnedOff()
     }

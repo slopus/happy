@@ -2785,6 +2785,15 @@ words are `strings_plugins.xml` in every locale.
   Signed in with per-account Disconnect, Remove; each confirmed). Someone
   whose role can't manage plugins reads them. `NavHostController.openPlugin`
   opens one plugin from anywhere (Gen UI's `plugin` action).
+- **Feature plugins** (happy-cluster API.md, "Feature plugins"): a catalog
+  entry of `kind: "feature"` (`Plugin.feature`) is one of the app's own
+  features, the person's own in every team. Anyone may install it (no
+  `canManage`, `PluginsSnapshot.mayInstall`), once, with nothing to set up:
+  its page has Install, or Uninstall (confirmed) and a note that uninstalling
+  keeps the data. Its installation (ID = the plugin's) opens no page. The
+  catalog's `installed` stands in for an installations list a member is
+  refused. Installing or uninstalling tells `FeaturesSource` at once
+  (`noteFeature`); `features.updated` from the server follows.
 - **Fixture:** debug builds have `ui.plugins.PluginsFixturesActivity`: the
   real pages over an in-memory server (`--ez plugins.member true` for a
   member).
@@ -2799,27 +2808,26 @@ pages; words are `strings_pipelines.xml` in every locale.
 - **Where:** home's Pipelines row under Plugins (`AgentFeedRow.Pipelines`,
   `MainPanelKey.PIPELINES` on the tablet), shown only while health says
   `capabilities.pipelines` (a `CapabilityAvailability` kept per connection
-  so the row doesn't come and go) and the person hasn't turned them off
+  so the row doesn't come and go) and the person hasn't uninstalled them
   (`AgentSession.pipelinesAvailable`). Nothing is probed: without the flag
   there is no row and no request.
-- **Turned off for the account** (happy-cluster API.md, "Account
-  features"; `agent/AccountFeatures.kt`): the person's own switch, the same
-  in every team they are in; this app only follows it. `AccountFeaturesSource`
-  keeps `GET /v0/account/features` beside the catalog, read on every `hello`
+- **Uninstalled** (happy-cluster API.md, "Feature plugins";
+  `agent/Features.kt`): Pipelines is a feature plugin (see Plugins), the
+  person's own in every team they are in. `FeaturesSource` keeps
+  `GET /v0/features` (`available` per feature), read on every `hello`
   (coming back to the foreground starts the link, so that is one too) where
-  the server runs pipelines or has answered the list before, and once health
-  says so. `account.features.updated` replaces the list with its payload's,
-  live, and a read on its way meanwhile is dropped. 404/501 (older servers)
-  means every feature is on; so does a feature not listed or a list not
-  known yet. While Pipelines is off (`pipelinesTurnedOff`): no home row (so
-  no tablet or search entry), a run's card in a chat opens nothing, and
+  health says `capabilities.features`, and once it does. `features.updated`
+  replaces the list with its payload's, live, and a read on its way
+  meanwhile is dropped. Without the flag, or on 404/501, every feature is
+  available; so is a feature not listed or a list not known yet. While
+  Pipelines is unavailable (`pipelinesTurnedOff`): no home row (so no tablet
+  or search entry), a run's card in a chat opens nothing, and
   `PipelinesOffEffect` takes every pipeline page off the stack, with what
   was opened over them, back to the page under the first (the empty panel
-  on a tablet). A route answering `403 feature_not_installed` turns it off
-  here at once (`ClusterPipelines`' `turnedOff`), and its read never answers
-  (`PipelinesTurnedOff` in `attempt`), so the leaving page shows no error.
-  There is no switch in Settings: turning the feature on and off is moving
-  to the Plugins page (a plugin of `kind: "feature"`), contract pending.
+  on a tablet). A route answering `403 feature_not_installed` marks it
+  unavailable here at once (`ClusterPipelines`' `turnedOff`), and its read
+  never answers (`PipelinesTurnedOff` in `attempt`), so the leaving page
+  shows no error. There is no switch in Settings.
 - **Wire:** `PipelinesBackend` (`ClusterPipelines`). Readers are tolerant
   as desktop's: what isn't the shape is left out, a name the server leaves
   out is the ID, `trigger.agentId` may be null. `GET /v0/pipeline-runs`
@@ -2894,10 +2902,12 @@ pages; words are `strings_pipelines.xml` in every locale.
   pipeline, with `--ei pipelines.version 2` a version, and with
   `--es pipelines.node triage` that version's node; `--ez pipelines.chat
   true` a chat told how its runs ended (`pipelines.chat.before` draws the
-  agent's own messages as before they were told apart). Home's row follows
-  the account's switch, and `am start -f 0x20000000 … --es pipelines.feature
-  off|on` is another app changing it (`account.features.updated`; with `--ez
-  pipelines.feature.quiet true` no event, so the next read is refused 403).
+  agent's own messages as before they were told apart). Home has Plugins
+  too, with Pipelines as a feature plugin for a member; its row follows it,
+  and `am start -f 0x20000000 … --es pipelines.feature off|on` is another app
+  uninstalling or installing it (`plugins.changed` and `features.updated`;
+  with `--ez pipelines.feature.quiet true` no event, so the next read is
+  refused 403).
 
 ## Autocomplete
 

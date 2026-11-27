@@ -100,7 +100,8 @@ internal fun statusColor(installation: PluginInstallation): Color {
  * Installed, one row per installation with its picture, its name and its
  * state on the right, then Available, the plugins with no installation,
  * each with its description under its name. Every row opens its plugin.
- * A member whose role may not manage plugins reads why under the list.
+ * A member whose role may not manage plugins reads why under the list,
+ * unless all there is to install is feature plugins, which are theirs.
  * Rows are [Item]s: 32 picture, 16/24 title, 14/20 subtitle.
  */
 @Composable
@@ -154,7 +155,8 @@ private fun PluginsList(snapshot: PluginsSnapshot, onOpen: (String) -> Unit) {
     if (available.isNotEmpty()) {
         ItemGroup(
             title = stringResource(R.string.plugins_available),
-            footer = if (snapshot.canManage) null else stringResource(R.string.plugins_manage_note),
+            // Feature plugins are everyone's own to install: the note is for the rest.
+            footer = if (snapshot.canManage || available.all { it.feature }) null else stringResource(R.string.plugins_manage_note),
         ) {
             for (plugin in available) {
                 Item(

@@ -5,8 +5,15 @@ import android.content.Intent
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
-import com.slopus.happy.agent.AccountFeature
-import com.slopus.happy.agent.AccountFeaturesSource
+import com.slopus.happy.agent.AgentClient
+import com.slopus.happy.agent.ClusterFeatures
+import com.slopus.happy.agent.Feature
+import com.slopus.happy.agent.FeaturesSource
+import com.slopus.happy.plugins.ClusterPlugins
+import com.slopus.happy.plugins.PluginsSource
+import com.slopus.happy.ui.plugins.PagePlugins
+import com.slopus.happy.ui.plugins.PluginsRoute
+import com.slopus.happy.ui.plugins.pluginRoutes
 import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -104,17 +111,19 @@ import kotlinx.serialization.json.put
  * with `--es pipelines.node triage` too one of that version's nodes; `--ez pipelines.chat true`
  * a chat told how its runs ended, and with `--ez pipelines.chat.before true` as it drew before).
  *
- * The person's account switch for Pipelines ([FakeAccountFeatures]): home's
- * row shows while it is on, and every pipeline page leaves when it goes off
- * ([PipelinesOffEffect]). Another of the person's apps changing it is
+ * The Pipelines feature plugin ([FeaturePluginsServer], read by the real
+ * plugin and feature clients): home's Pipelines row shows while the person
+ * has it installed, its Plugins row opens the real Plugins pages, where a
+ * member installs and uninstalls it, and every pipeline page leaves when it
+ * goes ([PipelinesOffEffect]). Another of the person's apps doing it is
  * `adb shell am start -f 0x20000000 -n …/.ui.pipelines.PipelinesFixturesActivity --es pipelines.feature off|on`,
- * which journals `account.features.updated`; with `--ez pipelines.feature.quiet true`
- * the event doesn't come, so the next pipeline read is refused `403 feature_not_installed`.
+ * which journals `plugins.changed` and `features.updated`; with `--ez pipelines.feature.quiet true`
+ * the events don't come, so the next pipeline read is refused `403 feature_not_installed`.
  */
 class PipelinesFixturesActivity : ComponentActivity() {
     @Serializable private data object FixtureHomeRoute
 
-    /** What another of the person's apps did to the switch: `--es pipelines.feature off|on`, delivered on top. */
+    /** What another of the person's apps did to the Pipelines plugin: `--es pipelines.feature off|on`, delivered on top. */
     private val elsewhere = MutableSharedFlow<Pair<Boolean, Boolean>>(extraBufferCapacity = 8)
 
     override fun onNewIntent(intent: Intent) {
@@ -142,14 +151,21 @@ class PipelinesFixturesActivity : ComponentActivity() {
                 val events = remember { MutableSharedFlow<AgentEvent>(extraBufferCapacity = 64) }
                 val pipelinesBackend = remember { FakePipelines(System.currentTimeMillis()) { type, data -> events.tryEmit(AgentEvent(null, type, data)) } }
                 LaunchedEffect(Unit) { pipelinesBackend.play() }
-                // The person's account features, followed as a session follows them.
+                // The person's feature plugins and what they make available, followed as a session follows them.
                 val scope = rememberCoroutineScope()
-                val features = remember { FakeAccountFeatures { list -> events.tryEmit(AgentEvent(null, AccountFeature.UPDATED, AccountFeature.toJson(list))) } }
-                val accountFeatures = remember { AccountFeaturesSource(features, events, MutableStateFlow(true), { null }, {}, scope) }
-                val turnedOff = remember { accountFeatures.off(AccountFeature.PIPELINES) }
+                val server = remember { FeaturePluginsServer { events.tryEmit(it) } }
+                val client = remember { AgentClient(server, "fixture", cloud = true) }
+                val features = remember { FeaturesSource(ClusterFeatures(client), events, MutableStateFlow(true), { null }, {}, scope) }
+                val turnedOff = remember { features.unavailable(Feature.PIPELINES) }
                 val off by turnedOff.collectAsState()
-                LaunchedEffect(Unit) { elsewhere.collect { (enabled, quiet) -> features.change(enabled, quiet) } }
-                val backend = remember { FeatureGatedPipelines(pipelinesBackend, features) { accountFeatures.turnedOff(AccountFeature.PIPELINES) } }
+                LaunchedEffect(Unit) {
+                    // As a connect: the hello reads what is available.
+                    events.emit(AgentEvent(null, AgentEvent.HELLO, JsonObject(emptyMap())))
+                    elsewhere.collect { (enabled, quiet) -> server.change(enabled, quiet) }
+                }
+                val backend = remember { FeatureGatedPipelines(pipelinesBackend, server) { features.note(Feature.PIPELINES, available = false) } }
+                // A member: integrations are the managers', Pipelines theirs to install.
+                val plugins = remember { PluginsSource(ClusterPlugins(client) { false }, events, scope) }
                 val agents = AgentNames { mapOf("a-chief" to "Happy", "a-release" to "Release bot")[it] }
                 val people = PeopleNames { mapOf("u-steve" to "Steve", "u-kirill" to "Kirill")[it] }
                 val start: Any = when {
@@ -178,6 +194,7 @@ class PipelinesFixturesActivity : ComponentActivity() {
                                     onOpen = {},
                                     contentPadding = PaddingValues(),
                                     onOpenPipelines = { nav.navigate(PipelinesRoute("fixture")) },
+                                    onOpenPlugins = { nav.navigate(PluginsRoute("fixture")) },
                                 )
                             }
                         }
@@ -187,6 +204,7 @@ class PipelinesFixturesActivity : ComponentActivity() {
                             }
                         }
                         pipelineRoutes(nav) { PagePipelines(backend, events, agents, people) }
+                        pluginRoutes(nav) { PagePlugins(plugins, null) { id, available -> features.note(id, available) } }
                     }
                     PipelinesOffEffect(turnedOff, nav)
                 }

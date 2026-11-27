@@ -12,6 +12,8 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Assert.fail
 import org.junit.Test
@@ -96,6 +98,54 @@ class PluginsTest {
             mapOf("GET /v0/plugins" to listOf(200 to catalog), "GET /v0/plugins/installations" to listOf(200 to """{"installations":[],"canManage":false}""")),
         )
         assertEquals(false, backend(server, canManage = true).read()!!.canManage)
+    }
+
+    /**
+     * A feature plugin (happy-cluster API.md, "Feature plugins"): listed with
+     * `kind: "feature"` and whether the person has it, never more than once,
+     * installed and uninstalled through the installation routes; a member
+     * who can't read the installations still has their own.
+     */
+    @Test
+    fun aFeaturePluginIsThePersonsOwn() = runBlocking {
+        val features = """{"plugins":[
+            {"id":"github","kind":"integration","name":"GitHub","tools":[],"auth":{"required":true,"methods":[]}},
+            {"id":"pipelines","kind":"feature","installed":true,"name":"Pipelines","version":"1.0.0","tools":[{"name":"run_pipeline","summary":"Starts a run."}],"auth":{"required":false,"methods":[]}}]}"""
+        val installation = """{"id":"pipelines","plugin":"pipelines","pluginName":"Pipelines","kind":"feature","ordinal":1,"label":null,"status":"active","reason":null,"authMethod":null,"toolPrefix":"","available":true}"""
+        // A manager reads the installation the server lists.
+        val manager = backend(Server(mapOf("GET /v0/plugins" to listOf(200 to features), "GET /v0/plugins/installations" to listOf(200 to """{"installations":[$installation],"canManage":true}""")))).read()!!
+        val pipelines = manager.plugin("pipelines")!!
+        assertTrue(pipelines.feature)
+        assertFalse("the person's own: never twice", pipelines.multiInstance)
+        assertFalse(pipelines.authRequired)
+        assertFalse(manager.plugin("github")!!.feature)
+        assertEquals(listOf(PluginInstallation("pipelines", "pipelines", "Pipelines", 1, null, InstallationStatus.Active, null, null, true, feature = true)), manager.installations)
+        // A member the installations are refused to: their own still shows, from the catalog's `installed`.
+        val member = backend(Server(mapOf("GET /v0/plugins" to listOf(200 to features), "GET /v0/plugins/installations" to listOf(403 to """{"error":"This needs the mcp.manage permission.","code":"forbidden"}"""))), canManage = false).read()!!
+        assertEquals(listOf("pipelines"), member.installations.map { it.id })
+        assertTrue(member.installations.single().feature)
+        assertTrue("anyone installs their own", member.mayInstall(pipelines))
+        assertFalse(member.mayInstall(member.plugin("github")!!))
+        // Uninstalled: in the catalog alone.
+        val refused = listOf(403 to """{"error":"This needs the mcp.manage permission.","code":"forbidden"}""")
+        val uninstalled = backend(Server(mapOf("GET /v0/plugins" to listOf(200 to features.replace("\"installed\":true", "\"installed\":false")), "GET /v0/plugins/installations" to refused)), canManage = false).read()!!
+        assertEquals(emptyList<PluginInstallation>(), uninstalled.installations)
+        assertEquals(listOf("pipelines"), uninstalled.available.filter { it.feature }.map { it.id })
+        // Install and uninstall: the installation routes, by the plugin's ID; uninstalling what isn't installed (404) is done.
+        val server = Server(
+            mapOf(
+                "POST /v0/plugins/installations" to listOf(201 to """{"installation":$installation}"""),
+                "DELETE /v0/plugins/installations/pipelines" to listOf(200 to """{"deleted":true}""", 404 to """{"error":"Not found.","code":"not_found"}"""),
+            ),
+        )
+        val writes = backend(server, canManage = false)
+        assertEquals("pipelines", writes.install(pipelines))
+        writes.remove("pipelines")
+        writes.remove("pipelines")
+        assertEquals(
+            listOf("""POST /v0/plugins/installations {"plugin":"pipelines"}""", "DELETE /v0/plugins/installations/pipelines", "DELETE /v0/plugins/installations/pipelines"),
+            server.asked,
+        )
     }
 
     @Test

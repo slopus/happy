@@ -371,22 +371,25 @@ class AgentSession internal constructor(
     /** Whether the server runs pipelines: bootstrap health's `capabilities.pipelines`, never probed. */
     private val pipelinesAvailability = keptCapability(PIPELINES_AVAILABLE)
 
+    /** Whether the server has feature plugins: bootstrap health's `capabilities.features`, never probed. */
+    private val featuresAvailability = keptCapability(FEATURES_AVAILABLE)
+
     /**
-     * The person's account features here (happy-cluster API.md, "Account
-     * features"), read only where the server runs one the switch governs
-     * (today Pipelines alone) or has answered the list before.
+     * Which of Happy's features are available to the person here
+     * (happy-cluster API.md, "Feature plugins"): whether their account has
+     * each feature plugin installed. Without health's flag, every one is.
      */
-    val accountFeatures = AccountFeaturesSource(
-        ClusterAccountFeatures(client), events, served = pipelinesAvailability.available,
-        kept = { withContext(Dispatchers.IO) { cachedResource(AccountFeaturesSource.RESOURCE) } },
-        keep = { value -> withContext(Dispatchers.IO) { keepResource(AccountFeaturesSource.RESOURCE, value) } },
+    val features = FeaturesSource(
+        ClusterFeatures(client), events, served = featuresAvailability.available,
+        kept = { withContext(Dispatchers.IO) { cachedResource(FeaturesSource.RESOURCE) } },
+        keep = { value -> withContext(Dispatchers.IO) { keepResource(FeaturesSource.RESOURCE, value) } },
         scope = scope,
     )
 
-    /** The person turned Pipelines off for their account: every way to them hides, and a pipeline page open leaves. */
-    val pipelinesTurnedOff: StateFlow<Boolean> = accountFeatures.off(AccountFeature.PIPELINES)
+    /** The person uninstalled the Pipelines plugin: every way to Pipelines hides, and a pipeline page open leaves. */
+    val pipelinesTurnedOff: StateFlow<Boolean> = features.unavailable(Feature.PIPELINES)
 
-    /** Whether home lists Pipelines: the server runs them and the person hasn't turned them off. */
+    /** Whether home lists Pipelines: the server runs them and the person has the Pipelines plugin installed. */
     val pipelinesAvailable: StateFlow<Boolean> = combine(pipelinesAvailability.available, pipelinesTurnedOff) { served, off -> served && !off }
         .distinctUntilChanged()
         .stateIn(scope, SharingStarted.Eagerly, false)
@@ -1103,6 +1106,7 @@ class AgentSession internal constructor(
         client.noteHealth(bootstrap.health ?: JsonObject(emptyMap()))
         pluginsAvailability.noteHealth(info.plugins)
         pipelinesAvailability.noteHealth(info.pipelines)
+        featuresAvailability.noteHealth(info.features)
         providerSignInAvailability.noteHealth(info.providerSignIn)
         avatarHash = info.thumbhash?.takeIf { it != known?.thumbhash || known.avatarFile == null }
         if (known != null) {
@@ -1461,6 +1465,7 @@ class AgentSession internal constructor(
     private companion object {
         /** Where the connection keeps whether it has pipelines. */
         const val PIPELINES_AVAILABLE = "pipelines-available"
+        const val FEATURES_AVAILABLE = "features-available"
         /** Where the connection keeps whether its accounts sign in here. */
         const val PROVIDER_SIGN_IN_AVAILABLE = "provider-sign-in-available"
 

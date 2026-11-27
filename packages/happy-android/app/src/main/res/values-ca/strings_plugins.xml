@@ -36,4 +36,8 @@
     <string name="plugins_field_required">Obligatori</string>
     <string name="plugins_not_installable">Happy Agent encara no pot instal·lar aquest connector.</string>
     <string name="plugins_signed_in_browser">Acaba d’iniciar la sessió al navegador i torna aquí.</string>
+    <string name="plugins_uninstall">Desinstal·la</string>
+    <string name="plugins_uninstall_title">Vols desinstal·lar %1$s?</string>
+    <string name="plugins_uninstall_body">%1$s s\'amagarà per a tu a tots els equips dels quals formes part. No s\'esborra res i, si el tornes a instal·lar, tot torna.</string>
+    <string name="plugins_feature_note">Només per a tu, a tots els equips dels quals formes part. Desinstal·lar amaga %1$s i en conserva totes les dades: el que el teu equip hi ha fet es queda i, si el tornes a instal·lar, tot torna.</string>
 </resources>

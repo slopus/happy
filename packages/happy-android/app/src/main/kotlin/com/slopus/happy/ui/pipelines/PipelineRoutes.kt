@@ -15,7 +15,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
-import com.slopus.happy.agent.AccountFeature
+import com.slopus.happy.agent.Feature
 import com.slopus.happy.agent.AgentEvent
 import com.slopus.happy.pipelines.ClusterPipelines
 import com.slopus.happy.pipelines.PipelineNodeLog
@@ -58,8 +58,8 @@ import kotlinx.serialization.Serializable
 fun NavGraphBuilder.pipelineRoutes(graph: AppGraph, nav: NavHostController) = pipelineRoutes(nav) { connectionId -> rememberPipelines(graph, connectionId) }
 
 /**
- * Pipelines turned off for the person's account (Settings › Profile here,
- * any of their apps elsewhere, or a route refusing them), live: every
+ * Pipelines unavailable to the person (they uninstalled the Pipelines
+ * plugin here or in any of their apps, or a route refused them), live: every
  * pipeline page leaves, with whatever was opened over them, back to the
  * page under the first one. On the tablet that is the empty panel when
  * Pipelines was its root.
@@ -157,7 +157,7 @@ private fun rememberPipelines(graph: AppGraph, connectionId: String): PagePipeli
     // Agents by the names home shows them by, as they are when a row draws.
     return remember(session) {
         PagePipelines(
-            session?.let { ClusterPipelines(it.client) { it.accountFeatures.turnedOff(AccountFeature.PIPELINES) } },
+            session?.let { ClusterPipelines(it.client) { it.features.note(Feature.PIPELINES, available = false) } },
             session?.events ?: MutableSharedFlow(),
             AgentNames { id -> session?.feed?.value?.title(id) },
             PeopleNames { id -> session?.team?.users?.value?.get(id)?.name?.takeIf { it.isNotBlank() } },

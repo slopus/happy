@@ -36,4 +36,8 @@
     <string name="plugins_field_required">Wymagane</string>
     <string name="plugins_not_installable">Happy Agent nie może jeszcze zainstalować tej wtyczki.</string>
     <string name="plugins_signed_in_browser">Dokończ logowanie w przeglądarce i wróć tutaj.</string>
+    <string name="plugins_uninstall">Odinstaluj</string>
+    <string name="plugins_uninstall_title">Odinstalować %1$s?</string>
+    <string name="plugins_uninstall_body">%1$s zostanie ukryty przed Tobą w każdym zespole, do którego należysz. Nic nie zostanie usunięte, a ponowna instalacja przywróci wszystko.</string>
+    <string name="plugins_feature_note">Tylko dla Ciebie, w każdym zespole, do którego należysz. Odinstalowanie ukrywa %1$s i zachowuje wszystkie dane: to, co zespół z nim stworzył, zostaje, a ponowna instalacja przywraca wszystko.</string>
 </resources>

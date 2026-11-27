@@ -41,4 +41,8 @@
     <string name="plugins_field_required">Required</string>
     <string name="plugins_not_installable">Happy Agent can\'t install this plugin yet.</string>
     <string name="plugins_signed_in_browser">Finish signing in in your browser, then come back here.</string>
+    <string name="plugins_uninstall">Uninstall</string>
+    <string name="plugins_uninstall_title">Uninstall %1$s?</string>
+    <string name="plugins_uninstall_body">%1$s will be hidden from you in every team you belong to. Nothing is deleted, and installing it again brings everything back.</string>
+    <string name="plugins_feature_note">Just for you, in every team you belong to. Uninstalling hides %1$s and keeps all its data: what your team made with it stays, and installing it again brings everything back.</string>
 </resources>

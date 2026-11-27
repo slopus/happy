@@ -36,4 +36,8 @@
     <string name="plugins_field_required">必須</string>
     <string name="plugins_not_installable">Happy Agent はまだこのプラグインをインストールできません。</string>
     <string name="plugins_signed_in_browser">ブラウザーでサインインを完了してから、ここに戻ってください。</string>
+    <string name="plugins_uninstall">アンインストール</string>
+    <string name="plugins_uninstall_title">%1$sをアンインストールしますか？</string>
+    <string name="plugins_uninstall_body">所属するすべてのチームで、%1$sがあなたに表示されなくなります。何も削除されず、再インストールするとすべて元に戻ります。</string>
+    <string name="plugins_feature_note">あなただけに適用され、所属するすべてのチームに反映されます。アンインストールすると%1$sは非表示になりますが、データはすべて残ります。チームが作成したものはそのままで、再インストールするとすべて元に戻ります。</string>
 </resources>

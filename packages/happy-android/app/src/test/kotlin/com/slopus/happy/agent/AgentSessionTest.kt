@@ -948,37 +948,58 @@ class AgentSessionTest {
     }
 
     /**
-     * Pipelines follow the person's account switch (happy-cluster API.md,
-     * "Account features"): read once the server says it runs pipelines,
-     * turned off live by the event, hiding home's row, and read again on the
-     * next connect.
+     * Pipelines follow the person's Pipelines plugin (happy-cluster API.md,
+     * "Feature plugins"): what is available is read once health says the
+     * server has feature plugins, uninstalling elsewhere hides home's row
+     * live through the event, and the next connect reads it again.
      */
     @Test
-    fun pipelinesFollowTheAccountFeatureSwitchLive() = runBlocking {
-        fun features(enabled: Boolean) = buildJsonObject {
-            put("features", kotlinx.serialization.json.JsonArray(listOf(buildJsonObject { put("id", "pipelines"); put("name", "Pipelines"); put("enabled", enabled) })))
+    fun pipelinesFollowTheFeaturePluginLive() = runBlocking {
+        fun features(available: Boolean) = buildJsonObject {
+            put("features", kotlinx.serialization.json.JsonArray(listOf(buildJsonObject { put("id", "pipelines"); put("available", available) })))
         }
         agent.bootstrap = agent.bootstrap.with("health", buildJsonObject {
             put("ready", true); put("version", buildJsonObject { put("protocol", 30) })
-            put("capabilities", buildJsonObject { put("pipelines", true) })
+            put("capabilities", buildJsonObject { put("pipelines", true); put("features", true) })
         })
-        agent.resources["/v0/account/features"] = features(true)
+        agent.resources["/v0/features"] = features(true)
         val session = sessions().session(id)!!
         agent.frames.send(Wire.hello("c0"))
+        eventually({ agent.calls.count { it == "GET /v0/features" } }) { it == 1 }
         eventually({ AgentFeedRow.Pipelines in session.feed.value.rows }) { it }
-        agent.frames.send(Wire.frame("c1", AccountFeature.UPDATED, features(false)))
+        agent.frames.send(Wire.frame("c1", Feature.UPDATED, features(false)))
         eventually({ AgentFeedRow.Pipelines in session.feed.value.rows }) { !it }
         assertTrue(session.pipelinesTurnedOff.value)
-        assertEquals(1, agent.calls.count { it == "GET /v0/account/features" })
-        // Turned back on elsewhere while the stream was down: the next connect reads it.
-        agent.resources["/v0/account/features"] = features(true)
+        assertEquals(1, agent.calls.count { it == "GET /v0/features" })
+        // Installed again elsewhere while the stream was down: the next connect reads it.
+        agent.resources["/v0/features"] = features(true)
         val dropped = agent.frames
         agent.frames = Channel(Channel.UNLIMITED)
         dropped.close()
         eventually({ agent.streamCursors.size }) { it == 2 }
         agent.frames.send(Wire.hello("c1"))
         eventually({ AgentFeedRow.Pipelines in session.feed.value.rows }) { it }
-        assertEquals(2, agent.calls.count { it == "GET /v0/account/features" })
+        assertEquals(2, agent.calls.count { it == "GET /v0/features" })
+    }
+
+    /** A server whose health doesn't say `capabilities.features` has every feature available, and is never asked. */
+    @Test
+    fun withoutFeaturePluginsPipelinesAreAlwaysAvailable() = runBlocking {
+        agent.bootstrap = agent.bootstrap.with("health", buildJsonObject {
+            put("ready", true); put("version", buildJsonObject { put("protocol", 30) })
+            put("capabilities", buildJsonObject { put("pipelines", true) })
+        })
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ AgentFeedRow.Pipelines in session.feed.value.rows }) { it }
+        agent.frames.send(Wire.frame("c1", Feature.UPDATED, buildJsonObject {
+            put("features", kotlinx.serialization.json.JsonArray(listOf(buildJsonObject { put("id", "pipelines"); put("available", false) })))
+        }))
+        agent.frames.send(Wire.frame("c2", "agent.updated", Wire.updated("agentId", "at1", "01", "02", buildJsonObject { put("status", "thinking") })))
+        eventually({ session.catalog.value.cursor }) { it == "c2" }
+        assertTrue(AgentFeedRow.Pipelines in session.feed.value.rows)
+        assertFalse(session.pipelinesTurnedOff.value)
+        assertEquals(0, agent.calls.count { it == "GET /v0/features" })
     }
 
     @Test

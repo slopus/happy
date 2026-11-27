@@ -36,4 +36,8 @@
     <string name="plugins_field_required">Obligatorio</string>
     <string name="plugins_not_installable">Happy Agent aún no puede instalar este plugin.</string>
     <string name="plugins_signed_in_browser">Termina de iniciar sesión en el navegador y vuelve aquí.</string>
+    <string name="plugins_uninstall">Desinstalar</string>
+    <string name="plugins_uninstall_title">¿Desinstalar %1$s?</string>
+    <string name="plugins_uninstall_body">%1$s se ocultará para ti en todos los equipos a los que perteneces. No se borra nada y, al instalarlo de nuevo, todo vuelve.</string>
+    <string name="plugins_feature_note">Solo para ti, en todos los equipos a los que perteneces. Desinstalar oculta %1$s y conserva todos sus datos: lo que tu equipo hizo con él se queda y, al instalarlo de nuevo, todo vuelve.</string>
 </resources>
