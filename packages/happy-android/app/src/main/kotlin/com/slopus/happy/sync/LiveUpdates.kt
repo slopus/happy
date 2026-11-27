@@ -3,6 +3,7 @@ package com.slopus.happy.sync
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.LiveMessageResult
 import com.slopus.happy.data.SessionRecord
+import com.slopus.happy.data.StoredJson
 import com.slopus.happy.model.SessionAvatarDescriptor
 import com.slopus.happy.model.StoredSessionAvatar
 import com.slopus.happy.model.mergeSessionAvatar
@@ -155,7 +156,7 @@ class LiveUpdates(
             // A null value clears the state; one that does not open is skipped.
             val encrypted = state.value
             val value = if (encrypted == null) null else (cipher.decryptFromBase64(encrypted) ?: return@let)
-            next = next.copy(agentStateJson = value?.toString(), agentStateVersion = state.version)
+            next = next.copy(agentStateJson = value?.let(StoredJson::encodeAgentState), agentStateVersion = state.version)
         }
         if ("projectId" in body) next = next.copy(projectId = body["projectId"]?.jsonPrimitive?.contentOrNull)
         store.upsertSessions(listOf(next))
