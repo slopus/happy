@@ -12,6 +12,7 @@ export * from './toolFailure';
 export * from './appChat';
 export * from './aiServices';
 export * from './applicationSession';
+export * from './portableContext';
 
 export * from './goalBoard';
 export * from './goalProjectCanvas';

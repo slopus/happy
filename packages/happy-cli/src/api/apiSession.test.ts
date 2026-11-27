@@ -320,6 +320,25 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
     });
 
+    it('clears portable and native pointers atomically at the command sequence rather than a later queued input', async () => {
+        session.metadata = { ...session.metadata, claudeSessionId: 'old-claude', codexThreadId: 'old-codex',
+            continuationOfSessionId: 'logical-predecessor', continuationContext: 'old history', crossAgentSourceAgent: 'claude' };
+        const client = new ApiSessionClient('fake-token', session);
+        const internals = client as unknown as { lastSeq: number; receivedUserSequences: Map<string, number> };
+        internals.lastSeq = 12;
+        internals.receivedUserSequences.set('clear-command', 10);
+        internals.receivedUserSequences.set('next-prompt', 12);
+        mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: { metadata: string }) => ({ result: 'success', version: 1, metadata: payload.metadata }));
+        await client.resetPortableContextBoundary(['clear-command']);
+        expect(client.getMetadata()).toMatchObject({ continuationOfSessionId: 'logical-predecessor', portableContextBoundary: { afterSeq: 10 } });
+        for (const field of ['portableContext', 'continuationContext', 'claudeSessionId', 'codexThreadId', 'crossAgentSourceAgent']) {
+            expect(client.getMetadata()).not.toHaveProperty(field);
+        }
+        expect(internals.receivedUserSequences.get('next-prompt')).toBe(12);
+        expect(mockSocket.emitWithAck).toHaveBeenCalledOnce();
+        await client.close();
+    });
+
     it('notifies metadata consumers only after accepting a newer decrypted session snapshot', () => {
         const client = new ApiSessionClient('fake-token', session);
         const observed = vi.fn((metadata) => expect(client.getMetadata()).toBe(metadata));

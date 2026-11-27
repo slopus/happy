@@ -20,6 +20,23 @@ function stripEnvelopeIdentity(envelopes: ReturnType<typeof mapCodexThreadToSess
 }
 
 describe('mapCodexMcpMessageToSessionEnvelopes', () => {
+    it('persists complete live command output and exit code outside the reasoning stream', () => {
+        const stdout = `${'x'.repeat(90000)}\nCOMPLETE_OUTPUT`;
+        const result = mapCodexMcpMessageToSessionEnvelopes({ type: 'exec_command_end', call_id: 'command',
+            stdout, stderr: 'failed', exit_code: 23 }, { currentTurnId: 'turn' });
+        expect(result.envelopes.find(envelope => envelope.ev.t === 'tool-call-end')?.ev)
+            .toMatchObject({ t: 'tool-call-end', output: { stdout, stderr: 'failed' }, exitCode: 23, status: 'failed' });
+    });
+
+    it('persists replayed command output on its tool end as well as existing UI output', () => {
+        const output = 'native saved evidence';
+        const replay = mapCodexThreadToSessionEnvelopes({ id: 'thread', turns: [{ id: 'turn', status: 'completed', error: null,
+            items: [{ type: 'commandExecution', id: 'command', command: 'fixture', cwd: '/work',
+                status: 'completed', aggregatedOutput: output, exitCode: 0, commandActions: [] }],
+        }] } as any);
+        expect(replay.find(envelope => envelope.ev.t === 'tool-call-end')?.ev)
+            .toMatchObject({ t: 'tool-call-end', output, exitCode: 0, status: 'completed' });
+    });
     it('preserves final assistant whitespace consistently with the live stream and thread replay', () => {
         const text = '  Hello\n world  \t';
         const live = mapCodexMcpMessageToSessionEnvelopes({

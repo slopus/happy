@@ -958,7 +958,7 @@ export async function runCodex(opts: {
 
             // Force close Codex transport (best-effort) so we don't leave stray processes
             try {
-                await client.disconnect();
+                await client.disconnect({ waitForExit: true });
             } catch (e) {
                 logger.debug('[Codex] Error disconnecting Codex during termination', e);
             }
@@ -1396,6 +1396,7 @@ export async function runCodex(opts: {
             // when the native filesystem sandbox is read-only / approval=never.
             // Keep approval scoped to these exact tools; do not relax sandbox policy.
             tools: { start_session: { approval_mode: 'approve' }, change_title: { approval_mode: 'approve' },
+                thread_read: { approval_mode: 'approve' }, thread_attachment: { approval_mode: 'approve' },
                 agent_roles: { approval_mode: 'approve' }, delegate_task: { approval_mode: 'approve' },
                 read_delegated_task: { approval_mode: 'approve' }, cancel_delegated_task: { approval_mode: 'approve' } },
             tool_timeout_sec: 720
@@ -1471,7 +1472,7 @@ export async function runCodex(opts: {
                 threadId: opts.resumeThreadId,
                 cwd: process.cwd(),
                 mcpServers,
-                historyMode: reconnectSessionId ? 'after-cursor' : 'full',
+                historyMode: reconnectSessionId || process.env.HAPPY_CONVERSATION_NATIVE_RESUME === '1' ? 'after-cursor' : 'full',
                 mcpAppBindingRegistry,
             });
             if (resumedThread.activeTurnId) {
@@ -1710,7 +1711,8 @@ export async function runCodex(opts: {
             return formatMcpStatus(status, verbose);
         };
 
-        const resetCodexThreadState = (opts?: { resetFirst?: boolean }) => {
+        const resetCodexThreadState = async (opts?: { resetFirst?: boolean; localIds?: readonly string[] }) => {
+            await session.resetPortableContextBoundary(opts?.localIds);
             client.clearThreadState();
             currentTurnId = null;
             codexStartedSubagents = new Set<string>();
@@ -1728,12 +1730,6 @@ export async function runCodex(opts: {
             }
             thinking = false;
             session.keepAlive(thinking, 'remote');
-            session.updateMetadata((currentMetadata) => {
-                const nextMetadata = { ...currentMetadata };
-                delete nextMetadata.codexThreadId;
-                delete nextMetadata.crossAgentSourceAgent;
-                return nextMetadata;
-            });
         };
 
         const respondToForkCommand = async (mode: EnhancedMode): Promise<string> => {
@@ -2034,14 +2030,14 @@ export async function runCodex(opts: {
 
                 if (specialCommand.type === 'new') {
                     logger.debug('[Codex] Handling /new command - starting a fresh Codex thread on next prompt');
-                    resetCodexThreadState({ resetFirst: true });
+                    await resetCodexThreadState({ resetFirst: true, localIds: message.localIds });
                     sendImmediateCommandResponse('Started a fresh Codex thread. Send your next message to begin.');
                     continue;
                 }
 
                 if (specialCommand.type === 'clear') {
                     logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
-                    resetCodexThreadState();
+                    await resetCodexThreadState({ localIds: message.localIds });
                     sendImmediateCommandResponse('Context was reset');
                     continue;
                 }
@@ -2192,7 +2188,7 @@ export async function runCodex(opts: {
             logger.debug('[codex]: Error while closing session', e);
         }
         logger.debug('[codex]: client.disconnect begin');
-        await client.disconnect();
+        await client.disconnect({ waitForExit: true });
         await accountObserver.finish();
         logger.debug('[codex]: client.disconnect done');
         // Stop Happy MCP server

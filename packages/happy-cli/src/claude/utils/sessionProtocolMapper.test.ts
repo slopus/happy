@@ -75,10 +75,29 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(ended.envelopes).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
-                    ev: { t: 'tool-call-end', call: 'tool-1' },
+                    ev: { t: 'tool-call-end', call: 'tool-1', status: 'completed', output: 'ok' },
                 }),
             ]),
         );
+    });
+
+    it('persists complete failed command output and its native exit code', () => {
+        const output = `stdout\n${'中'.repeat(30000)}\nLAST_RESULT`;
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user', toolUseResult: { stdout: output, stderr: 'compile failed', exitCode: 17 },
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'command', content: output, is_error: true }] },
+        } as any, { currentTurnId: 'turn' });
+        const end = result.envelopes.find(envelope => envelope.ev.t === 'tool-call-end')!;
+        expect(end.ev).toMatchObject({ t: 'tool-call-end', call: 'command', output, status: 'failed', exitCode: 17 });
+        expect(end.ev.t === 'tool-call-end' && end.ev.error?.summary).toBeTruthy();
+    });
+
+    it('distinguishes a known empty result from an older message with no result', () => {
+        const map = (block: object) => mapClaudeLogMessageToSessionEnvelopes({ type: 'user',
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool', ...block }] },
+        } as any, { currentTurnId: 'turn' }).envelopes[0].ev;
+        expect(map({ content: null })).toMatchObject({ t: 'tool-call-end', output: null });
+        expect(Object.hasOwn(map({}), 'output')).toBe(false);
     });
 
     it('exposes the generated session subagent id on Agent tool calls', () => {

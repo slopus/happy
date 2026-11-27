@@ -113,6 +113,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         flavor: opts.flavor,
         capabilities: {
             regenerateTitle: opts.flavor === 'claude' || opts.flavor === 'codex',
+            ...(opts.flavor === 'claude' || opts.flavor === 'codex' ? { conversationNativeResume: 1 as const } : {}),
         },
         sandbox: opts.sandbox?.enabled ? opts.sandbox : null,
         dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,

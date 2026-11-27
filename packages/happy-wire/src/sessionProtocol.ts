@@ -66,6 +66,10 @@ export const sessionToolCallEndEventSchema = z.object({
   t: z.literal('tool-call-end'),
   call: z.string(),
   status: z.enum(['completed', 'failed', 'cancelled']).optional(),
+  // Historical evidence belongs to the completed call, independently of UI
+  // rendering. Absence means an older sender did not persist its result.
+  output: z.unknown().optional(),
+  exitCode: z.number().int().optional(),
   error: z.object({
     code: z.string().max(64).optional(),
     summary: z.string().min(1).max(280),

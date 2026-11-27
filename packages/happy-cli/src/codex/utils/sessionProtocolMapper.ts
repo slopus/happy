@@ -50,6 +50,23 @@ type LegacyToolLikeMessage = {
 
 type TurnEndStatus = 'completed' | 'failed' | 'cancelled';
 
+/** Keep native result evidence on the completed call, outside private reasoning. */
+function toolResultFields(source: Record<string, unknown>): { output?: unknown; exitCode?: number } {
+    const rawExitCode = source.exit_code ?? source.exitCode;
+    const exitCode = typeof rawExitCode === 'number' && Number.isInteger(rawExitCode) ? rawExitCode : undefined;
+    const exit = exitCode === undefined ? {} : { exitCode };
+    if (source.stdout !== undefined || source.stderr !== undefined) {
+        return { ...exit, output: { ...(source.stdout === undefined ? {} : { stdout: source.stdout }),
+            ...(source.stderr === undefined ? {} : { stderr: source.stderr }),
+            ...(source.aggregatedOutput === undefined ? {} : { aggregatedOutput: source.aggregatedOutput }),
+            ...(source.aggregated_output === undefined ? {} : { aggregatedOutput: source.aggregated_output }) } };
+    }
+    for (const key of ['output', 'aggregatedOutput', 'aggregated_output', 'result', 'rawOutput']) {
+        if (source[key] !== undefined) return { ...exit, output: source[key] };
+    }
+    return exit;
+}
+
 const codexMcpAppAdapter = new CodexMcpAppAdapter();
 
 function bindNormalizedMcpAppCall(
@@ -478,6 +495,8 @@ function emitHistoricalToolCall(
         t: 'tool-call-end',
         call: item.id,
         status,
+        ...toolResultFields(item as unknown as Record<string, unknown>),
+        ...(output === null ? {} : { output }),
         ...(failure ? { error: failure } : {}),
     }, {
         ...opts,
@@ -513,10 +532,13 @@ function createMcpToolCallEndEnvelope(
 ): SessionEnvelope {
     const status = pickTurnEndStatus(statusSource, 'mcp_tool_call_end');
     const failure = getToolFailure(statusSource, status);
+    const evidence = toolResultFields(statusSource);
     return createEnvelope('agent', {
         t: 'tool-call-end',
         call: call.callId,
         status,
+        ...evidence,
+        ...(call.result !== undefined ? { output: call.result } : {}),
         ...(failure ? { error: failure } : {}),
         ...(call.result ? { mcpAppResult: call.result } : {}),
     }, { ...opts, id: `${call.callId}:end` });
@@ -1131,6 +1153,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             t: 'tool-call-end',
             call,
             status,
+            ...toolResultFields(message),
             ...(failure ? { error: failure } : {}),
         }, { ...opts, id: `${call}:end` }));
         return {
@@ -1248,6 +1271,7 @@ export function mapCodexProcessorMessageToSessionEnvelopes(
         envelopes.push(createEnvelope('agent', {
             t: 'tool-call-end',
             call: toolLikeMessage.callId,
+            ...(toolLikeMessage.output?.status === 'canceled' ? { status: 'cancelled' as const } : {}),
         }, opts));
         return envelopes;
     }

@@ -133,4 +133,11 @@ describe('createSessionMetadata', () => {
         expect(createSessionMetadata({ flavor: 'codex', machineId: 'machine-11' }).metadata.capabilities?.regenerateTitle).toBe(true);
         expect(createSessionMetadata({ flavor: 'gemini', machineId: 'machine-12' }).metadata.capabilities?.regenerateTitle).toBe(false);
     });
+
+    it.each(['claude', 'codex', 'gemini', 'opencode', 'antigravity', 'openclaw', 'acp'] as const)(
+        'advertises durable native conversation reset support for %s only when implemented', flavor => {
+            expect(createSessionMetadata({ flavor, machineId: 'machine' }).metadata.capabilities?.conversationNativeResume)
+                .toBe(flavor === 'claude' || flavor === 'codex' ? 1 : undefined);
+        },
+    );
 });

@@ -30,7 +30,7 @@ describe('claudeRemote', () => {
         expect(received).toEqual([{ source: 'claude-native', observedAt: expect.any(Number), models: [{ code: 'opus', value: 'Future Opus', supportedEffortLevels: ['high'] }] }]);
     });
 
-    it('marks /clear as a completed reset turn', async () => {
+    it.each(['/clear', '/new'])('marks %s as a completed reset turn after the reset', async command => {
         const callbackOrder: string[] = [];
         const onCompletionEvent = vi.fn((message: string) => {
             callbackOrder.push(`event:${message}`);
@@ -48,8 +48,9 @@ describe('claudeRemote', () => {
             allowedTools: [],
             hookSettingsPath: '/tmp/happy-test-settings.json',
             nextMessage: async () => ({
-                message: '/clear',
+                message: command,
                 mode,
+                localIds: ['reset-input'],
             }),
             onReady,
             canCallTool: async () => ({ behavior: 'allow' }) as any,
@@ -63,8 +64,48 @@ describe('claudeRemote', () => {
 
         expect(onCompletionEvent).toHaveBeenCalledWith('Context was reset');
         expect(onSessionReset).toHaveBeenCalledOnce();
+        expect(onSessionReset).toHaveBeenCalledWith(['reset-input']);
         expect(onReady).toHaveBeenCalledOnce();
-        expect(callbackOrder).toEqual(['event:Context was reset', 'reset', 'ready']);
+        expect(callbackOrder).toEqual(['reset', 'event:Context was reset', 'ready']);
+    });
+
+    it('keeps a reset pending until its history boundary has been acknowledged', async () => {
+        let acknowledge!: () => void;
+        const acknowledgement = new Promise<void>(resolve => { acknowledge = resolve; });
+        const onSessionReset = vi.fn(() => acknowledgement);
+        const onReady = vi.fn();
+        const onCompletionEvent = vi.fn();
+        const completion = claudeRemote({
+            sessionId: null, path: process.cwd(), allowedTools: [], hookSettingsPath: '/tmp/unused',
+            nextMessage: async () => ({ message: '/clear', mode }),
+            canCallTool: async () => ({ behavior: 'allow' }) as any, isAborted: () => false,
+            onSessionFound: vi.fn(), onMessage: vi.fn(), onSessionReset, onReady, onCompletionEvent,
+        });
+        await vi.waitFor(() => expect(onSessionReset).toHaveBeenCalledOnce());
+        expect(onReady).not.toHaveBeenCalled();
+        expect(onCompletionEvent).not.toHaveBeenCalled();
+        expect(query).not.toHaveBeenCalled();
+
+        acknowledge();
+        await completion;
+        expect(onReady).toHaveBeenCalledOnce();
+        expect(onCompletionEvent).toHaveBeenCalledWith('Context was reset');
+    });
+
+    it('does not report a completed reset when its boundary could not be saved', async () => {
+        const failure = new Error('metadata acknowledgement failed');
+        const onReady = vi.fn();
+        const onCompletionEvent = vi.fn();
+        await expect(claudeRemote({
+            sessionId: null, path: process.cwd(), allowedTools: [], hookSettingsPath: '/tmp/unused',
+            nextMessage: async () => ({ message: '/new', mode }),
+            canCallTool: async () => ({ behavior: 'allow' }) as any, isAborted: () => false,
+            onSessionFound: vi.fn(), onMessage: vi.fn(),
+            onSessionReset: async () => { throw failure; }, onReady, onCompletionEvent,
+        })).rejects.toBe(failure);
+        expect(onReady).not.toHaveBeenCalled();
+        expect(onCompletionEvent).not.toHaveBeenCalled();
+        expect(query).not.toHaveBeenCalled();
     });
 
     it('marks assistant messages from /compact as compact summaries', async () => {

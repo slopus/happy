@@ -47,7 +47,7 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode } | null>,
+    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode, localIds?: readonly string[] } | null>,
     onReady: (status?: SessionTurnEndStatus) => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -56,7 +56,7 @@ export async function claudeRemote(opts: {
     onThinkingChange?: (thinking: boolean) => void,
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
-    onSessionReset?: () => void,
+    onSessionReset?: (localIds?: readonly string[]) => void | Promise<void>,
     onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[] }) => void
 }) {
 
@@ -107,7 +107,7 @@ export async function claudeRemote(opts: {
 
     // Get initial message
     // Application sessions must initialize the processor before accepting their first durable input.
-    const initial = applicationPolicy ? { message: '', mode: { permissionMode: applicationPolicy.binding.permissionMode === 'yolo' ? 'yolo' : 'plan', model: applicationPolicy.binding.requestedModel ?? undefined } as EnhancedMode } : await opts.nextMessage();
+    const initial = applicationPolicy ? { message: '', mode: { permissionMode: applicationPolicy.binding.permissionMode === 'yolo' ? 'yolo' : 'plan', model: applicationPolicy.binding.requestedModel ?? undefined } as EnhancedMode, localIds: undefined } : await opts.nextMessage();
     if (!initial) { // No initial message - exit
         return;
     }
@@ -118,13 +118,11 @@ export async function claudeRemote(opts: {
         : (initial.message.find((b) => b.type === 'text') as { type: 'text'; text: string } | undefined)?.text ?? '';
     const specialCommand = parseSpecialCommand(applicationPolicy ? '' : initialText);
 
-    // Handle /clear command
-    if (specialCommand.type === 'clear') {
+    // Complete the durable reset before acknowledging it or accepting another prompt.
+    if (specialCommand.type === 'clear' || specialCommand.type === 'new') {
+        await opts.onSessionReset?.(initial.localIds);
         if (opts.onCompletionEvent) {
             opts.onCompletionEvent('Context was reset');
-        }
-        if (opts.onSessionReset) {
-            opts.onSessionReset();
         }
         opts.onReady();
         return;

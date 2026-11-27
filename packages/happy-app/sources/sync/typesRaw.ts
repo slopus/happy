@@ -534,6 +534,7 @@ type NormalizedAgentContent =
         content: any;
         is_error: boolean;
         status?: 'completed' | 'failed' | 'cancelled';
+        exitCode?: number;
         failure?: {
             code?: string;
             summary: string;
@@ -772,8 +773,9 @@ function normalizeSessionEnvelope(
             content: [{
                 type: 'tool-result',
                 tool_use_id: envelope.ev.call,
-                content: envelope.ev.error?.detail ?? envelope.ev.error?.summary ?? null,
+                content: Object.hasOwn(envelope.ev, 'output') ? envelope.ev.output : envelope.ev.error?.detail ?? envelope.ev.error?.summary ?? null,
                 is_error: status === 'failed',
+                ...(envelope.ev.exitCode === undefined ? {} : { exitCode: envelope.ev.exitCode }),
                 ...(status ? { status } : {}),
                 ...(envelope.ev.error ? { failure: envelope.ev.error } : {}),
                 ...(envelope.ev.mcpAppResult ? { mcpAppResult: envelope.ev.mcpAppResult } : {}),

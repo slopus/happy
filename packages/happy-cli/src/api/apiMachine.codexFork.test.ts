@@ -35,6 +35,52 @@ function handlersFrom(client: any): Map<string, (params: any) => Promise<any>> {
     return client.rpcHandlerManager.handlers;
 }
 
+describe('conversation-only machine RPC boundaries', () => {
+    it('does not accept client-selected native identities, cwd, fork flags, or launch environment', async () => {
+        const client = new ApiMachineClient('token', machineClient());
+        const spawnConversationSession = vi.fn(async () => ({ type: 'success' as const, sessionId: 'new-segment' }));
+        client.setRPCHandlers({ spawnSession: vi.fn(), spawnConversationSession, stopSession: vi.fn(), requestShutdown: vi.fn() });
+        const request = { rootSessionId: 'root', sourceSessionId: 'source', requestId: '00000000-0000-4000-8000-000000000001', targetAgent: 'claude' };
+        expect(await handlersFrom(client).get('machine-1:spawn-conversation-session')?.({ ...request,
+            directory: '/untrusted', nativeId: 'untrusted', resumeClaudeSessionId: 'untrusted', environmentVariables: { CLAUDE_CONFIG_DIR: '/untrusted' } })).toMatchObject({ type: 'success' });
+        expect(spawnConversationSession).toHaveBeenCalledWith({ ...request, expectedCodexAccountProfileId: null });
+    });
+    it('rejects an unsupported provider before dispatching a worker', async () => {
+        const client = new ApiMachineClient('token', machineClient()); const spawnConversationSession = vi.fn();
+        client.setRPCHandlers({ spawnSession: vi.fn(), spawnConversationSession, stopSession: vi.fn(), requestShutdown: vi.fn() });
+        expect(await handlersFrom(client).get('machine-1:spawn-conversation-session')?.({ rootSessionId: 'root', sourceSessionId: 'source',
+            requestId: '00000000-0000-4000-8000-000000000001', targetAgent: 'openclaw' })).toMatchObject({ type: 'error', notDispatched: true });
+        expect(spawnConversationSession).not.toHaveBeenCalled();
+    });
+    it('passes only a source Happy identity and a bounded tool-result cursor', async () => {
+        const client = new ApiMachineClient('token', machineClient());
+        const readConversationToolResult = vi.fn(async () => ({ success: true as const, outputText: 'retained body', isError: false, nextTextOffset: null }));
+        client.setRPCHandlers({ spawnSession: vi.fn(), readConversationToolResult, stopSession: vi.fn(), requestShutdown: vi.fn() });
+        const handler = handlersFrom(client).get('machine-1:read-conversation-tool-result')!;
+        expect(await handler({ sourceSessionId: 'source', toolCallId: 'call', textOffset: 12, nativeId: 'untrusted', directory: '/untrusted' })).toMatchObject({ success: true });
+        expect(readConversationToolResult).toHaveBeenCalledWith({ sourceSessionId: 'source', toolCallId: 'call', textOffset: 12 });
+        expect(await handler({ sourceSessionId: 'source', toolCallId: 'call', textOffset: -1 })).toMatchObject({ success: false });
+        expect(readConversationToolResult).toHaveBeenCalledOnce();
+    });
+    it('cancels by the exact reservation without accepting a client-selected target or native ID', async () => {
+        const client = new ApiMachineClient('token', machineClient());
+        const cancelConversationLaunch = vi.fn(async () => ({ success: true as const, cancelled: true as const, targetSessionId: 'verified-target' }));
+        client.setRPCHandlers({ spawnSession: vi.fn(), cancelConversationLaunch, stopSession: vi.fn(), requestShutdown: vi.fn() });
+        const request = { rootSessionId: 'root', sourceSessionId: 'source', requestId: '00000000-0000-4000-8000-000000000001' };
+        expect(await handlersFrom(client).get('machine-1:cancel-conversation-launch')?.({ ...request, targetSessionId: 'untrusted', nativeId: 'untrusted' })).toMatchObject({ success: true });
+        expect(cancelConversationLaunch).toHaveBeenCalledWith(request);
+    });
+    it('reads frozen context only by the retained Happy source identity', async () => {
+        const client = new ApiMachineClient('token', machineClient()); const readConversationContext = vi.fn(async () => ({ success: false as const, error: 'unavailable' }));
+        client.setRPCHandlers({ spawnSession: vi.fn(), readConversationContext, stopSession: vi.fn(), requestShutdown: vi.fn() });
+        const handler = handlersFrom(client).get('machine-1:read-conversation-context')!;
+        await handler({ sourceSessionId: 'source', textOffset: 48000, directory: '/untrusted', snapshotId: 'untrusted' });
+        expect(readConversationContext).toHaveBeenCalledWith({ sourceSessionId: 'source', textOffset: 48000 });
+        expect(await handler({ sourceSessionId: 'source', textOffset: -1 })).toMatchObject({ success: false });
+        expect(readConversationContext).toHaveBeenCalledOnce();
+    });
+});
+
 describe('ApiMachineClient Codex fork RPCs', () => {
     let root: string;
     const savedHappyHome = configuration.happyHomeDir;

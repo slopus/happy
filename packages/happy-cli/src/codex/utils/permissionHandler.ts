@@ -43,6 +43,10 @@ export class CodexPermissionHandler extends BasePermissionHandler {
     private static readonly ALWAYS_AUTO_APPROVE_NAMES: ReadonlySet<string> = new Set([
         'change_title',
         'mcp__happy__change_title',
+        'thread_read',
+        'mcp__happy__thread_read',
+        'thread_attachment',
+        'mcp__happy__thread_attachment',
         'archive_session',
         'mcp__happy__archive_session',
         'send_image',

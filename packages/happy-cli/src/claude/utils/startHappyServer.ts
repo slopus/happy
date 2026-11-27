@@ -33,8 +33,11 @@ import { independentTaskSchema, type DelegationContext, type IndependentTask, ty
 import { AgentRolesInputSchema, DelegateTaskInputSchema, DelegatedTaskTargetInputSchema, type DelegationAction, type DelegationResponse } from '@slopus/happy-wire';
 import { DELEGATION_MCP_TOOL_NAMES, delegationToolResponse, registerDelegationMcpTools } from '@/delegation/mcpTools';
 import { boundedRoleSaveInput, roleFromSaveReceipt, roleSaveReceipt, type RoleSaveObserver } from '@/delegation/roleSaveReceipt';
+import { PORTABLE_CONTEXT_TOOL_NAMES, registerPortableContextTools, type PortableContextToolName } from '@/continuation/portableContextTools';
+import { PortableThreadReadSchema, PortableThreadAttachmentSchema } from '@slopus/happy-wire';
 
 type HappyMcpHandlers = {
+    portableContext: (name: PortableContextToolName, args: Record<string, unknown>) => Promise<CallToolResult>;
     startSession: (task: IndependentTask) => Promise<IndependentTaskResult>;
     delegation: (action: DelegationAction) => Promise<DelegationResponse>;
     projectCanvas: (command: ProjectCanvasLocalRequest['command']) => Promise<CallToolResult>;
@@ -175,6 +178,7 @@ function createMcpServer(handlers: HappyMcpHandlers): McpServer {
     });
 
     registerProjectCanvasTools(mcp, handlers.projectCanvas, true);
+    registerPortableContextTools(mcp, handlers.portableContext);
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -413,6 +417,9 @@ export async function startHappyServer(
     };
 
     const handlers: HappyMcpHandlers = {
+        portableContext: (name, args) => name === 'thread_read'
+            ? client.readPortableContext(PortableThreadReadSchema.parse(args))
+            : client.readPortableContextAttachment(PortableThreadAttachmentSchema.parse(args)),
         projectCanvas: command => callDaemonProjectCanvas({ sessionId: client.sessionId, command }),
         startSession: task => launchIndependentDaemonSession(client.sessionId, task, options?.delegationContext?.()),
         delegation: async action => {
@@ -598,6 +605,8 @@ export async function startHappyServer(
     });
 
     logger.debug(`[happyMCP] server:ready sessionId=${client.sessionId} url=${baseUrl.toString()}`);
+    try { await client.enablePortableContext?.(); }
+    catch (error) { server.close(); throw error; }
 
     return {
         url: baseUrl.toString(),
@@ -605,6 +614,7 @@ export async function startHappyServer(
             'start_session',
             ...DELEGATION_MCP_TOOL_NAMES,
             ...PROJECT_CANVAS_MCP_TOOLS,
+            ...PORTABLE_CONTEXT_TOOL_NAMES,
             'change_title',
             'send_image',
             'send_file',

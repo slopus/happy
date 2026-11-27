@@ -29,7 +29,7 @@ import { storage } from './storage';
 import { isRetiredSession } from './retiredSessions';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema, type ApiSessionSnapshot, type ApiUpdate } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
-import { Session, Machine } from './storageTypes';
+import { Session, Machine, type Metadata } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
@@ -38,6 +38,9 @@ import { syncCurrentPushToken } from './pushRegistration';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
+import type { PortableContextHead } from '@slopus/happy-wire';
+import { portableItemsFromRows } from './portableContext';
+import { assertPortableContextSourceScope } from './portableContextScope';
 import {
     applySettings,
     mergeServerSettings,
@@ -1919,6 +1922,121 @@ class Sync {
         return { uploaded, failed };
     }
 
+    /** Detached, complete, bounded-by-source history. Never evicts the visible UI window. */
+    public readPortableContextSegment = async (id: string) => {
+        const owner = this.encryption;
+        const generation = this.sessionDeletionMutationGenerations.get(id);
+        if (!await this.refreshConversationSession(id)) throw new Error('portable-context-source-unavailable');
+        const source = storage.getState().sessions[id];
+        const metadata = source?.metadata;
+        const encryption = owner.getSessionEncryption(id);
+        if (!metadata || !encryption) throw new Error('portable-context-source-unavailable');
+        assertPortableContextSourceScope(metadata);
+        const fingerprint = (value: Metadata | null | undefined) => JSON.stringify([
+            value?.machineId, value?.path, value?.conversationRootSessionId, value?.continuationOfSessionId,
+            value?.parentSessionId, value?.forkedFromMessageId, value?.portableContextBoundary,
+            value?.flavor, value?.claudeSessionId, value?.codexThreadId,
+            value?.codexAccountProfileId, value?.codexMagpieConnection, value?.claudeModelConnectionKey,
+            value?.portableContext?.id, value?.portableContext?.sha256,
+        ]);
+        const initial = fingerprint(metadata);
+        const sourceMessageRevision = [source.seq, source.lastMessageAt] as const;
+        const assertIdentityCurrent = () => {
+            const live = storage.getState().sessions[id];
+            if (this.encryption !== owner || !accountRuntimeCurrent() || generation !== this.sessionDeletionMutationGenerations.get(id)
+                || owner.getSessionEncryption(id) !== encryption || !live || isRetiredSession(live)
+                || live.metadata?.conversationDeletePlan || fingerprint(live.metadata) !== initial) throw new Error('portable-context-source-changed');
+        };
+        const assertCurrent = () => {
+            assertIdentityCurrent();
+            const live = storage.getState().sessions[id];
+            if (live.seq !== sourceMessageRevision[0] || live.lastMessageAt !== sourceMessageRevision[1]) throw new Error('portable-context-source-changed');
+        };
+        assertCurrent();
+        const afterSeq = metadata.portableContextBoundary?.afterSeq ?? 0;
+        const head: PortableContextHead = { sessionId: id, afterSeq, throughSeq: afterSeq };
+        let before = SEQ_BACKWARD_INITIAL_SENTINEL;
+        let firstPage = true;
+        const items: ReturnType<typeof portableItemsFromRows> = [];
+        const privateToolIds = new Set<string>();
+        const detached = encryption.createDetached();
+        for (;;) {
+            const response = await fetchMessagePageWithDeadline(`/v3/sessions/${encodeURIComponent(id)}/messages?before_seq=${before}&limit=100`);
+            assertCurrent();
+            if (!response.ok || !response.data || !Array.isArray(response.data.messages)) throw new Error('portable-context-history-unavailable');
+            const rows = response.data.messages;
+            if (rows.some(row => !Number.isSafeInteger(row.seq) || row.seq <= 0 || row.seq >= before)) throw new Error('portable-context-invalid-page');
+            if (firstPage) { head.throughSeq = Math.max(afterSeq, ...rows.map(row => row.seq)); firstPage = false; }
+            const admitted = rows.filter(row => row.seq > afterSeq && row.seq <= head.throughSeq);
+            const decrypted = await detached.decryptMessages(admitted);
+            assertCurrent();
+            if (decrypted.length !== admitted.length || decrypted.some(row => !row?.content)) throw new Error('portable-context-decryption-failed');
+            items.push(...portableItemsFromRows(id, decrypted as NonNullable<typeof decrypted[number]>[], privateToolIds));
+            if (!response.data.hasMore || rows.some(row => row.seq <= afterSeq)) break;
+            const next = Math.min(...rows.map(row => row.seq));
+            if (!Number.isSafeInteger(next) || next >= before) throw new Error('portable-context-pagination-stalled');
+            before = next;
+        }
+        // Result and start may be on different backward pages. Filter after
+        // the complete source scan as well as during per-page normalization.
+        for (let index = items.length - 1; index >= 0; index--) if (items[index].nativeToolCallId
+            && privateToolIds.has(items[index].nativeToolCallId!)) items.splice(index, 1);
+        items.sort((a, b) => a.seq - b.seq || a.id.localeCompare(b.id, undefined, { numeric: true }));
+        for (const item of items) {
+            if (!item.nativeResultMissing || !item.nativeToolCallId) continue;
+            let recovered = '';
+            let offset = 0;
+            let failure: string | undefined;
+            let isError = false;
+            let exitCode: number | undefined;
+            try {
+                if (!metadata.machineId || (metadata.flavor !== 'claude' && metadata.flavor !== 'codex')) {
+                    throw new Error('The older provider did not retain a recoverable original tool result');
+                }
+                for (;;) {
+                    const page = await apiSocket.machineRPC<{ success: boolean; outputText?: string; isError?: boolean; exitCode?: number;
+                        nextTextOffset?: number | null; error?: string }, object>(metadata.machineId, 'read-conversation-tool-result', {
+                        sourceSessionId: id, toolCallId: item.nativeToolCallId, textOffset: offset,
+                    });
+                    assertCurrent();
+                    if (!page?.success) throw new Error('The original native tool result is no longer available on the execution machine');
+                    if (typeof page.outputText !== 'string' || typeof page.isError !== 'boolean'
+                        || (page.nextTextOffset !== null && (!Number.isSafeInteger(page.nextTextOffset)
+                            || page.nextTextOffset !== offset + page.outputText.length || page.nextTextOffset <= offset))) {
+                        throw new Error('Invalid native tool result page');
+                    }
+                    recovered += page.outputText;
+                    isError = page.isError;
+                    exitCode = page.exitCode;
+                    if (page.nextTextOffset === null) break;
+                    offset = page.nextTextOffset!;
+                }
+            } catch (error) {
+                assertCurrent(); // A changed account/source is never a recoverable omission.
+                failure = error instanceof Error ? error.message : 'Original native tool result unavailable';
+            }
+            item.text += failure
+                ? `\nOriginal result unavailable: ${failure}. This is a known historical gap; do not infer success or rerun a command merely to fill it.`
+                : `\nRecovered original result (${isError ? 'failed' : 'completed'}):\n${recovered}${exitCode !== undefined ? `\nExit code: ${exitCode}` : ''}`;
+            if (!failure) delete item.nativeResultMissing;
+        }
+        const blobKey = owner.getSessionBlobKey(id);
+        if (items.some(item => item.attachments?.some(file => file.encrypted)) && !blobKey) throw new Error('portable-context-attachment-key-unavailable');
+        // A one-shot check after pagination detects a source changed by another
+        // client; this is not a business-state polling loop.
+        const verifyCurrent = async () => {
+            assertCurrent();
+            if (!await this.refreshConversationSession(id)) throw new Error('portable-context-source-unavailable');
+            assertCurrent();
+            const tail = await fetchMessagePageWithDeadline(`/v3/sessions/${encodeURIComponent(id)}/messages?after_seq=${head.throughSeq}&limit=1`);
+            assertCurrent();
+            if (!tail.ok || !tail.data || !Array.isArray(tail.data.messages) || tail.data.messages.length) throw new Error('portable-context-source-changed');
+        };
+        await verifyCurrent();
+        return { head, items, boundary: metadata.portableContextBoundary,
+            ...(blobKey ? { blobKey: encodeBase64(blobKey, 'base64') } : {}), assertCurrent, assertIdentityCurrent, verifyCurrent };
+    };
+
     /** Read an explicitly selected conversation without replacing its visible history window. */
     public readComposerSessionContext = async (id: string): Promise<string> => {
         const owner = this.encryption;
@@ -2010,20 +2128,29 @@ class Sync {
         options = { ...options, userSentAt };
         const recoveryOwner = this.encryption;
         const failedSession = storage.getState().sessions[sessionId];
+        const recoveryIsCurrent = () => {
+            if (this.encryption !== recoveryOwner || !accountRuntimeCurrent() || options?.isCurrent?.() === false) return false;
+            try {
+                assertSendOwner();
+                assertConversationSendAllowed(sessionId, options?.conversationSwitchRequestId);
+                return true;
+            } catch { return false; }
+        };
         await this.failedCodexRecovery.ensure(failedSession, recoveryOwner, async () => {
             const { machineResumeSession } = await import('./ops');
-            if (this.encryption !== recoveryOwner || !accountRuntimeCurrent() || options?.isCurrent?.() === false) {
+            if (!recoveryIsCurrent()) {
                 throw new Error('local-message-session-unavailable');
             }
             const modes = resolveMessageModeMeta(failedSession!, storage.getState().settings);
             return machineResumeSession({ machineId: failedSession!.metadata!.machineId!, sessionId, agent: 'codex',
+                isCurrent: recoveryIsCurrent,
                 codexMagpieConnection: failedSession!.metadata!.codexMagpieConnection,
                 model: modes.model ?? undefined, permissionMode: modes.permissionMode, effort: modes.effort,
                 ...(failedSession!.agentState!.turnStatus!.status === 'failed'
                     ? { expectedFailedTurn: failedSession!.agentState!.turnStatus! }
                     : { expectedWorkerPid: failedSession!.metadata!.hostPid }) });
         });
-        if (this.encryption !== recoveryOwner || !accountRuntimeCurrent() || options?.isCurrent?.() === false) {
+        if (!recoveryIsCurrent()) {
             throw new Error('local-message-session-unavailable');
         }
         const snapshots = { session: storage.getState().sessions[sessionId], settings: storage.getState().settings };
@@ -2122,6 +2249,10 @@ class Sync {
         }
         const contextSource = session.metadata?.continuationOfSessionId;
         const savedContext = session.metadata?.continuationContext;
+        const contextIdentity = (metadata: Metadata | null | undefined) => JSON.stringify([
+            metadata?.portableContextBoundary, metadata?.portableContext, metadata?.continuationOfSessionId, metadata?.continuationContext,
+        ]);
+        const submittedContextIdentity = contextIdentity(session.metadata);
         const contextAlreadySent = contextSource && savedContext
             ? await this.hasDeliveredContinuation(sessionId, contextSource, isCurrent) : false;
         if (!isCurrent()) throw new Error('local-message-session-unavailable');
@@ -2278,6 +2409,7 @@ class Sync {
         const finalRootId = getMessageConversationRootId(storage.getState().sessions, sessionId);
         if (finalRootId !== conversationRootAtStart) throw new Error(t('session.agentSwitchChanged'));
         if (!finalRootId || (this.credentials && !await this.refreshConversationSession(finalRootId))) throw new Error(t('session.agentSwitchUnavailable'));
+        if (finalRootId !== sessionId && this.credentials && !await this.refreshConversationSession(sessionId)) throw new Error(t('session.agentSwitchUnavailable'));
         if (getMessageConversationRootId(storage.getState().sessions, sessionId) !== conversationRootAtStart) throw new Error(t('session.agentSwitchChanged'));
         assertConversationSendAllowed(sessionId, options?.conversationSwitchRequestId);
         // No awaits between ownership validation and the complete outbox commit.
@@ -2285,6 +2417,7 @@ class Sync {
         if (!isCurrent() || this.encryption !== encryptionOwner
             || encryptionOwner.getSessionEncryption(sessionId) !== encryption
             || !storage.getState().sessions[sessionId]) throw new Error('local-message-session-unavailable');
+        if (contextIdentity(storage.getState().sessions[sessionId]?.metadata) !== submittedContextIdentity) throw new Error('conversation-context-changed');
         if (contextSource && savedContext && !includeContext) {
             const delivery = this.continuationDeliveries.get(sessionId);
             if (delivery?.owner !== encryptionOwner || delivery.source !== contextSource || (!delivery.confirmed

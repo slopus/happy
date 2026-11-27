@@ -295,12 +295,13 @@ export async function claudeRemoteLauncher(session: Session, onProcessorReady?: 
     const prepareRemoteMessage = (msg: QueuedClaudeMessage): {
         message: MessageParam['content'];
         mode: EnhancedMode;
+        localIds?: readonly string[];
     } => {
         session.client.acceptClaudeInput(msg.localIds ?? []);
         permissionHandler.handleModeChange(msg.mode.permissionMode);
         const attachments = msg.attachments ?? [];
         if (attachments.length === 0) {
-            return { message: msg.message, mode: msg.mode };
+            return { message: msg.message, mode: msg.mode, localIds: msg.localIds };
         }
 
         const contentBlocks: ContentBlockParam[] = [];
@@ -340,7 +341,7 @@ export async function claudeRemoteLauncher(session: Session, onProcessorReady?: 
         const text = mediaNotice ? `${mediaNotice}\n\n${msg.message}` : msg.message;
         contentBlocks.push({ type: 'text', text });
         logger.debug(`[remote] Combined ${contentBlocks.length - 1} image block(s) + ${mediaItems.length} media path(s) with text message`);
-        return { message: contentBlocks, mode: msg.mode };
+        return { message: contentBlocks, mode: msg.mode, localIds: msg.localIds };
     };
 
     try {
@@ -373,6 +374,7 @@ export async function claudeRemoteLauncher(session: Session, onProcessorReady?: 
             abortController = controller;
             abortFuture = new Future<void>();
             let modeHash: string | null = null;
+            let contextResetPending = false;
             try {
                 const remoteResult = await claudeRemote({
                     happySessionId: session.client.sessionId,
@@ -443,9 +445,11 @@ export async function claudeRemoteLauncher(session: Session, onProcessorReady?: 
                         logger.debug(`[remote]: Completion event: ${message}`);
                         session.client.sendSessionEvent({ type: 'message', message });
                     },
-                    onSessionReset: () => {
+                    onSessionReset: async (localIds) => {
                         logger.debug('[remote]: Session reset');
-                        session.clearSessionId();
+                        contextResetPending = true;
+                        await session.clearSessionId(localIds);
+                        contextResetPending = false;
                     },
                     onReady: (status = 'completed') => {
                         const completedMedia = mediaAwaitingCleanup;
@@ -476,6 +480,9 @@ export async function claudeRemoteLauncher(session: Session, onProcessorReady?: 
                 }
             } catch (e) {
                 logger.debug('[remote]: launch error', e);
+                // A rejected reset must not let the next queued prompt resume the
+                // conversation whose boundary could not be saved.
+                if (contextResetPending) throw e;
                 if (!exitReason) {
                     session.client.closeClaudeSessionTurn('failed');
                     session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });

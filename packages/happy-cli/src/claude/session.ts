@@ -158,7 +158,10 @@ export class Session {
     /**
      * Clear the current session ID (used by /clear command)
      */
-    clearSessionId = (): void => {
+    clearSessionId = async (localIds?: readonly string[]): Promise<void> => {
+        // Do not expose a fresh native session until its portable history boundary
+        // and the removal of its persisted native identity are acknowledged.
+        await this.client.resetPortableContextBoundary(localIds);
         this.sessionId = null;
         logger.debug('[Session] Session ID cleared');
     }

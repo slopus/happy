@@ -38,6 +38,27 @@ function createSessionMock() {
 }
 
 describe('CodexPermissionHandler', () => {
+    it.each(['thread_read', 'mcp__happy__thread_read', 'thread_attachment', 'mcp__happy__thread_attachment'])(
+        'allows the exact first-party history tool %s in read-only mode', async toolName => {
+            const { session, getState } = createSessionMock();
+            const handler = new CodexPermissionHandler(session as any);
+            handler.setPermissionMode('read-only');
+            await expect(handler.handleToolCall('history-read', toolName, { itemId: 'source/1/0' }))
+                .resolves.toEqual({ decision: 'approved' });
+            expect(getState().requests).toBeUndefined();
+        },
+    );
+
+    it('keeps a different MCP server history tool pending in read-only mode', async () => {
+        const { session, getState } = createSessionMock();
+        const handler = new CodexPermissionHandler(session as any);
+        handler.setPermissionMode('read-only');
+        const pending = handler.handleToolCall('history-read', 'mcp__other__thread_attachment', {});
+        expect(getState().requests['history-read']).toMatchObject({ tool: 'mcp__other__thread_attachment' });
+        handler.abortAll();
+        await expect(pending).resolves.toEqual({ decision: 'abort' });
+    });
+
     it('auto-approves the safe change_title tool', async () => {
         const { session, getState } = createSessionMock();
         const handler = new CodexPermissionHandler(session as any);

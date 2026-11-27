@@ -1,4 +1,7 @@
 import type { CrossAgentRequest } from '@/continuation/coordinator';
+import type { ConversationSessionLaunchRequest, ConversationSessionCancelRequest, ConversationSessionCancelResult } from '@/daemon/conversationSessionLaunch';
+import type { NativeToolResultPage } from '@/continuation/recoverToolResult';
+import type { PortableContextExportPage } from '@/continuation/portableContextStore';
 import { DelegationRequestSchema, MachineDelegationRolesRequestSchema, type DelegationRequest, type DelegationResponse, type MachineDelegationRolesRequest } from '@slopus/happy-wire';
 import { createCodingAgentService } from '@/environment/codingAgentService';
 import { createArtifactRuntime, authorizeArtifactRoot, watchArtifactChanges, artifactAccountScope } from '@/modules/artifacts/runtime';
@@ -125,6 +128,10 @@ type MachineRpcHandlers = {
     delegationConnected?: () => void;
     spawnSession: (options: TracedSpawnSessionOptions) => Promise<SpawnSessionResult>;
     continueWithAgent?: (request: CrossAgentRequest) => Promise<SpawnSessionResult>;
+    spawnConversationSession?: (request: ConversationSessionLaunchRequest) => Promise<SpawnSessionResult>;
+    cancelConversationLaunch?: (request: ConversationSessionCancelRequest) => Promise<ConversationSessionCancelResult>;
+    readConversationToolResult?: (request: { sourceSessionId: string; toolCallId: string; textOffset?: number }) => Promise<({ success: true } & NativeToolResultPage) | { success: false; error: string }>;
+    readConversationContext?: (request: { sourceSessionId: string; textOffset?: number }) => Promise<({ success: true } & PortableContextExportPage) | { success: false; error: string }>;
     resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     requestShutdown: () => void;
@@ -240,6 +247,10 @@ export class ApiMachineClient {
         delegationConnected,
         spawnSession,
         continueWithAgent,
+        spawnConversationSession,
+        cancelConversationLaunch,
+        readConversationToolResult,
+        readConversationContext,
         resumeSession,
         stopSession,
         requestShutdown,
@@ -263,6 +274,45 @@ export class ApiMachineClient {
             if (!UUID_RE.test(params?.requestId ?? '') || !['claude', 'codex'].includes(params?.targetAgent)) throw new Error('Invalid continuation request');
             return continueWithAgent({ sourceSessionId, targetAgent: params.targetAgent, requestId: params.requestId,
                 ...(params.targetAgent === 'codex' && params.codexSessionGrant ? { codexSessionGrant: params.codexSessionGrant } : {}) });
+        });
+        if (spawnConversationSession) this.rpcHandlerManager.registerHandler('spawn-conversation-session', async (params: any) => {
+            const rootSessionId = requireNonEmptyString(params?.rootSessionId, 'rootSessionId');
+            const sourceSessionId = requireNonEmptyString(params?.sourceSessionId, 'sourceSessionId');
+            if (!UUID_RE.test(params?.requestId ?? '') || !['claude', 'codex', 'opencode', 'antigravity'].includes(params?.targetAgent)) {
+                return { type: 'error', notDispatched: true, errorMessage: 'This agent does not support complete conversation context.' };
+            }
+            if (params.magpieModel !== undefined && (params.targetAgent !== 'codex' || typeof params.magpieModel !== 'string'
+                || !params.magpieModel.trim() || params.magpieModel.length > 512 || params.codexSessionGrant !== undefined
+                || params.expectedCodexAccountProfileId != null)) throw new Error('Invalid native Codex connection selection');
+            if (params.expectedCodexAccountProfileId != null && typeof params.expectedCodexAccountProfileId !== 'string') throw new Error('Invalid Codex account selection');
+            if (params.codexSessionGrant !== undefined && (params.targetAgent !== 'codex' || typeof params.codexSessionGrant !== 'string'
+                || !/^[A-Za-z0-9_-]{43}$/.test(params.codexSessionGrant))) throw new Error('Invalid Codex account grant');
+            // No client-supplied native ID, cwd, launch environment, or fork flags
+            // can cross this boundary. The daemon resolves those from fresh state.
+            return spawnConversationSession({ rootSessionId, sourceSessionId, requestId: params.requestId,
+                targetAgent: params.targetAgent, expectedCodexAccountProfileId: params.expectedCodexAccountProfileId ?? null,
+                ...(params.magpieModel ? { magpieModel: params.magpieModel } : {}),
+                ...(params.codexSessionGrant ? { codexSessionGrant: params.codexSessionGrant } : {}),
+                ...(traceIdFromParams(params.traceId) ? { traceId: traceIdFromParams(params.traceId) } : {}),
+            });
+        });
+        if (readConversationToolResult) this.rpcHandlerManager.registerHandler('read-conversation-tool-result', async (params: any) => {
+            if (typeof params?.sourceSessionId !== 'string' || !params.sourceSessionId || typeof params.toolCallId !== 'string'
+                || !params.toolCallId || params.toolCallId.length > 1024 || (params.textOffset !== undefined
+                    && (!Number.isSafeInteger(params.textOffset) || params.textOffset < 0))) return { success: false, error: 'Invalid native tool history request.' };
+            return readConversationToolResult({ sourceSessionId: params.sourceSessionId, toolCallId: params.toolCallId,
+                ...(params.textOffset !== undefined ? { textOffset: params.textOffset } : {}) });
+        });
+        if (cancelConversationLaunch) this.rpcHandlerManager.registerHandler('cancel-conversation-launch', async (params: any) => {
+            if (typeof params?.rootSessionId !== 'string' || !params.rootSessionId || typeof params.sourceSessionId !== 'string'
+                || !params.sourceSessionId || !UUID_RE.test(params.requestId ?? '')) return { success: false, error: 'Invalid conversation cancellation request.' };
+            return cancelConversationLaunch({ rootSessionId: params.rootSessionId, sourceSessionId: params.sourceSessionId, requestId: params.requestId });
+        });
+        if (readConversationContext) this.rpcHandlerManager.registerHandler('read-conversation-context', async (params: any) => {
+            if (typeof params?.sourceSessionId !== 'string' || !params.sourceSessionId || (params.textOffset !== undefined
+                && (!Number.isSafeInteger(params.textOffset) || params.textOffset < 0))) return { success: false, error: 'Invalid frozen context request.' };
+            return readConversationContext({ sourceSessionId: params.sourceSessionId,
+                ...(params.textOffset !== undefined ? { textOffset: params.textOffset } : {}) });
         });
         this.projectGoals?.dispose();
         if (projectGoals) this.projectGoals = registerProjectGoalHandlers(this.rpcHandlerManager, {

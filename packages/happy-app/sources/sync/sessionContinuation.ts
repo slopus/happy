@@ -1,5 +1,5 @@
 import { isRetiredSession } from './retiredSessions';
-import { prepareSessionContinuationContext as prepareContext } from './sessionContextHandoff';
+import { prepareSessionContinuationContext as prepareContext, attachSessionContinuationContext, type PreparedSessionContinuationContext } from './sessionContextHandoff';
 import { MMKV, writeDeviceStorage } from '@/persistence/deviceStorage';
 import { accountStorageId, assertAccountRuntime } from '@/auth/accountRuntime';
 import { storage } from './storage';
@@ -10,14 +10,14 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName } from '@/utils/sessionUtils';
 import type { Session } from './storageTypes';
 
-const preparedContexts = new Map<string, string>();
+const preparedContexts = new Map<string, PreparedSessionContinuationContext>();
 const receipts = new MMKV({ id: accountStorageId('session-continuations') });
 export function continuationSpawnOptions(source: Session): SpawnSessionOptions {
     if (isRetiredSession(source)) throw new Error('personal-agent-retired');
     const metadata = source.metadata;
     const flavor = metadata?.flavor ?? 'claude';
     if (!metadata?.machineId || !metadata.path) throw new Error('continuation-missing-machine');
-    if (!['claude', 'codex', 'gemini', 'opencode', 'antigravity', 'openclaw'].includes(flavor)) throw new Error('continuation-unsupported-agent');
+    if (!['claude', 'codex', 'gemini', 'opencode', 'antigravity'].includes(flavor)) throw new Error('continuation-unsupported-agent');
     return { machineId: metadata.machineId, directory: metadata.path,
         agent: flavor as SpawnSessionOptions['agent'], approvedNewDirectoryCreation: false };
 }
@@ -56,10 +56,14 @@ const continueSession = createContinuationCoordinator({
         const source = storage.getState().sessions[sourceId];
         const target = storage.getState().sessions[targetId];
         if (!source?.metadata || !target?.metadata) throw new Error('continuation-source-unavailable');
-        const context = target.metadata.continuationContext ?? preparedContexts.get(sourceId) ?? await prepareContext(sourceId);
+        if (!target.metadata.portableContext) {
+            const prepared = preparedContexts.get(sourceId) ?? await prepareContext(sourceId);
+            await attachSessionContinuationContext(targetId, sourceId, prepared);
+        }
         assertAccountRuntime();
-        const targetUpdate = await sessionUpdateMetadata(targetId, target.metadata, target.metadataVersion, metadata => ({
-            ...metadata, continuationOfSessionId: sourceId, continuationContext: context,
+        const freshTarget = storage.getState().sessions[targetId];
+        const targetUpdate = await sessionUpdateMetadata(targetId, freshTarget.metadata!, freshTarget.metadataVersion, metadata => ({
+            ...metadata, continuationOfSessionId: sourceId,
             summary: { text: getSessionName(source), updatedAt: Date.now() },
         }));
         assertAccountRuntime();

@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
     runtimeEvents: [] as Array<{ stage: string; sessionId?: string }>,
     spawnResult: { type: 'success', sessionId: 'session-1' } as SpawnSessionResult,
     machineSpawnNewSession: vi.fn(),
+    machineSpawnConversationSession: vi.fn(),
     ensureSessionHydrated: vi.fn(),
     refreshSessions: vi.fn(),
     sendMessage: vi.fn(),
@@ -32,18 +33,22 @@ const mocks = vi.hoisted(() => ({
     confirm: vi.fn(),
     prepareHandoff: vi.fn(),
     attachHandoff: vi.fn(),
+    scopeHandoff: vi.fn(),
     prepareConversation: vi.fn(async () => 'source'),
     claimConversation: vi.fn(),
     commitConversation: vi.fn(),
     awaitConversationDelivery: vi.fn(),
     releaseConversation: vi.fn(),
+    reserveConversation: vi.fn(), releaseConversationReservation: vi.fn(),
 }));
 
-vi.mock('@/sync/conversationSwitch', () => ({ prepareConversationSwitch: mocks.prepareConversation, claimConversationSwitch: mocks.claimConversation, commitConversationSwitch: mocks.commitConversation, releaseConversationSwitch: mocks.releaseConversation }));
+vi.mock('@/sync/conversationSwitch', () => ({ prepareConversationSwitch: mocks.prepareConversation, claimConversationSwitch: mocks.claimConversation, commitConversationSwitch: mocks.commitConversation, releaseConversationSwitch: mocks.releaseConversation,
+    reserveConversationSwitch: mocks.reserveConversation, releaseConversationSwitchReservation: mocks.releaseConversationReservation }));
 
 vi.mock('@/sync/sessionContextHandoff', () => ({
     prepareSessionContinuationContext: mocks.prepareHandoff,
     attachSessionContinuationContext: mocks.attachHandoff,
+    assertPortableContextSourceScope: mocks.scopeHandoff,
 }));
 
 vi.mock('expo-crypto', () => ({
@@ -62,6 +67,7 @@ vi.mock('@/sync/sessionStartupTraceRuntime', async (importOriginal) => {
 
 vi.mock('@/sync/ops', () => ({
     machineSpawnNewSession: mocks.machineSpawnNewSession,
+    machineSpawnConversationSession: mocks.machineSpawnConversationSession,
 }));
 vi.mock('@/sync/sync', () => ({
     sync: {
@@ -179,6 +185,7 @@ describe('useSpawnSession', () => {
         mocks.runtimeEvents = [];
         mocks.spawnResult = { type: 'success', sessionId: 'session-1' };
         mocks.machineSpawnNewSession.mockImplementation(async () => mocks.spawnResult);
+        mocks.machineSpawnConversationSession.mockImplementation(async () => mocks.spawnResult);
         mocks.ensureSessionHydrated.mockResolvedValue(true);
         mocks.refreshSessions.mockResolvedValue(undefined);
         mocks.sendMessage.mockResolvedValue({ type: 'queued', sessionId: 'session-1', localIds: ['local-1'] });
@@ -885,6 +892,7 @@ describe('same-conversation spawn', () => {
             expect(await hook.current().spawn({ ...args, images: [], continuationSourceSessionId: 'source', continueInCurrentConversation: true }, false, queued)).toBe(true);
         });
         expect(mocks.prepareConversation).toHaveBeenCalledWith('source');
+        expect(mocks.reserveConversation.mock.invocationCallOrder.at(-1)).toBeLessThan(mocks.machineSpawnConversationSession.mock.invocationCallOrder.at(-1)!);
         expect(mocks.claimConversation).toHaveBeenCalledWith(expect.objectContaining({ sourceId: 'source', targetId: 'session-1', rootId: 'source' }));
         expect(mocks.sendMessage).toHaveBeenCalledWith('session-1', 'Build it', expect.objectContaining({ conversationSwitchRequestId: expect.any(String) }));
         expect(mocks.claimConversation.mock.invocationCallOrder.at(-1)).toBeLessThan(mocks.sendMessage.mock.invocationCallOrder.at(-1)!);
@@ -906,7 +914,7 @@ describe('same-conversation spawn', () => {
         const hook = renderHook();
         await act(async () => { expect(await hook.current().spawn({ ...args, images: [], continueInCurrentConversation: true, continuationSourceSessionId: 'source' })).toBe(false); });
         await act(async () => { expect(await hook.current().retryHydration()).toBe(true); });
-        expect(mocks.machineSpawnNewSession).toHaveBeenCalledOnce();
+        expect(mocks.machineSpawnConversationSession).toHaveBeenCalledOnce();
         expect(mocks.sendMessage).toHaveBeenCalledOnce();
         expect(mocks.commitConversation).toHaveBeenCalledTimes(2);
         expect(mocks.navigateToSession).not.toHaveBeenCalled();

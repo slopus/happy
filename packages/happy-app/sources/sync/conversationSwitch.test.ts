@@ -1,18 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MetadataSchema, type Session } from './storageTypes';
 import { projectConversationSessions } from './conversationSession';
-const mock = vi.hoisted(() => ({ sessions: {} as Record<string, Session>, refresh: vi.fn(), update: vi.fn(), delivery: vi.fn(), hydrate: vi.fn(), assert: vi.fn() }));
+const mock = vi.hoisted(() => ({ sessions: {} as Record<string, Session>, refresh: vi.fn(), update: vi.fn(), delivery: vi.fn(), hydrate: vi.fn(), assert: vi.fn(), cancel: vi.fn() }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/auth/accountRuntime', () => ({ assertAccountRuntime: mock.assert }));
 vi.mock('./storage', () => ({ storage: { getState: () => ({ sessions: mock.sessions, applySessions: (sessions: Session[]) => { for (const session of sessions) mock.sessions[session.id] = session; } }) } }));
 vi.mock('./sync', () => ({ sync: { refreshConversationSession: mock.refresh, hasConversationHandoffDelivery: mock.delivery, ensureSessionHydrated: mock.hydrate } }));
-vi.mock('./ops', () => ({ sessionUpdateMetadata: mock.update }));
+vi.mock('./ops', () => ({ sessionUpdateMetadata: mock.update, machineCancelConversationLaunch: mock.cancel }));
 import { assertConversationSourceIdle, assertConversationSendAllowed, prepareConversationSwitch, claimConversationSwitch, commitConversationSwitch, releaseConversationSwitch, recoverConversationSwitch, repairCommittedConversationMembership } from './conversationSwitch';
 const session = (id: string, metadata: object = {}): Session => ({ id, metadata: { path: '/project', host: 'mac', machineId: 'm', ...metadata }, metadataVersion: 1, thinking: false, agentState: null } as Session);
 const record = { rootId: 'root', sourceId: 'root', targetId: 'target', requestId: 'switch-1' };
 beforeEach(() => {
     vi.resetAllMocks();
     mock.sessions = { root: session('root'), target: session('target', { continuationOfSessionId: 'root' }) };
+    mock.cancel.mockResolvedValue({ success: false, error: 'unknown' });
     mock.refresh.mockResolvedValue(true); mock.hydrate.mockResolvedValue(true); mock.delivery.mockResolvedValue(true);
     mock.update.mockImplementation(async (_id, metadata, version, apply) => ({ metadata: apply(metadata), version: version + 1 }));
 });
@@ -311,4 +312,72 @@ describe('committed conversation membership recovery', () => {
         await expect(repairCommittedConversationMembership('root')).rejects.toThrow('session.agentSwitchChanged');
         expect(mock.update).not.toHaveBeenCalled();
     });
+});
+
+it('reserves before native spawn, blocks ordinary sends, then binds only its own returned target', async () => {
+    const { reserveConversationSwitch } = await import('./conversationSwitch');
+    const reservation = { rootId: record.rootId, sourceId: record.sourceId, requestId: record.requestId };
+    await reserveConversationSwitch(reservation);
+    expect(mock.sessions.root.metadata!.conversationSwitch).toEqual({ id: record.requestId, sourceSessionId: record.sourceId });
+    expect(() => assertConversationSendAllowed('root')).toThrow('session.agentSwitchPending');
+    await claimConversationSwitch(record);
+    expect(mock.sessions.root.metadata!.conversationSwitch?.targetSessionId).toBe('target');
+    expect(() => assertConversationSendAllowed('target', record.requestId)).not.toThrow();
+});
+
+it('never releases a bound reservation as a pre-spawn failure', async () => {
+    const { reserveConversationSwitch, releaseConversationSwitchReservation } = await import('./conversationSwitch');
+    const reservation = { rootId: record.rootId, sourceId: record.sourceId, requestId: record.requestId };
+    await reserveConversationSwitch(reservation);
+    await claimConversationSwitch(record);
+    await expect(releaseConversationSwitchReservation(reservation)).rejects.toThrow('session.agentSwitchChanged');
+    expect(mock.sessions.root.metadata!.conversationSwitch?.targetSessionId).toBe('target');
+});
+
+it('releases only its known unsent targetless reservation and keeps an unknown launch pending', async () => {
+    const { reserveConversationSwitch, releaseConversationSwitchReservation } = await import('./conversationSwitch');
+    const reservation = { rootId: record.rootId, sourceId: record.sourceId, requestId: record.requestId };
+    await reserveConversationSwitch(reservation);
+    await expect(recoverConversationSwitch('root')).rejects.toThrow('session.agentSwitchPending');
+    expect(mock.delivery).not.toHaveBeenCalled();
+    await releaseConversationSwitchReservation(reservation);
+    expect(mock.sessions.root.metadata!.conversationSwitch).toBeUndefined();
+});
+
+
+it('unlocks a targetless abandoned launch on explicit reload recovery only after daemon cancellation proof', async () => {
+    const { reserveConversationSwitch } = await import('./conversationSwitch');
+    await reserveConversationSwitch({ rootId: 'root', sourceId: 'root', requestId: record.requestId });
+    mock.cancel.mockResolvedValue({ success: true, cancelled: true, targetSessionId: 'orphaned-candidate' });
+    await expect(recoverConversationSwitch('root')).resolves.toBe(true);
+    expect(mock.cancel).toHaveBeenCalledWith({ machineId: 'm', rootSessionId: 'root', sourceSessionId: 'root', requestId: record.requestId });
+    expect(mock.sessions.root.metadata!.conversationSwitch).toBeUndefined();
+    expect(mock.sessions.root.metadata!.conversationActiveSessionId).toBeUndefined();
+    expect(mock.delivery).not.toHaveBeenCalled();
+});
+
+it('recovers a bound but never-sent launch only with daemon proof that all target writers stopped', async () => {
+    await claimConversationSwitch(record);
+    mock.delivery.mockResolvedValue(false);
+    mock.cancel.mockResolvedValue({ success: true, cancelled: true, targetSessionId: 'target' });
+    await expect(recoverConversationSwitch('root')).resolves.toBe(true);
+    expect(mock.sessions.root.metadata!.conversationSwitch).toBeUndefined();
+    expect(mock.sessions.root.metadata!.conversationActiveSessionId).toBeUndefined();
+    expect(mock.sessions.target.metadata!.conversationRootSessionId).toBeUndefined();
+});
+
+it('rejects a cancelled handoff request even after its candidate becomes an ordinary independent continuation', async () => {
+    await claimConversationSwitch(record);
+    await releaseConversationSwitch(record);
+    expect(mock.sessions.target.metadata!.conversationRootSessionId).toBeUndefined();
+    expect(() => assertConversationSendAllowed('target', record.requestId)).toThrow('session.agentSwitchChanged');
+    expect(() => assertConversationSendAllowed('target')).not.toThrow();
+});
+
+it.each(['root', 'target'])('does not send or publish a candidate when %s was archived after preparation', async id => {
+    await claimConversationSwitch(record);
+    mock.sessions[id].metadata!.lifecycleState = 'archived';
+    expect(() => assertConversationSendAllowed('target', record.requestId)).toThrow('session.agentSwitchUnavailable');
+    await expect(commitConversationSwitch(record)).rejects.toThrow('session.agentSwitchUnavailable');
+    expect(mock.sessions.root.metadata!.conversationActiveSessionId).toBeUndefined();
 });

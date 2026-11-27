@@ -2,6 +2,7 @@ import { createId } from '@paralleldrive/cuid2';
 import type { RawJSONLines } from '@/claude/types';
 import {
     createEnvelope,
+    selectToolFailure,
     type SessionEnvelope,
     type SessionTurnEndStatus,
 } from '@slopus/happy-wire';
@@ -661,9 +662,24 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                         maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, envelopes, subagentStatus);
                     }
                 }
+                const details = (message as RawJSONLines & { toolUseResult?: unknown }).toolUseResult;
+                const result = details && typeof details === 'object' ? details as Record<string, unknown> : {};
+                const rawExitCode = result.exitCode ?? result.exit_code;
+                const exitCode = typeof rawExitCode === 'number' && Number.isInteger(rawExitCode) ? rawExitCode : undefined;
+                const status = result.status === 'cancelled' || result.status === 'canceled' || result.interrupted === true
+                    ? 'cancelled'
+                    : block.is_error === true || result.status === 'failed' || (exitCode !== undefined && exitCode !== 0)
+                        ? 'failed' : 'completed';
+                const failure = status === 'failed'
+                    ? selectToolFailure([block.content, details], exitCode === undefined ? 'The tool reported a failure.' : `Command exited with code ${exitCode}.`)
+                    : undefined;
                 envelopes.push(createEnvelope('agent', {
                     t: 'tool-call-end',
                     call: block.tool_use_id,
+                    status,
+                    ...(Object.hasOwn(block, 'content') ? { output: block.content } : details === undefined ? {} : { output: details }),
+                    ...(exitCode === undefined ? {} : { exitCode }),
+                    ...(failure ? { error: failure } : {}),
                 }, { turn: turnId, subagent }));
                 continue;
             }

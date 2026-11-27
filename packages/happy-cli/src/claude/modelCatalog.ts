@@ -38,6 +38,7 @@ export type NativeClaudeModelCatalog = ClaudeModelCatalog & { connectionKey?: st
 
 export function markClaudeModelConnection(metadata: Metadata, initialized: boolean | undefined, connectionKey: string | undefined): Metadata {
     return { ...metadata,
+        ...(initialized ? { claudeModelConnectionKey: connectionKey } : {}),
         ...(initialized && !connectionKey ? { models: undefined, modelsUpdatedAt: undefined, currentModelCode: undefined, thoughtLevels: undefined, currentThoughtLevelCode: undefined } : {}),
         capabilities: { ...metadata.capabilities, claudeModelCatalogRefresh: !!connectionKey } };
 }

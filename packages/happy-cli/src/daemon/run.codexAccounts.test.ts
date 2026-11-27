@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { EventEmitter } from 'node:events';
+import { createHash } from 'node:crypto';
 const state = vi.hoisted(() => ({ control: null as any, handlers: null as any, tmux: false, spawned: [] as any[], workerArgs: [] as any[], children: [] as any[], rejectGrant: false, api: null as any, bundleMtime: 1, tmuxOptions: null as any, persisted: {} as Record<string, any> }));
 vi.mock('node:fs', async importOriginal => {
   const fs = await importOriginal<typeof import('node:fs')>();
@@ -10,6 +11,7 @@ vi.mock('node:fs', async importOriginal => {
 });
 vi.mock('axios', () => ({ default: { get: vi.fn(async () => ({ data: { sessions: [] } })) } }));
 vi.mock('@/continuation/nativeHistory', () => ({ exportNativeConversation: async () => [{ kind: 'user', text: 'task' }], importClaudeConversation: async () => '00000000-0000-4000-8000-000000000010', importCodexConversation: async () => '00000000-0000-4000-8000-000000000011' }));
+vi.mock('@/continuation/recoverToolResult', () => ({ readNativeToolResult: vi.fn(async () => ({ outputText: 'original stdout', isError: false, nextTextOffset: null })) }));
 vi.mock('@/ui/auth', () => ({ authAndSetupMachineIfNeeded: async () => ({ credentials: { token: 'fake', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, machineId: 'machine-1' }) }));
 vi.mock('@/persistence', () => ({ writeDaemonState: vi.fn(), readDaemonState: async () => null, acquireDaemonLock: async () => ({}), releaseDaemonLock: async () => {}, readPersistedSessions: () => state.persisted, persistSession: vi.fn((id, saved) => { state.persisted[id] = saved; }) }));
 vi.mock('./controlClient', () => ({ cleanupDaemonState: async () => {}, isDaemonRunningCurrentlyInstalledHappyVersion: async () => false, stopDaemon: async () => {} }));
@@ -29,6 +31,7 @@ vi.mock('@/utils/spawnHappyCLI', () => ({ resolveHappyCLIEntrypoint: () => '/fak
   const child = Object.assign(new EventEmitter(), { pid: 987601, kill: vi.fn() }); state.children.push(child); state.spawned.push(options.env); return child;
 } }));
 vi.mock('./stopDetachedCodexWorker', () => ({ stopDetachedCodexWorker: vi.fn(async () => {}) }));
+vi.mock('./nativeProcessGroup', () => ({ verifyNativeProcessGroup: vi.fn(async () => true), awaitNativeProcessGroupExit: vi.fn(async () => {}) }));
 import { stopDetachedCodexWorker } from './stopDetachedCodexWorker';
 import { startDaemon } from './run';
 import axios from 'axios';
@@ -37,6 +40,8 @@ import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { retainCodexAccountHistory, rememberCodexAccountSession } from '@/codex/codexAccountHistory';
 import { startCodexAccountWorkerObserver } from '@/codex/codexAccountWorker';
+import { readNativeToolResult } from '@/continuation/recoverToolResult';
+import { PortableContextStore, PORTABLE_CONTEXT_DIRECTORY_NAME } from '@/continuation/portableContextStore';
 
 let sourceHome: string; let daemon: Promise<void>; let savedHome: string | undefined;
 let signalListeners: Map<string, Function[]>;
@@ -531,4 +536,146 @@ it('allows a stopped Claude worker with a stale thinking flag to be continued', 
  await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
  state.control.onHappySessionWebhook('crash-continuation', { hostPid: 987601, flavor: 'codex', startedBy: 'daemon' });
  expect(await launching).toEqual({ type: 'success', sessionId: 'crash-continuation' });
+});
+
+async function nativeConversationFixture() {
+ const nativeId = '00000000-0000-4000-8000-000000000081';
+ const requestId = '00000000-0000-4000-8000-000000000082';
+ const encryption = { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy' as const, seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+ const first = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'a'.repeat(43) });
+ await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+ const oldHome = state.spawned[0].CODEX_HOME;
+ const rootMetadata = { machineId: 'machine-1', path: sourceHome, hostPid: 987601, flavor: 'codex', startedBy: 'daemon',
+  codexThreadId: nativeId, codexAccountProfileId: 'profile-1', capabilities: { conversationNativeResume: 1 },
+  conversationActiveSessionId: 'current-claude', conversationSwitch: { id: requestId, sourceSessionId: 'current-claude' } };
+ state.control.onHappySessionWebhook('conversation-root', rootMetadata, encryption); await first;
+ await mkdir(join(oldHome, 'sessions'), { recursive: true });
+ const history = JSON.stringify({ type: 'session_meta', payload: { id: nativeId } }) + '\n';
+ await writeFile(join(oldHome, 'sessions', `rollout-${nativeId}.jsonl`), history);
+ const sourceMetadata = { machineId: 'machine-1', path: sourceHome, hostPid: 987603, flavor: 'claude', startedBy: 'daemon',
+  continuationOfSessionId: 'conversation-root', conversationRootSessionId: 'conversation-root' };
+ state.control.onHappySessionWebhook('current-claude', sourceMetadata, encryption);
+ const encrypted = (value: unknown) => encodeBase64(encrypt(encryption.encryptionKey, 'legacy', value));
+ const rows = [
+  { id: 'conversation-root', active: true, seq: 12, metadataVersion: 2, metadata: encrypted(rootMetadata),
+   agentState: encrypted({ turnStatus: { status: 'completed' }, claudeThinking: false }) },
+  { id: 'current-claude', active: true, seq: 24, metadataVersion: 2, metadata: encrypted(sourceMetadata),
+   agentState: encrypted({ turnStatus: { status: 'completed' }, claudeThinking: false }) },
+ ];
+ const nativeRows = [
+  { seq: 1, localId: 'original-input', content: { role: 'user', content: { type: 'text', text: 'Fix parser' } } },
+  { seq: 2, content: { role: 'session', content: { role: 'agent', turn: 'native-turn', ev: { t: 'turn-start', localIds: ['original-input'] } } } },
+  ...Array.from({ length: 9 }, (_, i) => ({ seq: i + 3, content: { role: 'session', content: { role: 'agent', turn: 'native-turn', ev: { t: 'text', text: 'native result' } } } })),
+  { seq: 12, content: { role: 'session', content: { role: 'agent', turn: 'native-turn', ev: { t: 'turn-end', status: 'completed' } } } },
+ ];
+ const messageRows: Record<string, any[]> = { 'conversation-root': nativeRows.map(row => ({ seq: row.seq, localId: 'localId' in row ? row.localId : undefined,
+  content: { t: 'encrypted', c: encrypted(row.content) } })) };
+ vi.mocked(axios.get).mockImplementation(async (url: any) => ({ data: String(url).includes('/messages')
+  ? { messages: messageRows[decodeURIComponent(String(url).match(/\/sessions\/([^/]+)\/messages/)?.[1] ?? '')] ?? [], hasMore: false }
+  : String(url).includes('/v2/sessions/') ? { session: rows.find(row => String(url).endsWith('/' + row.id)) } : { sessions: rows } }));
+ Object.assign(state.children[0], { exitCode: null, signalCode: null });
+ return { nativeId, requestId, oldHome, encryption, history, rootMetadata, rows, encrypted, messageRows,
+  request: { rootSessionId: 'conversation-root', sourceSessionId: 'current-claude', requestId,
+   targetAgent: 'codex', expectedCodexAccountProfileId: 'profile-1', codexSessionGrant: 'b'.repeat(43) } };
+}
+
+it('waits for the old native wrapper and final history checkpoint before restoring a fresh App segment', async () => {
+ const f = await nativeConversationFixture();
+ const oldChild = state.children[0];
+ oldChild.kill.mockImplementation(() => { oldChild.exitCode = 0; oldChild.signalCode = 'SIGTERM'; oldChild.emit('exit', 0); return true; });
+ const launching = state.handlers.spawnConversationSession(f.request);
+ await vi.waitFor(() => expect(state.spawned).toHaveLength(2));
+ expect(oldChild.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM');
+ expect(state.workerArgs[1]).toEqual(expect.arrayContaining(['--resume', f.nativeId]));
+ expect(state.spawned[1].HAPPY_RECONNECT_SESSION_ID).toBeUndefined();
+ expect(state.spawned[1].HAPPY_FORK_CODEX_THREAD_ID).toBeUndefined();
+ expect(state.spawned[1].HAPPY_CONVERSATION_NATIVE_RESUME).toBe('1');
+ expect(await readFile(join(state.spawned[1].CODEX_HOME, 'sessions', `rollout-${f.nativeId}.jsonl`), 'utf8')).toBe(f.history);
+ await expect(stat(f.oldHome)).rejects.toThrow();
+ state.control.onHappySessionWebhook('new-native-segment', { machineId: 'machine-1', path: sourceHome, hostPid: 987601, flavor: 'codex',
+  startedBy: 'daemon', parentSessionId: 'current-claude', crossAgentRequestId: f.requestId }, f.encryption);
+ expect(await launching).toMatchObject({ type: 'success', sessionId: 'new-native-segment', nativeResume: {
+  sourceSessionId: 'conversation-root', coverage: [{ sessionId: 'conversation-root', throughSeq: 12, afterSeq: 0 }], contextEpoch: null,
+  contextSources: [{ sessionId: 'current-claude', identity: expect.any(String) }, { sessionId: 'conversation-root', identity: expect.any(String) }] } });
+ expect(await state.handlers.spawnConversationSession(f.request)).toMatchObject({ sessionId: 'new-native-segment' });
+ expect(state.spawned).toHaveLength(2);
+});
+
+it('keeps the native writer alive when the newly selected account grant fails', async () => {
+ const f = await nativeConversationFixture();
+ state.rejectGrant = true;
+ expect(await state.handlers.spawnConversationSession(f.request)).toMatchObject({ type: 'error', notDispatched: true });
+ expect(state.children[0].kill).not.toHaveBeenCalled();
+ expect(state.spawned).toHaveLength(1);
+ expect((await stat(f.oldHome)).isDirectory()).toBe(true);
+});
+
+it('recovers a legacy tool body only from fresh decrypted native/source bindings', async () => {
+ const f = await nativeConversationFixture();
+ Object.assign(f.rootMetadata, { lifecycleState: 'archived' }); f.rows[0].metadata = f.encrypted(f.rootMetadata);
+ const result = await state.handlers.readConversationToolResult({ sourceSessionId: 'conversation-root', toolCallId: 'tool-123', textOffset: 50 });
+ expect(result).toEqual({ success: true, outputText: 'original stdout', isError: false, nextTextOffset: null });
+ expect(readNativeToolResult).toHaveBeenLastCalledWith({ id: 'conversation-root', agent: 'codex', nativeId: f.nativeId,
+  directory: sourceHome, accountProfileId: 'profile-1', revision: 12, boundaryId: undefined, connectionKey: undefined }, 'tool-123', 50);
+ expect(await state.handlers.readConversationToolResult({ sourceSessionId: 'not-owned', toolCallId: 'tool-123' })).toMatchObject({ success: false });
+ expect(state.spawned).toHaveLength(1);
+});
+
+it.each([false, true, 'partial-history'])('cancels only an unsent, fully stopped candidate (alreadyDelivered=%s)', async alreadyDelivered => {
+ const f = await nativeConversationFixture();
+ const old = state.children[0]; old.kill.mockImplementation(() => { old.exitCode = 0; old.signalCode = null; old.emit('exit', 0); return true; });
+ const launching = state.handlers.spawnConversationSession(f.request);
+ await vi.waitFor(() => expect(state.spawned).toHaveLength(2));
+ const metadata = { machineId: 'machine-1', path: sourceHome, hostPid: 987601, flavor: 'codex', startedBy: 'daemon',
+  parentSessionId: 'current-claude', crossAgentRequestId: f.requestId };
+ state.control.onHappySessionWebhook('cancel-target', metadata, f.encryption); await launching;
+ f.rows.push({ id: 'cancel-target', active: true, seq: alreadyDelivered === 'partial-history' ? 2 : alreadyDelivered ? 1 : 0, metadataVersion: 1, metadata: f.encrypted(metadata),
+  agentState: f.encrypted({ turnStatus: { status: 'completed' }, claudeThinking: false }) });
+ if (alreadyDelivered === 'partial-history') f.messageRows['cancel-target'] = [{ seq: 2, content: { t: 'encrypted', c: f.encrypted({ role: 'agent', content: { type: 'event', data: {} } }) } }];
+ else if (alreadyDelivered) f.messageRows['cancel-target'] = [{ seq: 1, localId: 'current-input', content: { t: 'encrypted', c: f.encrypted({ role: 'user', content: { type: 'text', text: 'current prompt' } }) } }];
+ const child = state.children[1]; child.kill.mockImplementation(() => { child.exitCode = 0; child.signalCode = null; child.emit('exit', 0); return true; });
+ const result = await state.handlers.cancelConversationLaunch(f.request);
+ expect(result.success).toBe(!alreadyDelivered);
+ if (alreadyDelivered) expect(child.kill).not.toHaveBeenCalled();
+ else {
+  expect(result).toEqual({ success: true, cancelled: true, targetSessionId: 'cancel-target' });
+  expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM');
+  expect(await state.handlers.spawnConversationSession(f.request)).toMatchObject({ type: 'error', conversationCancelled: true });
+ }
+ expect(state.spawned).toHaveLength(2);
+});
+
+it('launches a fresh managed Codex child without inheriting a parent native account audit', async () => {
+ await rememberCodexAccountSession(join(sourceHome, 'codex-session-cache'), 'claude-parent', 'old-parent-profile');
+ const launching = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'g'.repeat(43), parentSessionId: 'claude-parent' });
+ await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+ expect(state.workerArgs[0]).not.toContain('--resume');
+ expect(state.spawned[0].HAPPY_CODEX_ACCOUNT_PROFILE_ID).toBe('profile-1');
+ state.control.onHappySessionWebhook('fresh-child', { hostPid: 987601, flavor: 'codex', startedBy: 'daemon', parentSessionId: 'claude-parent' });
+ expect(await launching).toEqual({ type: 'success', sessionId: 'fresh-child' });
+});
+
+it('reads the exact frozen root archive while archived/busy and rejects a later durable clear', async () => {
+ const f = await nativeConversationFixture();
+ let descriptor: unknown;
+ const store = new PortableContextStore({ directory: join(sourceHome, PORTABLE_CONTEXT_DIRECTORY_NAME), sessionId: 'conversation-root',
+  serverUrl: configuration.serverUrl, token: 'fake', encryptionKey: f.encryption.encryptionKey, descriptor: () => descriptor });
+ const snapshotId = '00000000-0000-4000-8000-000000000090';
+ const archive = { snapshot: { version: 1, id: snapshotId, rootSessionId: 'original-root', sourceSessionId: 'original-source',
+  heads: [{ sessionId: 'original-source', throughSeq: 1, afterSeq: 0 }],
+  items: [{ id: 'original-message', sourceSessionId: 'original-source', seq: 1, role: 'user', text: 'frozen prefix '.repeat(5000) }] }, blobKeys: {} };
+ const text = JSON.stringify(archive); const count = Math.ceil(text.length / 48000);
+ for (let index = 0; index < count; index++) await store.upload({ action: 'append', snapshotId, index, chunk: text.slice(index * 48000, (index + 1) * 48000) });
+ const committed = await store.upload({ action: 'commit', snapshotId, chunks: count, sha256: createHash('sha256').update(text).digest('hex') });
+ descriptor = committed.descriptor;
+ Object.assign(f.rootMetadata, { portableContext: descriptor, lifecycleState: 'archived' });
+ f.rows[0].metadata = f.encrypted(f.rootMetadata); f.rows[0].agentState = f.encrypted({ turnStatus: { status: 'running' } });
+ const first = await state.handlers.readConversationContext({ sourceSessionId: 'conversation-root' });
+ expect(first.success).toBe(true); expect(first.chunk).toHaveLength(48000);
+ const second = await state.handlers.readConversationContext({ sourceSessionId: 'conversation-root', textOffset: first.nextTextOffset });
+ expect(second.success).toBe(true); expect(second.nextTextOffset).toBeNull(); expect(first.chunk + second.chunk).toBe(text);
+ expect(state.spawned).toHaveLength(1);
+ await store.revoke({ id: '00000000-0000-4000-8000-000000000091', afterSeq: 12 });
+ expect(await state.handlers.readConversationContext({ sourceSessionId: 'conversation-root' })).toMatchObject({ success: false });
+ await store.dispose();
 });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { asyncQuestionResponseSchema, type AsyncQuestionAction, type AsyncQuestionResponse } from '@slopus/happy-wire';
+import { PortableContextHeadSchema, type PortableContextHead } from '@slopus/happy-wire';
 import { CodexMagpieCatalogSchema, type CodexMagpieCatalog, ClaudeModelCatalogSchema, type ClaudeModelCatalog } from '@slopus/happy-wire';
 /**
  * Session operations for remote procedure calls
@@ -204,9 +205,10 @@ export type SpawnSessionHydrationError = {
 };
 
 export type SpawnSessionResult =
-    | { type: 'success'; sessionId: string }
+    | { type: 'success'; sessionId: string; nativeResume?: { sourceSessionId: string; coverage: PortableContextHead[];
+        contextEpoch?: { sessionId: string; boundaryId: string } | null; contextSources?: Array<{ sessionId: string; identity: string }> } }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
-    | { type: 'error'; errorMessage: string; codexAccountErrorCode?: CodexAccountErrorCode; outcomeUnknown?: boolean; notDispatched?: boolean }
+    | { type: 'error'; errorMessage: string; codexAccountErrorCode?: CodexAccountErrorCode; outcomeUnknown?: boolean; notDispatched?: boolean; conversationCancelled?: true }
     | SpawnSessionHydrationError;
 
 function normalizeSpawnSessionResult(result: unknown): SpawnSessionResult {
@@ -216,13 +218,21 @@ function normalizeSpawnSessionResult(result: unknown): SpawnSessionResult {
 
     const response = result as Record<string, unknown>;
     if (response.type === 'success' && typeof response.sessionId === 'string') {
-        return { type: 'success', sessionId: response.sessionId };
+        const resume = z.object({ sourceSessionId: z.string().min(1), coverage: z.array(PortableContextHeadSchema).max(1000),
+            contextEpoch: z.object({ sessionId: z.string().min(1), boundaryId: z.string().min(1) }).nullable().optional(),
+            contextSources: z.array(z.object({ sessionId: z.string().min(1), identity: z.string().min(1) })).max(1000).optional() }).safeParse(response.nativeResume);
+        if (response.nativeResume !== undefined && !resume.success) return { type: 'error', errorMessage: 'Invalid native restore receipt', outcomeUnknown: true };
+        return { type: 'success', sessionId: response.sessionId, ...(resume.success ? { nativeResume: resume.data } : {}) };
     }
     if (response.type === 'requestToApproveDirectoryCreation' && typeof response.directory === 'string') {
         return { type: 'requestToApproveDirectoryCreation', directory: response.directory };
     }
     if (response.type === 'error' && typeof response.errorMessage === 'string') {
-        return { type: 'error', errorMessage: response.errorMessage };
+        return { type: 'error', errorMessage: response.errorMessage,
+            ...(response.notDispatched === true ? { notDispatched: true } : {}),
+            ...(response.outcomeUnknown === true ? { outcomeUnknown: true } : {}),
+            ...(response.conversationCancelled === true ? { conversationCancelled: true } : {}),
+        };
     }
 
     // Older daemon RPC handlers encrypt thrown errors as { error: string }.
@@ -354,6 +364,17 @@ export async function machineContinueWithAgent(options: {
     return machineStartSession(machineId, 'continue-with-agent', options.targetAgent === 'codex', request);
 }
 
+/** The daemon chooses native identity from the reserved, verified conversation. */
+export async function machineSpawnConversationSession(options: {
+    machineId: string; rootSessionId: string; sourceSessionId: string; requestId: string;
+    targetAgent: NonNullable<SpawnSessionOptions['agent']>; traceId?: string;
+    expectedCodexAccountProfileId?: string | null; magpieModel?: string;
+}): Promise<SpawnSessionResult> {
+    const { machineId, ...request } = options;
+    return machineStartSession(machineId, 'spawn-conversation-session', options.targetAgent === 'codex' && !options.magpieModel,
+        request, options.expectedCodexAccountProfileId);
+}
+
 /** Project tasks use the same ephemeral Codex-account grants as ordinary session creation. */
 export async function machineStartGoalTask(machineId: string, input: {
     featurePath: string; taskId: string; requestId: string; action: 'chat' | 'execute'; agent: 'codex' | 'claude';
@@ -373,7 +394,7 @@ export async function machineStartGoalAuthor(machineId: string, input: { scopePa
 /** Every final process launch goes through here; grants never enter persisted App state. */
 async function machineStartSession(
     machineId: string,
-    method: 'continue-with-agent' | 'spawn-happy-session' | 'resume-happy-session' | 'goalTaskLaunch' | 'previewGoalTaskLaunch' | 'goalProjectAuthor',
+    method: 'continue-with-agent' | 'spawn-conversation-session' | 'spawn-happy-session' | 'resume-happy-session' | 'goalTaskLaunch' | 'previewGoalTaskLaunch' | 'goalProjectAuthor',
     isCodex: boolean,
     parameters: Record<string, unknown>,
     expectedCodexAccountProfileId?: string | null,
@@ -422,7 +443,7 @@ async function machineStartSession(
         return {
             type: 'error',
             ...(dispatching ? { outcomeUnknown: true } : {}),
-            ...(!dispatching && (method === 'goalTaskLaunch' || method === 'previewGoalTaskLaunch') ? { notDispatched: true } : {}),
+            ...(!dispatching && (method === 'spawn-conversation-session' || method === 'goalTaskLaunch' || method === 'previewGoalTaskLaunch') ? { notDispatched: true } : {}),
             ...(error instanceof CodexAccountError ? { codexAccountErrorCode: error.code } : {}),
             errorMessage: error instanceof CodexAccountError
                 ? `${message} (machine: ${machineId}; RPC: ${method}; ${error.code}${error.status ? `; HTTP ${error.status}` : ''})`
@@ -1310,4 +1331,14 @@ export async function sessionWorkspaceListDirectory(sessionId: string, path: str
 export async function sessionRespondAsyncQuestion(sessionId: string, request: AsyncQuestionAction): Promise<AsyncQuestionResponse> {
     const result = await apiSocket.sessionRPC<AsyncQuestionResponse, AsyncQuestionAction>(sessionId, 'codex-async-question', request);
     return asyncQuestionResponseSchema.parse(result);
+}
+
+/** Reconcile only an abandoned launch; never dispatch a replacement worker or prompt. */
+export async function machineCancelConversationLaunch(options: {
+    machineId: string; rootSessionId: string; sourceSessionId: string; requestId: string;
+}): Promise<{ success: true; cancelled: true; targetSessionId?: string } | { success: false; error: string }> {
+    const { machineId, ...request } = options;
+    return apiSocket.machineRPC(machineId, 'cancel-conversation-launch', request, {
+        timeoutMs: SESSION_START_RPC_TIMEOUT_MS, overallTimeoutMs: SESSION_START_RPC_TIMEOUT_MS,
+    });
 }

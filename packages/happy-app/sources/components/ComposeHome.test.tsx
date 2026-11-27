@@ -19,6 +19,7 @@ import { clearComposeDraft, useComposeDraft } from '@/sync/composeDraft';
 import { setFirstSubmissionScope } from '@/sync/firstSubmissionScope';
 import { getFirstSubmissionScope } from '@/sync/firstSubmissionScope';
 vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'http://test' }));
+vi.mock('@/sync/apiSocket', () => ({ apiSocket: { sessionRPC: vi.fn(), machineRPC: vi.fn() } }));
 import type { LocalMessageQueueReceipt } from '@/sync/sync';
 import { Modal } from '@/modal';
 import { createRoleConfiguration, readRoleConfiguration } from '@/sync/roleConfigurationHandoff';

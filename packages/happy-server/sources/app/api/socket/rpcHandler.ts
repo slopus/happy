@@ -22,7 +22,7 @@ const RPC_CALL_TIMEOUT_MS = 30_000;
 const RPC_CODEX_QUOTA_REFRESH_TIMEOUT_MS = 55_000;
 const RPC_STARTUP_TIMEOUT_MS = 100_000;
 const RPC_ENVIRONMENT_APPLY_TIMEOUT_MS = 600_000;
-const RPC_STARTUP_METHODS = new Set(['spawn-happy-session', 'resume-happy-session']);
+const RPC_STARTUP_METHODS = new Set(['spawn-happy-session', 'spawn-conversation-session', 'cancel-conversation-launch', 'resume-happy-session']);
 const RPC_PRESENCE_POLL_MS = 2_000;
 // Timeouts for cross-replica fetchSockets during the reconnect grace window.
 // Exponential backoff: 2s → 4s → 8s. Reduces stream pressure under load

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MotionWorkbenchChangeSchema, MotionProjectLinkSchema } from '@slopus/happy-wire';
+import { MotionWorkbenchChangeSchema, MotionProjectLinkSchema, PortableContextDescriptorSchema, PortableContextBoundarySchema } from '@slopus/happy-wire';
 import { messageOptionResponseSchema } from './messageOptionResponses';
 import { ApplicationSessionMetadataSchema, GoalBoardBindingSchema, GoalBoardSnapshotSchema, ARTIFACT_PROTOCOL, asyncQuestionResponseSchema, DelegationRoleV1Schema, DelegatedTaskSummaryV1Schema, DelegationSnapshotV2Schema } from "@slopus/happy-wire";
 
@@ -120,7 +120,10 @@ export const MetadataSchema = z.object({
      * Both ride inside encrypted metadata so the server stays oblivious.
      */
     continuationOfSessionId: z.string().optional(),
-    continuationContext: z.string().max(24000).optional(),
+    continuationContext: z.string().optional(),
+    portableContextProtocol: z.literal(1).optional(),
+    portableContext: PortableContextDescriptorSchema.optional(),
+    portableContextBoundary: PortableContextBoundarySchema.optional(),
     continuedBySessionId: z.string().optional(),
     /** Logical chat membership; ordinary continuation/fork sessions remain independent. */
     conversationRootSessionId: z.string().min(1).optional(),

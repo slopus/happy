@@ -213,7 +213,9 @@ export class AcpSessionManager {
       const flushed = this.flush();
       const call = this.getSessionCallId(msg.callId);
       const result = msg.result && typeof msg.result === 'object' ? msg.result as Record<string, unknown> : {};
-      const status = result.status === 'cancelled' ? 'cancelled' : result.status === 'failed' || result.error ? 'failed' : undefined;
+      const rawExitCode = result.exitCode ?? result.exit_code;
+      const exitCode = typeof rawExitCode === 'number' && Number.isInteger(rawExitCode) ? rawExitCode : undefined;
+      const status = result.status === 'cancelled' ? 'cancelled' : result.status === 'failed' || result.error || (exitCode !== undefined && exitCode !== 0) ? 'failed' : undefined;
       const failure = status === 'failed' ? selectToolFailure([msg.result], 'Tool failed') : null;
       const roleInput = this.roleCalls.get(msg.callId);
       this.roleCalls.delete(msg.callId);
@@ -223,6 +225,8 @@ export class AcpSessionManager {
       return [
         ...flushed,
         createEnvelope('agent', { t: 'tool-call-end', call, ...(status ? { status } : {}),
+          ...(msg.result === undefined ? {} : { output: msg.result }),
+          ...(exitCode === undefined ? {} : { exitCode }),
           ...(failure?.summary ? { error: failure } : {}),
           ...(receipt ? { mcpAppResult: receipt } : {}) }, turnOptions(this.currentTurnId, this.nextTime())),
       ];

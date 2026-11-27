@@ -14,8 +14,9 @@ import { independentTaskSchema } from '@/daemon/independentSessions';
 import { BROWSER_STEP_TOOL_DESCRIPTION } from '@/browser/browserStepReportingPrompt';
 import { DELEGATION_MCP_TOOL_NAMES, DELEGATION_MCP_TIMEOUT_MS, registerDelegationMcpTools } from '@/delegation/mcpTools';
 import { PROJECT_CANVAS_MCP_TOOLS, projectCanvasMcpCall, registerProjectCanvasTools } from '@/modules/goalBoard/projectCanvasTools';
+import { PORTABLE_CONTEXT_TOOL_NAMES, registerPortableContextTools } from '@/continuation/portableContextTools';
 
-export const HAPPY_MCP_BRIDGE_TOOL_NAMES = ['start_session', ...DELEGATION_MCP_TOOL_NAMES, ...PROJECT_CANVAS_MCP_TOOLS, 'change_title', 'send_image', 'send_file', 'report_browser_step', 'archive_session', 'finance_chart', 'create_preview', 'publish_preview', 'list_previews', 'close_preview'] as const;
+export const HAPPY_MCP_BRIDGE_TOOL_NAMES = ['start_session', ...DELEGATION_MCP_TOOL_NAMES, ...PROJECT_CANVAS_MCP_TOOLS, ...PORTABLE_CONTEXT_TOOL_NAMES, 'change_title', 'send_image', 'send_file', 'report_browser_step', 'archive_session', 'finance_chart', 'create_preview', 'publish_preview', 'list_previews', 'close_preview'] as const;
 
 type HappyMcpBridgeToolName = typeof HAPPY_MCP_BRIDGE_TOOL_NAMES[number];
 
@@ -29,7 +30,7 @@ async function forwardHappyToolCall(
     const client = await ensureHttpClient();
     return await (name === 'delegate_task'
       ? client.callTool({ name, arguments: args }, undefined, { timeout: DELEGATION_MCP_TIMEOUT_MS })
-      : PROJECT_CANVAS_MCP_TOOLS.some(tool => tool === name)
+      : PROJECT_CANVAS_MCP_TOOLS.some(tool => tool === name) || name === 'thread_attachment'
         ? client.callTool({ name, arguments: args }, undefined, { timeout: 125_000 })
         : client.callTool({ name, arguments: args })) as CallToolResult;
   } catch (error) {
@@ -59,6 +60,7 @@ export function registerHappyBridgeTools(
     const { name, args } = projectCanvasMcpCall(input);
     return forwardHappyToolCall(name, args, ensureHttpClient, 'Project canvas request failed');
   }, true);
+  registerPortableContextTools(server, (name, args) => forwardHappyToolCall(name, args, ensureHttpClient, 'Portable history request failed'));
 
   server.registerTool(
     'change_title',

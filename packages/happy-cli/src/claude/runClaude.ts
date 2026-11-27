@@ -170,6 +170,7 @@ export async function runClaude(
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
         flavor: 'claude',
+        capabilities: { conversationNativeResume: 1 },
         ...(applicationPolicy ? { application: { appId: applicationPolicy.binding.appId, bindingId: applicationPolicy.binding.id } } : {}),
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
@@ -751,8 +752,8 @@ export async function runClaude(
                 return;
             }
 
-            if (specialCommand.type === 'clear') {
-                logger.debug('[start] Detected /clear command');
+            if (specialCommand.type === 'clear' || specialCommand.type === 'new') {
+                logger.debug(`[start] Detected /${specialCommand.type} command`);
                 const enhancedMode: EnhancedMode = {
                     permissionMode: messagePermissionMode || 'default',
                     model: messageModel,

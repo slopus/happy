@@ -16,7 +16,7 @@ import { readFile, stat, unlink } from 'node:fs/promises'
 import { createWriteStream } from 'node:fs'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { basename } from 'node:path'
+import { basename, join } from 'node:path'
 import { io, Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decryptBlob, encryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
@@ -49,6 +49,8 @@ import { applyPersistedTurnStatus, clearStaleRunningTurnStatus } from './session
 import type { WorkerSessionStartupLifecycle } from './sessionStartupTrace';
 import { publishPreviewWorkspace } from '@/previews/previewApi';
 import type { ResolvedPreviewWorkspace } from '@/previews/previewWorkspace';
+import { PortableContextStore, PORTABLE_CONTEXT_DIRECTORY_NAME, type PortableThreadReadInput, type PortableThreadAttachmentInput } from '@/continuation/portableContextStore';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 function redactPresignedUrl(url: string): string {
     return url.replace(/([?&](?:X-Amz-Signature|Signature)=)[^&]+/g, '$1<redacted>');
@@ -184,6 +186,10 @@ export class ApiSessionClient extends EventEmitter {
     private goalBoardSnapshotSequence = 0;
     private goalBoardClosed = false;
     private lastSeq = 0;
+    private readonly receivedUserSequences = new Map<string, number>();
+    private readonly portableContextStore: PortableContextStore;
+    private portableContextEnabled = false;
+    private portableContextBoundary: Metadata['portableContextBoundary'];
     private pendingOutbox: Array<{ content: string; localId: string }> = [];
     private readonly sendSync: InvalidateSync;
     private readonly receiveSync: InvalidateSync;
@@ -198,6 +204,7 @@ export class ApiSessionClient extends EventEmitter {
         this.delegationReporter = delegatedLaunch ? createDelegationReporter({ descriptor: delegatedLaunch, sessionId: session.id }) : null;
         this.initialMessageSeq = session.seq;
         this.metadata = session.metadata;
+        this.portableContextBoundary = session.metadata.portableContextBoundary;
         this.metadataVersion = session.metadataVersion;
         this.agentState = session.agentState;
         this.agentStateVersion = session.agentStateVersion;
@@ -218,6 +225,17 @@ export class ApiSessionClient extends EventEmitter {
             encryptionKey: this.encryptionKey,
             encryptionVariant: this.encryptionVariant,
             logger: (msg, data) => logger.debug(msg, data)
+        });
+        this.portableContextStore = new PortableContextStore({
+            directory: join(configuration.happyHomeDir, PORTABLE_CONTEXT_DIRECTORY_NAME), sessionId: this.sessionId,
+            serverUrl: configuration.serverUrl, token: this.token, encryptionKey: this.encryptionKey,
+            descriptor: () => this.metadata?.portableContext,
+            boundary: () => this.metadata?.portableContextBoundary ?? this.portableContextBoundary,
+            allowed: () => this.isPortableContextAllowed(),
+        });
+        this.rpcHandlerManager.registerHandler('portable-context-upload', async (input: unknown) => {
+            if (!this.portableContextEnabled) throw new Error('Portable history tools are not ready');
+            return this.portableContextStore.upload(input);
         });
         this.artifactRuntime = createArtifactRuntime(artifactIdentity, this.metadata.machineId);
         this.rpcHandlerManager.registerHandler('delegation-publish', async (input: unknown) => {
@@ -350,8 +368,8 @@ export class ApiSessionClient extends EventEmitter {
                     }
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
                     logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
-                    this.routeIncomingMessage(body, data.body.message.localId);
                     this.lastSeq = messageSeq;
+                    this.routeIncomingMessage(body, data.body.message.localId, messageSeq);
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && this.acceptMetadata(data.body.metadata.version, data.body.metadata.value)) {
                         this.requestDelegationMetadataRepair();
@@ -658,11 +676,12 @@ export class ApiSessionClient extends EventEmitter {
         };
     }
 
-    private routeIncomingMessage(message: unknown, localId?: string | null) {
+    private routeIncomingMessage(message: unknown, localId?: string | null, seq?: number) {
         const userResult = UserMessageSchema.safeParse(message);
         if (userResult.success) {
             // Never trust a localId supplied inside encrypted user content.
             userResult.data.localId = localId ?? undefined;
+            if (localId && seq !== undefined) this.receivedUserSequences.set(localId, seq);
             if (this.pendingMessageCallback) {
                 this.pendingMessageCallback(userResult.data);
             } else {
@@ -719,7 +738,8 @@ export class ApiSessionClient extends EventEmitter {
 
                 try {
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c));
-                    this.routeIncomingMessage(body, message.localId);
+                    this.lastSeq = Math.max(this.lastSeq, message.seq);
+                    this.routeIncomingMessage(body, message.localId, message.seq);
                 } catch (error) {
                     logger.debug('[API] Failed to decrypt fetched message', {
                         sessionId: this.sessionId,
@@ -1131,6 +1151,47 @@ export class ApiSessionClient extends EventEmitter {
         return this.metadata;
     }
 
+    /** Called only after the current worker's actual MCP server is listening. */
+    async enablePortableContext(): Promise<void> {
+        if (this.metadata?.application) return; // Application-bound providers intentionally receive no Happy MCP tools.
+        await this.portableContextStore.initialize();
+        this.portableContextBoundary ??= this.portableContextStore.getSavedBoundary();
+        this.portableContextEnabled = true;
+        try {
+            await this.updateMetadataAndAwait(metadata => ({ ...metadata, portableContextProtocol: 1 }));
+            if (this.metadata?.portableContextProtocol !== 1) throw new Error('Portable history capability was not acknowledged');
+        } catch (error) { this.portableContextEnabled = false; throw error; }
+    }
+
+    private isPortableContextAllowed(): boolean {
+        const metadata = this.metadata as (Metadata & { conversationDeletePlan?: unknown }) | null;
+        return metadata !== null && metadata.lifecycleState !== 'archiveRequested' && metadata.lifecycleState !== 'archived'
+            && !metadata.application && !metadata.conversationDeletePlan && (metadata.hostPid === undefined || metadata.hostPid === process.pid);
+    }
+
+    readPortableContext(input: PortableThreadReadInput): Promise<CallToolResult> { return this.portableContextStore.read(input); }
+    readPortableContextAttachment(input: PortableThreadAttachmentInput): Promise<CallToolResult> { return this.portableContextStore.attachment(input); }
+
+    /** Persist a clear/new epoch together with removal of native and portable pointers. */
+    async resetPortableContextBoundary(localIds?: readonly string[]): Promise<void> {
+        const commandSequences = (localIds ?? []).flatMap(id => {
+            const seq = this.receivedUserSequences.get(id);
+            return seq === undefined ? [] : [seq];
+        });
+        const boundary = { id: randomUUID(), afterSeq: commandSequences.length ? Math.max(...commandSequences) : this.lastSeq };
+        await this.portableContextStore.revoke(boundary);
+        this.portableContextBoundary = boundary;
+        await this.updateMetadataAndAwait(metadata => {
+            const { portableContext, continuationContext, claudeSessionId, codexThreadId, crossAgentSourceAgent, ...rest } = metadata;
+            return { ...rest, portableContextBoundary: boundary };
+        });
+        if (this.metadata?.portableContextBoundary?.id !== boundary.id || this.metadata.portableContextBoundary.afterSeq !== boundary.afterSeq || this.metadata.portableContext !== undefined
+            || this.metadata.claudeSessionId !== undefined || this.metadata.codexThreadId !== undefined) {
+            throw new Error('Portable history reset was not acknowledged');
+        }
+        for (const [id, seq] of this.receivedUserSequences) if (seq <= boundary.afterSeq) this.receivedUserSequences.delete(id);
+    }
+
     /** Synchronous protocol identity, including before its metadata ACK arrives. */
     getCurrentRootTurnId(): string | undefined {
         return this.activeRootTurnId;
@@ -1173,6 +1234,12 @@ export class ApiSessionClient extends EventEmitter {
         // bindings onto its replacement's session snapshot.
         if (metadata.hostPid !== process.pid) return metadata;
         let updated = metadata;
+        if (this.portableContextEnabled && this.isPortableContextAllowed()) {
+            if (metadata.portableContextProtocol === undefined) updated = { ...updated, portableContextProtocol: 1 };
+            if (metadata.portableContextBoundary === undefined && this.portableContextBoundary) updated = { ...updated, portableContextBoundary: this.portableContextBoundary };
+            const descriptor = this.portableContextStore.getPublishedDescriptor();
+            if (metadata.portableContext === undefined && descriptor) updated = { ...updated, portableContext: descriptor };
+        }
         if (this.delegationSupport && metadata.flavor === this.delegationSupport
             && (metadata.capabilities?.delegation !== 1 || metadata.capabilities?.delegationRoutes !== 1)) {
             updated = { ...updated, capabilities: { ...updated.capabilities, delegation: 1, delegationRoutes: 1 } };
@@ -1216,8 +1283,13 @@ export class ApiSessionClient extends EventEmitter {
 
     private acceptMetadata(version: number, encrypted: string): boolean {
         if (version <= this.metadataVersion) return false;
+        const previousBoundary = this.metadata?.portableContextBoundary ?? this.portableContextBoundary;
         this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(encrypted));
         this.metadataVersion = version;
+        const nextBoundary = this.metadata?.portableContextBoundary ?? this.portableContextBoundary;
+        if (!this.isPortableContextAllowed() || nextBoundary?.id !== previousBoundary?.id || nextBoundary?.afterSeq !== previousBoundary?.afterSeq) {
+            void this.portableContextStore.invalidateForLifecycle().catch(() => logger.debug('[API] Could not remove private portable attachment files'));
+        }
         this.emit('metadata-updated', this.metadata);
         return true;
     }
@@ -1326,6 +1398,8 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     async close() {
+        this.portableContextEnabled = false;
+        await this.portableContextStore.dispose();
         this.delegationReporter?.processorStartupFailed();
         logger.debug('[API] socket.close() called');
         this.goalBoardClosed = true;

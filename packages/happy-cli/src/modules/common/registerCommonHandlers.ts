@@ -179,9 +179,10 @@ export interface SpawnSessionOptions {
 }
 
 export type SpawnSessionResult =
-    | { type: 'success'; sessionId: string }
+    | { type: 'success'; sessionId: string; nativeResume?: { sourceSessionId: string; coverage: import('@slopus/happy-wire').PortableContextHead[];
+        contextEpoch?: { sessionId: string; boundaryId: string } | null; contextSources?: Array<{ sessionId: string; identity: string }> } }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
-    | { type: 'error'; errorMessage: string; notDispatched?: boolean };
+    | { type: 'error'; errorMessage: string; notDispatched?: boolean; conversationCancelled?: true };
 
 /**
  * Register all RPC handlers with the session

@@ -32,7 +32,7 @@ describe('AcpSessionManager turn lifecycle', () => {
     const [started] = mapper.mapMessage({ type: 'tool-call', toolName: 'read', callId: 'native-call', args: {} });
     const [ended] = mapper.mapMessage({ type: 'tool-result', toolName: 'read', callId: 'native-call', result: { status: 'cancelled' } });
     expect(started.ev).toMatchObject({ t: 'tool-call-start', call });
-    expect(ended.ev).toEqual({ t: 'tool-call-end', call, status: 'cancelled' });
+    expect(ended.ev).toEqual({ t: 'tool-call-end', call, status: 'cancelled', output: { status: 'cancelled' } });
   });
   it('emits turn-start from startTurn()', () => {
     const mapper = new AcpSessionManager();
@@ -238,6 +238,14 @@ describe('AcpSessionManager tool mapping', () => {
     if (start.ev.t === 'tool-call-start' && end.ev.t === 'tool-call-end') {
       expect(end.ev.call).toBe(start.ev.call);
     }
+  });
+
+  it('persists complete ACP command evidence and exit status for the next agent', () => {
+    const mapper = new AcpSessionManager();
+    mapper.startTurn();
+    const result = { stdout: `${'x'.repeat(90000)}\nFINAL_OUTPUT`, stderr: 'failed', exitCode: 9 };
+    const [end] = mapper.mapMessage({ type: 'tool-result', callId: 'shell', toolName: 'execute', result });
+    expect(end.ev).toMatchObject({ t: 'tool-call-end', status: 'failed', exitCode: 9, output: result });
   });
 
   it('creates distinct call ids for multiple tool calls', () => {

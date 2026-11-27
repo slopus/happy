@@ -1,4 +1,11 @@
 import { createCrossAgentContinuation } from '@/continuation/coordinator';
+import { createConversationSessionLauncher, assertConversationLaunchIdle, type ConversationNativeCandidate, type ConversationLaunchSnapshot } from './conversationSessionLaunch';
+import { readNativeConversationCoverage } from './nativeConversationCoverage';
+import { verifyNativeProcessGroup, awaitNativeProcessGroupExit } from './nativeProcessGroup';
+import { readNativeToolResult } from '@/continuation/recoverToolResult';
+import { PortableContextStore, PORTABLE_CONTEXT_DIRECTORY_NAME } from '@/continuation/portableContextStore';
+import { getProjectPath } from '@/claude/utils/path';
+import { readClaudeModelCatalog } from '@/claude/modelCatalog';
 import { exportNativeConversation, importClaudeConversation, importCodexConversation } from '@/continuation/nativeHistory';
 import type { ConversationItem } from '@/continuation/history';
 import { ExecutionBindingSchema } from '@slopus/happy-wire';
@@ -51,7 +58,7 @@ import { CODEX_ACCOUNT_UNSET_ENV, withCodexAccountLaunch, type CodexAccountLaunc
 import { refreshCodexAccountQuota } from './codexQuotaProbe';
 import { EXPECT_MAGPIE_CONNECTION_ENV, readMagpieModelCatalog } from '@/codex/magpieModelCatalog';
 import { collectCodexUsageSnapshot, codexUsageSignature, mergeRecentCodexUsageSnapshot } from '@/codex/codexUsage';
-import { collectRetainedCodexAccountUsage } from '@/codex/codexAccountHistory';
+import { collectRetainedCodexAccountUsage, copyCodexSourceThread, getCodexSourceAccountProfileId } from '@/codex/codexAccountHistory';
 import { retryPendingCodexProbeCredentials } from './codexQuotaProbeRecovery';
 import { retryPendingCodexSessionCredentials } from './codexSessionCredentialRecovery';
 import { AsyncLock } from '@/utils/lock';
@@ -64,7 +71,8 @@ import {
   type StartupTraceWriter,
 } from './sessionStartupTrace';
 
-type TracedSpawnSessionOptions = SpawnSessionOptions & { traceId?: string; nativeApplicationPolicy?: NativeLaunchPolicy; nativeReconnectEnvironment?: Record<string, string>; crossAgentHistory?: ConversationItem[]; crossAgentRequestId?: string };
+type TracedSpawnSessionOptions = SpawnSessionOptions & { traceId?: string; nativeApplicationPolicy?: NativeLaunchPolicy; nativeReconnectEnvironment?: Record<string, string>; crossAgentHistory?: ConversationItem[]; crossAgentRequestId?: string;
+  conversationNative?: ConversationNativeCandidate; beforeConversationSpawn?: (launch: CodexAccountLaunch | undefined) => Promise<void> };
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -435,6 +443,7 @@ export async function startDaemon(): Promise<void> {
       let continuationWorkerDispatched = false;
       const launchResult = await withCodexAccountLaunch(options, api, machineId, async (codexLaunch) => {
       try {
+        await options.beforeConversationSpawn?.(codexLaunch);
         // Convert only inside the selected target account home. This option is
         // daemon-internal and never accepted by the generic spawn RPC.
         if (options.crossAgentHistory) {
@@ -465,7 +474,10 @@ export async function startDaemon(): Promise<void> {
         delete extraEnv[EXPECT_MAGPIE_CONNECTION_ENV];
         if (options.magpieModel) extraEnv[EXPECT_MAGPIE_CONNECTION_ENV] = '1';
         if (options.crossAgentRequestId) extraEnv.HAPPY_CROSS_AGENT_REQUEST_ID = options.crossAgentRequestId;
-        const inheritedSourceAgent = options.parentSessionId ? findTrackedSessionById(options.parentSessionId)?.happySessionMetadataFromLocalWebhook?.crossAgentSourceAgent : undefined;
+        delete extraEnv.HAPPY_CONVERSATION_NATIVE_RESUME;
+        if (options.conversationNative) extraEnv.HAPPY_CONVERSATION_NATIVE_RESUME = '1';
+        const inheritedSourceAgent = options.conversationNative?.source.metadata.crossAgentSourceAgent
+          ?? (!options.beforeConversationSpawn && options.parentSessionId ? findTrackedSessionById(options.parentSessionId)?.happySessionMetadataFromLocalWebhook?.crossAgentSourceAgent : undefined);
         if (options.crossAgentHistory || inheritedSourceAgent) extraEnv.HAPPY_CROSS_AGENT_SOURCE_AGENT = options.crossAgentHistory
           ? (options.agent === 'claude' ? 'codex' : 'claude') : inheritedSourceAgent!;
         if (options.parentSessionId) {
@@ -478,10 +490,10 @@ export async function startDaemon(): Promise<void> {
         // backfill into the fresh Happy session row. Without this, the
         // SDK reads the JSONL silently as context but never re-emits the
         // historical messages, so the app shows an empty chat.
-        if (options.resumeClaudeSessionId) {
+        if (options.resumeClaudeSessionId && !options.conversationNative) {
           extraEnv.HAPPY_FORK_CLAUDE_SESSION_ID = options.resumeClaudeSessionId;
         }
-        if (options.resumeCodexThreadId) {
+        if (options.resumeCodexThreadId && !options.conversationNative) {
           extraEnv.HAPPY_FORK_CODEX_THREAD_ID = options.resumeCodexThreadId;
         }
         // Expand ${VAR} references from daemon's process.env
@@ -748,14 +760,15 @@ export async function startDaemon(): Promise<void> {
         };
       }
       }, {
-        sourceSessionId: options.crossAgentHistory ? undefined : options.parentSessionId, sourceThreadId: options.crossAgentHistory ? undefined : options.resumeCodexThreadId,
+        sourceSessionId: options.conversationNative?.source.id ?? (!options.crossAgentHistory && options.resumeCodexThreadId ? options.parentSessionId : undefined), sourceThreadId: options.crossAgentHistory ? undefined : options.resumeCodexThreadId,
         inheritConfiguration: !options.nativeApplicationPolicy,
         sourceProfileId: options.nativeApplicationPolicy?.binding.engine === 'codex' ? options.nativeApplicationPolicy.binding.accountRef.id : options.expectedCodexAccountProfileId,
         // Only a new session created from a native fork may use the selected
         // account. Resuming an existing session retains its original identity.
-        allowCrossAccountFork: !!(options.parentSessionId && options.resumeCodexThreadId),
+        allowCrossAccountFork: !options.conversationNative && !!(options.parentSessionId && options.resumeCodexThreadId),
+        skipHistory: !!options.conversationNative,
       });
-      return options.crossAgentHistory && launchResult.type === 'error' && !continuationWorkerDispatched
+      return (options.crossAgentHistory || options.beforeConversationSpawn) && launchResult.type === 'error' && !continuationWorkerDispatched
         ? { ...launchResult, notDispatched: true } : launchResult;
     };
 
@@ -1474,12 +1487,245 @@ export async function startDaemon(): Promise<void> {
       spawn: spawnSession,
     });
 
+    const readConversationSnapshot = async (id: string): Promise<ConversationLaunchSnapshot> => {
+        const tracked = findTrackedSessionById(id);
+        if (!tracked?.encryption) throw new Error('The complete conversation is not retained by this machine.');
+        const snapshot = await fetchServerSessionSnapshot(id, tracked.encryption.encryptionKey, tracked.encryption.encryptionVariant, true);
+        if (!snapshot) throw new Error('Cannot read the current encrypted conversation state.');
+        return { id, ...snapshot };
+    };
+    const stopConversationWriter = async (owner: ConversationLaunchSnapshot): Promise<void> => {
+      const entry = [...pidToTrackedSession.entries()].find(([, candidate]) => candidate.happySessionId === owner.id);
+      if (!entry) {
+        if (!owner.metadata.hostPid) throw new Error('The previous native worker process cannot be identified.');
+        for (const pid of [owner.metadata.hostPid, -owner.metadata.hostPid]) {
+          try { process.kill(pid, 0); throw new Error('The previous native writer is still present.'); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+        }
+        return;
+      }
+      const [pid, tracked] = entry;
+      const child = tracked.childProcess;
+      if (!child || tracked.startedBy !== 'daemon' || pid !== owner.metadata.hostPid) throw new Error('Cannot safely stop the previous native writer.');
+      const previousLaunch = codexLaunches.get(pid);
+      if (!await verifyNativeProcessGroup(pid)) throw new Error('The previous native process group cannot be verified.');
+      if (child.exitCode == null && child.signalCode == null) {
+        await new Promise<void>((resolve, reject) => {
+          const finish = (error?: Error) => { clearTimeout(timer); child.removeListener('exit', exited); error ? reject(error) : resolve(); };
+          const exited = () => finish();
+          const timer = setTimeout(() => finish(new Error('The previous native writer did not stop cleanly.')), 5000);
+          child.once('exit', exited);
+          try { if (!child.kill('SIGTERM')) finish(new Error('Cannot stop the previous native writer.')); }
+          catch { finish(new Error('Cannot stop the previous native writer.')); }
+        });
+      }
+      await awaitNativeProcessGroupExit(pid);
+      await previousLaunch?.finish();
+    };
+    const assertNoConversationUserDelivery = async (target: ConversationLaunchSnapshot): Promise<void> => {
+      const encryption = findTrackedSessionById(target.id)?.encryption;
+      if (!encryption) throw new Error('Cannot verify the candidate delivery history.');
+      let afterSeq = 0;
+      for (;;) {
+        const response = await axios.get(`${configuration.serverUrl}/v3/sessions/${encodeURIComponent(target.id)}/messages`, {
+          params: { after_seq: afterSeq, limit: 100 }, headers: { Authorization: `Bearer ${credentials.token}` }, timeout: 15000,
+        });
+        if (!Array.isArray(response.data.messages)) throw new Error('Cannot verify the candidate delivery history.');
+        let next = afterSeq;
+        for (const row of response.data.messages) {
+          if (!Number.isSafeInteger(row.seq) || row.seq !== next + 1 || row.content?.t !== 'encrypted') throw new Error('The candidate delivery history is incomplete.');
+          next = row.seq;
+          const raw = decrypt(encryption.encryptionKey, encryption.encryptionVariant, decodeBase64(row.content.c)) as any;
+          if (!raw) throw new Error('The candidate delivery history cannot be decrypted.');
+          const envelope = raw.role === 'session' ? raw.content?.type === 'session' ? raw.content.data : raw.content : undefined;
+          if (raw.role === 'user' || (envelope?.role === 'user' && envelope.ev?.t === 'file'
+              && !String(row.localId ?? '').startsWith('session-envelope:'))) throw new Error('The candidate already received user input; cancellation would lose its delivery.');
+        }
+        if (!response.data.hasMore) {
+          if (next < target.seq) throw new Error('The candidate delivery history has an unverified tail.');
+          return;
+        }
+        if (next <= afterSeq) throw new Error('The candidate delivery history did not advance.');
+        afterSeq = next;
+      }
+    };
+    const spawnConversationSession = createConversationSessionLauncher({
+      directory: join(configuration.happyHomeDir, 'conversation-session-launches', machineId), machineId,
+      read: readConversationSnapshot,
+      liveCandidates: source => [...pidToTrackedSession.values()].filter(candidate => {
+        const metadata = candidate.happySessionMetadataFromLocalWebhook;
+        return metadata?.path === source.metadata.path && metadata.flavor === source.metadata.flavor;
+      }).flatMap(candidate => candidate.happySessionId ? [candidate.happySessionId] : []),
+      verifyNative: async candidate => {
+        const metadata = candidate.metadata;
+        const tracked = findTrackedSessionById(candidate.id);
+        const live = [...pidToTrackedSession.values()].find(session => session.happySessionId === candidate.id);
+        if (live && (!live.childProcess || live.pid !== metadata.hostPid || live.startedBy !== 'daemon')) return false;
+        if (live && !await verifyNativeProcessGroup(live.pid)) return false;
+        if (!live && metadata.hostPid) {
+          try { process.kill(metadata.hostPid, 0); return false; }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return false; }
+        }
+        if (!tracked) return false;
+        if (metadata.flavor === 'claude') {
+          // An already-dead Claude wrapper cannot prove that an unobserved SDK
+          // child has exited. Use a fresh native thread with portable history.
+          if (!live) return false;
+          if (!metadata.claudeModelConnectionKey) return false;
+          const catalog = await readClaudeModelCatalog({ directory: metadata.path }).catch(() => undefined);
+          if (catalog?.connectionKey !== metadata.claudeModelConnectionKey) return false;
+          const file = await fs.lstat(join(getProjectPath(metadata.path), `${metadata.claudeSessionId}.jsonl`)).catch(() => null);
+          return file?.isFile() === true;
+        }
+        if (!live) {
+          // Restarts/crashes do not prove a provider child exited. Only a
+          // locally observed clean wrapper exit plus a vanished group does.
+          if (!metadata.hostPid || tracked.childProcess?.exitCode !== 0 || tracked.childProcess.signalCode !== null) return false;
+          try { process.kill(-metadata.hostPid, 0); return false; }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return false; }
+        }
+        // Managed account history has a durable, daemon-created native/session
+        // audit. Local and Magpie histories currently lack that account proof,
+        // so they retain complete portable history in a fresh native thread.
+        return !!metadata.codexAccountProfileId && !metadata.codexMagpieConnection
+          && await getCodexSourceAccountProfileId(join(configuration.happyHomeDir, 'codex-session-cache'), candidate.id)
+            === metadata.codexAccountProfileId;
+      },
+      readCoverage: async owner => {
+        const encryption = findTrackedSessionById(owner.id)?.encryption;
+        if (!encryption) throw new Error('Native input coverage encryption is unavailable.');
+        return readNativeConversationCoverage({ sessionId: owner.id, throughSeq: owner.seq,
+          afterSeq: owner.metadata.portableContextBoundary?.afterSeq ?? 0,
+          readPage: async afterSeq => {
+            const response = await axios.get(`${configuration.serverUrl}/v3/sessions/${encodeURIComponent(owner.id)}/messages`, {
+              params: { after_seq: afterSeq, limit: 100 }, headers: { Authorization: `Bearer ${credentials.token}` }, timeout: 15000,
+            });
+            if (!Array.isArray(response.data.messages)) throw new Error('Native input coverage history is unavailable.');
+            return { hasMore: response.data.hasMore === true, messages: response.data.messages.map((row: any) => {
+              if (row.content?.t !== 'encrypted') throw new Error('Native input coverage contains an unreadable record.');
+              const content = decrypt(encryption.encryptionKey, encryption.encryptionVariant, decodeBase64(row.content.c));
+              if (!content) throw new Error('Native input coverage contains an unreadable record.');
+              return { seq: row.seq, localId: row.localId, content };
+            }) };
+          },
+        });
+      },
+      findCreated: async request => {
+        const matches = new Set<string>();
+        for (const tracked of [...pidToTrackedSession.values(), ...sessionIdToFinishedSession.values()]) {
+          const metadata = tracked.happySessionMetadataFromLocalWebhook;
+          if (tracked.happySessionId && metadata?.crossAgentRequestId === request.requestId
+            && metadata.parentSessionId === request.sourceSessionId && metadata.flavor === request.targetAgent) matches.add(tracked.happySessionId);
+        }
+        if (matches.size > 1) throw new Error('The conversation launch registered more than one worker.');
+        return [...matches][0];
+      },
+      cancelTarget: async (request, targetId, assertReservation) => {
+        const verify = async () => {
+          await assertReservation();
+          const root = await readConversationSnapshot(request.rootSessionId);
+          const target = await readConversationSnapshot(targetId);
+          const m = target.metadata;
+          if (targetId === request.sourceSessionId || targetId === request.rootSessionId || m.machineId !== machineId || m.path !== root.metadata.path
+              || m.crossAgentRequestId !== request.requestId || m.parentSessionId !== request.sourceSessionId
+              || (m.conversationRootSessionId && m.conversationRootSessionId !== request.rootSessionId)
+              || (m.continuationOfSessionId && m.continuationOfSessionId !== request.sourceSessionId)) throw new Error('The conversation candidate identity cannot be verified.');
+          assertConversationLaunchIdle(target, { allowArchived: true });
+          await assertNoConversationUserDelivery(target);
+          return target;
+        };
+        const target = await verify();
+        await stopConversationWriter(target);
+        // An old client might have delivered while shutdown was in flight.
+        // A second immutable history traversal must still prove no user input.
+        await verify();
+      },
+      spawn: async (request, source, native, validate) => spawnSession({
+        directory: source.metadata.path, agent: request.targetAgent, approvedNewDirectoryCreation: false,
+        parentSessionId: source.id, crossAgentRequestId: request.requestId,
+        codexSessionGrant: request.codexSessionGrant,
+        expectedCodexAccountProfileId: request.expectedCodexAccountProfileId ?? undefined,
+        magpieModel: request.magpieModel, traceId: request.traceId,
+        ...(native ? { conversationNative: native,
+          ...(request.targetAgent === 'claude' ? { resumeClaudeSessionId: native.nativeId } : { resumeCodexThreadId: native.nativeId }) } : {}),
+        beforeConversationSpawn: async launch => {
+          // A fresh account credential is validated before stopping anything.
+          // Recheck the reservation, lineage, clear boundary and source queues
+          // after that await and immediately before retiring the old writer.
+          await validate();
+          if (!native) return;
+          if ((native.source.metadata.codexAccountProfileId ?? undefined) !== launch?.profileId && request.targetAgent === 'codex') {
+            throw new Error('The native thread belongs to a different Codex account.');
+          }
+          for (const owner of native.owners) await stopConversationWriter(owner);
+          await validate.afterRetire();
+          if (launch && request.targetAgent === 'codex') {
+            await copyCodexSourceThread(join(configuration.happyHomeDir, 'codex-session-cache'), native.source.id,
+              native.nativeId, launch.home, launch.profileId);
+          }
+        },
+      }),
+    });
+
     // Set RPC handlers
     apiMachine.setRPCHandlers({
       delegation: request => delegationRuntime!.handle(request),
       delegationRoles: request => delegationRuntime!.handleRoles(request),
       delegationConnected: () => delegationRuntime?.republish(),
       continueWithAgent,
+      spawnConversationSession,
+      cancelConversationLaunch: request => spawnConversationSession.cancel(request),
+      readConversationContext: async request => {
+        let store: PortableContextStore | undefined;
+        try {
+          const tracked = findTrackedSessionById(request.sourceSessionId);
+          if (!tracked?.encryption) throw new Error('The frozen conversation archive is not retained by this machine.');
+          const allowed = (source: ConversationLaunchSnapshot) => source.metadata.machineId === machineId && !!source.metadata.path
+            && !source.metadata.conversationDeletePlan && !source.metadata.application && !retiredAgentMessage(source.metadata.flavor);
+          const source = await readConversationSnapshot(request.sourceSessionId);
+          if (!allowed(source)) throw new Error('Cannot verify the frozen conversation archive owner.');
+          let savedBoundary: Metadata['portableContextBoundary'];
+          store = new PortableContextStore({ directory: join(configuration.happyHomeDir, PORTABLE_CONTEXT_DIRECTORY_NAME),
+            sessionId: source.id, serverUrl: configuration.serverUrl, token: credentials.token,
+            encryptionKey: tracked.encryption.encryptionKey, descriptor: () => source.metadata.portableContext,
+            boundary: () => source.metadata.portableContextBoundary ?? savedBoundary, allowed: () => allowed(source) });
+          await store.initialize(); savedBoundary = store.getSavedBoundary();
+          const result = await store.exportPage({ textOffset: request.textOffset });
+          const current = await readConversationSnapshot(request.sourceSessionId);
+          const identity = (row: ConversationLaunchSnapshot) => JSON.stringify([row.metadata.machineId, row.metadata.path,
+            row.metadata.portableContext, row.metadata.portableContextBoundary ?? savedBoundary]);
+          if (!allowed(current) || identity(current) !== identity(source)) throw new Error('The frozen archive changed while being read.');
+          return { success: true, ...result };
+        } catch (error) { return { success: false, error: error instanceof Error ? error.message : 'The frozen conversation archive is unavailable.' }; }
+        finally { await store?.dispose(); }
+      },
+      readConversationToolResult: async request => {
+        try {
+          const tracked = findTrackedSessionById(request.sourceSessionId);
+          if (!tracked?.encryption) throw new Error('The original tool history is not retained by this machine.');
+          const read = async () => {
+            const snapshot = await fetchServerSessionSnapshot(request.sourceSessionId, tracked.encryption!.encryptionKey, tracked.encryption!.encryptionVariant, true);
+            if (!snapshot || snapshot.metadata.machineId !== machineId || !snapshot.metadata.path) throw new Error('Cannot verify the original tool history owner.');
+            assertConversationLaunchIdle({ id: request.sourceSessionId, ...snapshot }, { allowArchived: true });
+            return snapshot;
+          };
+          const source = await read();
+          const metadata = source.metadata;
+          const agent = metadata.flavor;
+          if (agent !== 'claude' && agent !== 'codex') throw new Error('This provider did not retain recoverable original tool results.');
+          const nativeId = agent === 'claude' ? metadata.claudeSessionId : metadata.codexThreadId;
+          if (!nativeId) throw new Error('The original native tool history is unavailable.');
+          const result = await readNativeToolResult({ id: request.sourceSessionId, agent, nativeId, directory: metadata.path,
+            accountProfileId: metadata.codexAccountProfileId, revision: source.seq, boundaryId: metadata.portableContextBoundary?.id,
+            connectionKey: metadata.claudeModelConnectionKey }, request.toolCallId, request.textOffset);
+          const current = await read();
+          const fingerprint = (snapshot: typeof source) => JSON.stringify([snapshot.seq, snapshot.metadata.path, snapshot.metadata.machineId,
+            snapshot.metadata.claudeSessionId, snapshot.metadata.codexThreadId, snapshot.metadata.codexAccountProfileId,
+            snapshot.metadata.codexMagpieConnection, snapshot.metadata.claudeModelConnectionKey, snapshot.metadata.portableContextBoundary]);
+          if (fingerprint(source) !== fingerprint(current)) throw new Error('The original native history changed while being read.');
+          return { success: true, ...result };
+        } catch (error) { return { success: false, error: error instanceof Error ? error.message : 'The original native tool result is unavailable.' }; }
+      },
       spawnSession,
       resumeSession,
       stopSession,
