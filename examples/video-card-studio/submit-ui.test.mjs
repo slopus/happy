@@ -90,7 +90,8 @@ function setup({ crypto, fetchImpl, hash = '', IntersectionObserver, decodePrevi
   }
   const windowEvents = new Map();
   const location = { hash, pathname: '/', search: '', href: 'https://cards.example/' + hash };
-  const history = { replaceState(_state, _unused, value) { location.hash = new URL(value, 'https://cards.example/').hash; } };
+  const writeHash = (_state, _unused, value) => { location.hash = new URL(value, 'https://cards.example/').hash; };
+  const history = { replaceState: writeHash, pushState: writeHash };
   const window = { location, history, addEventListener(name, fn) { windowEvents.set(name, fn); } };
   const context = vm.createContext({
     document: {
@@ -213,8 +214,9 @@ test('a tracked job hash restores the exact same-video run without resubmitting'
   assert.equal(ui.requests.length, 0);
   ui.location.hash = '#result-' + older.id;
   ui.windowEvents.get('hashchange')();
-  assert.match(ui.element('queue').querySelector('[data-job-id="' + older.id + '"]').className, /selected/);
-  assert.doesNotMatch(ui.element('queue').querySelector('[data-job-id="' + job.id + '"]').className, /selected/);
+  assert.equal(ui.element('gallery').children[0].id, 'result-' + older.id);
+  assert.match(ui.element('queue').querySelector('[data-job-id="' + job.id + '"]').className, /selected/);
+  assert.equal(ui.element('queue').querySelector('[data-job-id="' + older.id + '"]'), null);
   assert.equal(ui.element('queue-count').textContent, '1', 'selecting old output does not hide active production');
   assert.equal(ui.requests.length, 0, 'changing the tracked result never creates another job');
 });
@@ -261,6 +263,41 @@ test('same-run result navigation moves focus to the exact title and keeps the tr
   ui.windowEvents.get('hashchange')();
   ui.stream.state({ connection: 'connected', jobs: [completed] });
   assert.equal(ui.element('queue').children[0].dataset.jobId, job.id);
+});
+
+test('the work index selects one exact submission while the active production job keeps its place', () => {
+  const ui = setup({ hash: '#job-' + job.id });
+  const completed = id => ({ ...job, id, createdAt: Date.now(), state: 'completed', phase: 'complete',
+    manifest: { title: 'Same video', author: 'Author', cards: [{ file: 'card-001.png', quote: 'Original quote', start: 4, end: 8 }] } });
+  const newer = completed('4574df4d-5521-41eb-a678-159a6f327312');
+  const older = completed('4764c426-e995-4486-a319-cab1dbc7a357');
+  const snapshot = { connection: 'connected', jobs: [job, newer, older] };
+  const gallery = ui.element('gallery'), archive = ui.element('work-index');
+  ui.stream.state(snapshot);
+  assert.equal(gallery.children.length, 1);
+  assert.equal(gallery.children[0].id, 'result-' + newer.id);
+  const choice = archive.querySelector(`[data-job-id="${older.id}"]`);
+  assert.equal(choice.href, '#result-' + older.id);
+  choice.onclick({ button: 0, preventDefault() {} });
+  const shown = gallery.children[0];
+  assert.equal(shown.id, 'result-' + older.id);
+  assert.match(shown.querySelector('.card-preview').href, new RegExp(older.id));
+  assert.equal(choice.getAttribute('aria-current'), 'true');
+  assert.equal(ui.location.hash, '#result-' + older.id);
+  assert.equal(ui.element('queue').querySelector('.job-row').dataset.jobId, job.id);
+
+  ui.stream.state({ ...snapshot, jobs: [completed('bca6c7b4-d21f-4039-ab22-f660f150ea4b'), ...snapshot.jobs] });
+  assert.equal(gallery.children[0], shown, 'a new completion keeps the chosen gallery and opener intact');
+  ui.location.hash = '#result-' + newer.id;
+  ui.windowEvents.get('hashchange')();
+  assert.equal(gallery.children[0].id, 'result-' + newer.id);
+  assert.equal(gallery.children[0].querySelector('h3').focused, true);
+  assert.equal(ui.element('queue').querySelector('.job-row').dataset.jobId, job.id);
+  gallery.children[0].querySelector('.card-preview').onclick({ button: 0, preventDefault() {} });
+  ui.location.hash = '#result-' + older.id;
+  ui.windowEvents.get('hashchange')();
+  assert.equal(ui.element('card-reader').open, false);
+  assert.equal(gallery.children[0].querySelector('h3').focused, true, 'navigating from a reader focuses the new result');
 });
 
 test('original reader switches exact frames, ignores an obsolete image failure and restores focus after a gallery update', async () => {
@@ -320,10 +357,15 @@ test('visible previews wait for a decode slot without blocking direct original l
   assert.equal(previews[3].querySelector('img').src, undefined);
   onIntersection([...observed].map(target => ({ target, isIntersecting: true })));
   assert.equal(pending.length, 3);
-  assert.equal(previews[3].querySelector('img').src, undefined);
+  const lastImage = previews[3].querySelector('img');
+  assert.equal(lastImage.src, undefined);
+  onIntersection([{ target: lastImage, isIntersecting: false }]);
   pending[0].reject(new Error('first image failed'));
   pending[1].resolve();
   await new Promise(resolve => setImmediate(resolve));
+  assert.equal(pending.length, 4);
+  assert.equal(lastImage.src, undefined);
+  onIntersection([{ target: lastImage, isIntersecting: true }]);
   assert.equal(pending.length, 5);
-  assert.match(previews[3].querySelector('img').src, /\/card-004\.png$/);
+  assert.match(lastImage.src, /\/card-004\.png$/);
 });

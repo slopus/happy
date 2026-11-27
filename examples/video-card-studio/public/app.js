@@ -11,8 +11,10 @@ const stages = [
 const timestamp = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const errors = { 'invalid-video': '请输入公开单 P 的 B 站视频链接或完整 BV 号。', 'queue-full': '制作队列已满，请稍后再提交。', 'rate-limit': '提交得有些快，请稍后再试。', 'idempotency-conflict': '这次提交的链接已变化，请重新提交。' };
 const trackedJob = () => /^#(?:job|result)-([a-f0-9-]{36})$/.exec(window.location.hash)?.[1];
-let stream, request = null, galleryFingerprint = '[]';
+let stream, request = null;
+let archiveFingerprint = '[]', galleryFingerprint = 'null';
 let currentId = trackedJob();
+let selectedWorkId = window.location.hash.startsWith('#result-') ? currentId : undefined;
 let initialAnchor = currentId ? window.location.hash.slice(1) : '';
 const unobservedJobs = new Map();
 const jobPhases = new Map();
@@ -28,9 +30,9 @@ const MAX_PREVIEWS_LOADING = 3;
 let previewsLoading = 0;
 const previewObserver = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
   for (const { target, isIntersecting } of entries) {
-    if (!isIntersecting || !previewSources.has(target)) continue;
-    previewObserver.unobserve(target);
-    visiblePreviews.set(target, previewSources.get(target));
+    if (!previewSources.has(target)) continue;
+    if (isIntersecting) visiblePreviews.set(target, previewSources.get(target));
+    else visiblePreviews.delete(target);
   }
   loadVisiblePreviews();
 }) : null;
@@ -39,6 +41,8 @@ function loadVisiblePreviews() {
     if (previewsLoading >= MAX_PREVIEWS_LOADING) break;
     visiblePreviews.delete(image);
     if (!image.isConnected || previewSources.get(image) !== source) continue;
+    previewObserver.unobserve(image);
+    previewSources.delete(image);
     previewsLoading++;
     image.src = source;
     // The next previews start only when a visible image finishes decoding or fails.
@@ -243,13 +247,19 @@ reader.addEventListener('click', event => {
 });
 reader.addEventListener('close', () => {
   if (!reading) return;
-  const { job, openedIndex, trigger } = reading;
+  const { job, openedIndex, trigger, navigation } = reading;
   reading = undefined;
   backdropDown = false;
   reader.classList.remove('reader-enter', 'reader-exit', 'reader-switch');
   readerImage.removeAttribute('src');
+  if (navigation) {
+    if (navigation.resultId) highlightWork(navigation.resultId, true);
+    return;
+  }
   const result = $(`result-${job.id}`);
-  const focus = trigger.isConnected ? trigger : result?.querySelectorAll('.card-preview')[openedIndex] ?? result?.querySelector('h3');
+  const focus = trigger.isConnected ? trigger
+    : result?.querySelectorAll('.card-preview')[openedIndex] ?? result?.querySelector('h3')
+      ?? $('work-index').querySelector(`[data-job-id="${job.id}"]`);
   if (!trigger.isConnected) focus?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
   focus?.focus({ preventScroll: true });
 });
@@ -385,62 +395,122 @@ function renderFeatured(finished) {
   };
   setPreviewSource(image, source);
 }
-function renderGallery(finished) {
+function renderWorkIndex(finished) {
   const fingerprint = JSON.stringify(finished);
+  if (fingerprint === archiveFingerprint) return;
+  archiveFingerprint = fingerprint;
+  renderFeatured(finished);
+  const archive = $('work-index');
+  const focusId = document.activeElement?.classList.contains('work-choice') ? document.activeElement.dataset.jobId : undefined;
+  if (previewObserver) archive.querySelectorAll('.work-thumb').forEach(clearPreviewSource);
+  archive.replaceChildren();
+  archive.hidden = finished.length < 2;
+  if (archive.hidden) return;
+  for (const job of finished) {
+    const href = `#result-${job.id}`;
+    const choice = link('', href, 'work-choice');
+    choice.dataset.jobId = job.id;
+    const cover = job.manifest.cards[0];
+    if (cover) {
+      const photo = el('img', 'work-thumb');
+      photo.alt = '';
+      photo.decoding = 'async';
+      choice.append(photo);
+      setPreviewSource(photo, `/api/jobs/${job.id}/${cover.file}`);
+    }
+    const info = el('span', 'work-choice-info');
+    info.append(el('span', 'work-choice-title', job.manifest.title), el('span', 'work-choice-date', submittedAt(job) || job.bvid));
+    choice.append(info);
+    choice.onclick = event => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      if (href === window.location.hash && selectedWorkId === job.id) return;
+      selectedWorkId = job.id;
+      if (href !== window.location.hash) window.history.pushState(window.history.state, '', href);
+      render(pageState);
+      highlightWork(job.id);
+    };
+    archive.append(choice);
+    if (job.id === focusId) choice.focus({ preventScroll: true });
+  }
+}
+function highlightWork(id, move = false) {
+  const result = $(`result-${id}`);
+  if (!result) return;
+  const reduced = reducedMotion();
+  if (!reduced) result.classList.add('result-arrival');
+  if (move) {
+    result.querySelector('h3')?.focus({ preventScroll: true });
+    result.scrollIntoView({ block: 'start', behavior: reduced ? 'instant' : 'smooth' });
+  }
+}
+function renderGallery(finished) {
+  renderWorkIndex(finished);
+  const readerJobId = reading && !reading.navigation ? reading.job.id : undefined;
+  const job = finished.find(item => item.id === (selectedWorkId ?? readerJobId ?? currentId)) ?? finished[0];
+  for (const choice of $('work-index').children) {
+    if (choice.dataset.jobId === job?.id) choice.setAttribute('aria-current', 'true');
+    else choice.removeAttribute('aria-current');
+  }
+  const fingerprint = JSON.stringify(job ?? null);
   if (fingerprint === galleryFingerprint) return;
   galleryFingerprint = fingerprint;
   const gallery = $('gallery');
   if (previewObserver) gallery.querySelectorAll('.card-preview img').forEach(clearPreviewSource);
   gallery.replaceChildren();
-  renderFeatured(finished);
-  if (!finished.length) gallery.append(el('p', 'empty', '卡片制作完成后会显示在这里。'));
-  for (const job of finished) {
-    const group = el('section', 'result'), heading = el('div', 'result-heading'), title = el('div');
-    group.id = `result-${job.id}`;
-    const resultTitle = el('h3', '', job.manifest.title);
-    resultTitle.tabIndex = -1;
-    title.append(resultTitle);
-    group.addEventListener('animationend', event => {
-      if (event.target === group) group.classList.remove('result-arrival');
-    });
-    const source = link(`${job.manifest.author} · ${job.bvid} · 自动转写，待核对`, job.url, 'result-source'); source.target = '_blank'; source.rel = 'noopener noreferrer'; title.append(source);
-    title.append(el('p', 'result-meta', submittedAt(job)));
-    const downloadArea = el('div', 'download-area'), bundle = el('button', 'download-all', `整组下载 · ${job.manifest.cards.length} 张`), feedback = el('p', 'download-feedback');
-    bundle.type = 'button'; bundle.dataset.jobId = job.id; feedback.setAttribute('role', 'status');
-    bundle.onclick = () => void downloadBundle(job, bundle, feedback);
-    downloadArea.append(bundle, feedback); heading.append(title, downloadArea); group.append(heading);
-    const cards = el('div', 'cards');
-    for (const [index, card] of job.manifest.cards.entries()) {
-      const number = index + 1;
-      const url = `/api/jobs/${job.id}/${card.file}`;
-      const original = originalURL(job, card);
-      const figure = el('figure', 'card');
-      const cardHeading = el('div', 'card-heading');
-      const sourceTime = link(`${time(card.start)}–${time(card.end)}`, `${job.url}?t=${Math.floor(card.start)}`, 'card-time'); sourceTime.target = '_blank'; sourceTime.rel = 'noopener noreferrer';
-      const download = link('', original, 'card-download');
-      configureDownload(download, job, card, number);
-      download.append(saveIcon());
-      const cardFeedback = el('p', 'download-feedback');
-      cardFeedback.setAttribute('role', 'status');
-      download.onclick = event => void downloadCard(event, download, cardFeedback);
-      cardHeading.append(el('strong', 'card-index', `第 ${number} 张`), sourceTime, download);
-
-      const preview = link('', original, 'card-preview');
-      preview.target = '_blank'; preview.rel = 'noopener';
-      preview.setAttribute('aria-label', `查看第 ${number} 张原图`);
-      preview.onclick = event => openReader(event, preview, job, index);
-      const img = el('img');
-      img.alt = ''; img.decoding = 'async';
-      preview.append(img);
-      setPreviewSource(img, url);
-
-      const caption = el('figcaption');
-      caption.append(el('p', 'card-quote', card.quote), cardFeedback);
-      figure.append(cardHeading, preview, caption);
-      cards.append(figure);
-    }
-    group.append(cards); gallery.append(group);
+  if (!job) {
+    gallery.append(el('p', 'empty', '卡片制作完成后会显示在这里。'));
+    return;
   }
+  gallery.append(renderWork(job));
+}
+function renderWork(job) {
+  const group = el('section', 'result'), heading = el('div', 'result-heading'), title = el('div');
+  group.id = `result-${job.id}`;
+  const resultTitle = el('h3', '', job.manifest.title);
+  resultTitle.tabIndex = -1;
+  title.append(resultTitle);
+  group.addEventListener('animationend', event => {
+    if (event.target === group) group.classList.remove('result-arrival');
+  });
+  const source = link(`${job.manifest.author} · ${job.bvid} · 自动转写，待核对`, job.url, 'result-source'); source.target = '_blank'; source.rel = 'noopener noreferrer'; title.append(source);
+  title.append(el('p', 'result-meta', submittedAt(job)));
+  const downloadArea = el('div', 'download-area'), bundle = el('button', 'download-all', `整组下载 · ${job.manifest.cards.length} 张`), feedback = el('p', 'download-feedback');
+  bundle.type = 'button'; bundle.dataset.jobId = job.id; feedback.setAttribute('role', 'status');
+  bundle.onclick = () => void downloadBundle(job, bundle, feedback);
+  downloadArea.append(bundle, feedback); heading.append(title, downloadArea); group.append(heading);
+  const cards = el('div', 'cards');
+  for (const [index, card] of job.manifest.cards.entries()) {
+    const number = index + 1;
+    const url = `/api/jobs/${job.id}/${card.file}`;
+    const original = originalURL(job, card);
+    const figure = el('figure', 'card');
+    const cardHeading = el('div', 'card-heading');
+    const sourceTime = link(`${time(card.start)}–${time(card.end)}`, `${job.url}?t=${Math.floor(card.start)}`, 'card-time'); sourceTime.target = '_blank'; sourceTime.rel = 'noopener noreferrer';
+    const download = link('', original, 'card-download');
+    configureDownload(download, job, card, number);
+    download.append(saveIcon());
+    const cardFeedback = el('p', 'download-feedback');
+    cardFeedback.setAttribute('role', 'status');
+    download.onclick = event => void downloadCard(event, download, cardFeedback);
+    cardHeading.append(el('strong', 'card-index', `第 ${number} 张`), sourceTime, download);
+
+    const preview = link('', original, 'card-preview');
+    preview.target = '_blank'; preview.rel = 'noopener';
+    preview.setAttribute('aria-label', `查看第 ${number} 张原图`);
+    preview.onclick = event => openReader(event, preview, job, index);
+    const img = el('img');
+    img.alt = ''; img.decoding = 'async';
+    preview.append(img);
+    setPreviewSource(img, url);
+
+    const caption = el('figcaption');
+    caption.append(el('p', 'card-quote', card.quote), cardFeedback);
+    figure.append(preview, cardHeading, caption);
+    cards.append(figure);
+  }
+  group.append(cards);
+  return group;
 }
 function connect() {
   stream?.close(); $('reconnect').hidden = true; stream = new EventSource('/api/events');
@@ -455,13 +525,15 @@ $('reconnect').onclick = connect;
 window.addEventListener('hashchange', () => {
   if (`#${initialAnchor}` !== window.location.hash) initialAnchor = '';
   const id = trackedJob();
-  if (id && id !== currentId) { currentId = id; render(pageState); }
-  if (!id || !window.location.hash.startsWith('#result-')) return;
-  const result = $(`result-${id}`);
-  if (!result) return;
-  if (!reducedMotion()) result.classList.add('result-arrival');
-  result.querySelector('h3')?.focus({ preventScroll: true });
-  result.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'instant' : 'smooth' });
+  if (!id) return;
+  const result = window.location.hash.startsWith('#result-');
+  selectedWorkId = result ? id : undefined;
+  if (!result || !currentId) currentId = id;
+  const changedWhileReading = reading && reading.job.id !== id;
+  if (changedWhileReading) reading.navigation = { resultId: result ? id : undefined };
+  render(pageState);
+  if (changedWhileReading) closeReader();
+  else if (result && !reading) highlightWork(id, true);
 });
 $('submit-form').onsubmit = async event => {
   event.preventDefault(); const url = $('video-url').value.trim(), feedback = $('form-feedback');
@@ -472,7 +544,7 @@ $('submit-form').onsubmit = async event => {
     if (!request || request.url !== url) request = { requestId: requestId(), url };
     const response = await fetch('/api/jobs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request), signal: controller.signal }); const data = await response.json();
     if (!response.ok) throw new Error(errors[data.error] ?? '暂时无法提交，请稍后重试。');
-    currentId = data.job.id; request = null;
+    currentId = data.job.id; selectedWorkId = undefined; request = null;
     window.history.replaceState(window.history.state, '', `#job-${currentId}`);
     if (!pageState.jobs.some(job => job.id === currentId)) unobservedJobs.set(currentId, data.job);
     render(pageState);
