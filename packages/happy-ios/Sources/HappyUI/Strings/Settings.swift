@@ -21,4 +21,6 @@ extension Strings {
     public static let relay = "Relay"
     public static let direct = "Direct"
     public static let beta = "Beta"
+    /// Under About while developer mode is on: Version's ten taps turn it off as they turned it on.
+    public static let developerModeFooter = "Developer mode is on. Tap Version ten times to turn it off."
 }

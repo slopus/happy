@@ -222,6 +222,49 @@ final class HostedCloudSettingsCleanupTests: XCTestCase {
         XCTAssertFalse(SettingsIndex.happyAccount.contains { $0.id == SettingsIndex.happyCloud.id })
     }
 
+    /// Developer mode's line under About, first, while it is on: Version's
+    /// ten taps turn it off as they turned it on, which hides the Happy
+    /// Cloud switch again and leaves its value as it was.
+    func testDeveloperModesLineIsUnderVersionWhileItIsOn() async throws {
+        let defaults = UserDefaults.standard
+        let kept = defaults.object(forKey: "happy-cloud")
+        defer { defaults.set(kept, forKey: "happy-cloud") }
+        defaults.removeObject(forKey: "happy-cloud")
+        let (rigged, id) = try await rig(server: nil)
+        let context = AppContext(account: rigged.account, variant: .preview, version: "test")
+        context.account.localSettings.devModeEnabled = true
+        let settings = SettingsViewController(context: context, computer: id)
+        let navigation = try await host(settings)
+        /// The line under the card Version is in.
+        func aboutFooter() -> String? {
+            settings.shownRowIDs.first { $0.contains(SettingsIndex.version.id) }?.last.flatMap { settings.shownRow($0)?.footer }
+        }
+        XCTAssertEqual(aboutFooter(), Strings.developerModeFooter + "\n\n" + Strings.Settings.aboutFooter)
+        XCTAssertNotNil(settings.shownRow(SettingsIndex.happyCloud.id))
+        let offered = HappyCloud.isOffered(in: .preview)
+        captureBottom(settings, navigation, "settings-version-devmode-on")
+        for _ in 0..<9 { settings.shownRow(SettingsIndex.version.id)?.action?() }
+        XCTAssertTrue(context.account.localSettings.devModeEnabled, "fewer than ten taps turned developer mode off")
+        settings.shownRow(SettingsIndex.version.id)?.action?()
+        XCTAssertFalse(context.account.localSettings.devModeEnabled, "ten taps on Version didn't turn developer mode off")
+        XCTAssertEqual(aboutFooter(), Strings.Settings.aboutFooter)
+        XCTAssertNil(settings.shownRow(SettingsIndex.happyCloud.id), "the switch stays after developer mode is turned off")
+        XCTAssertEqual(HappyCloud.isOffered(in: .preview), offered, "turning developer mode off changed Happy Cloud")
+        XCTAssertNil(defaults.object(forKey: "happy-cloud"), "turning developer mode off kept a Happy Cloud value")
+        // Its alert, once it has come up, out of the picture.
+        try await Task.sleep(for: .milliseconds(800))
+        XCTAssertTrue(settings.presentedViewController is UIAlertController, "no Developer Mode alert")
+        await withCheckedContinuation { done in settings.dismiss(animated: false) { done.resume() } }
+        captureBottom(settings, navigation, "settings-version-devmode-off")
+    }
+
+    /// The page scrolled to its end, Version and the lines under it, for a person to look at.
+    private func captureBottom(_ settings: SettingsViewController, _ navigation: UINavigationController, _ name: String) {
+        settings.view.layoutIfNeeded()
+        guard let scroll = settings.view.subviews.compactMap({ $0 as? UIScrollView }).first else { return XCTFail("no Settings page") }
+        capture(settings, navigation, name, at: max(-scroll.adjustedContentInset.top, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom))
+    }
+
     /// The page at `offset`, for a person to look at.
     private func capture(_ settings: SettingsViewController, _ navigation: UINavigationController, _ name: String, at offset: CGFloat) {
         guard let window = navigation.view.window, let scroll = settings.view.subviews.compactMap({ $0 as? UIScrollView }).first

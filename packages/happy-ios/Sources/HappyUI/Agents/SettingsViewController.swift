@@ -859,9 +859,11 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     /// The relay app's words, about keys kept on this phone, aren't true
     /// of a Happy Cloud server, whose agents and data are on the server.
+    /// In developer mode, first: that it is on and how to turn it off.
     private var aboutFooter: String {
         let cloud = shown.flatMap { Session.session(for: $0.id, context: context) }?.isCloud == true
-        return cloud ? Strings.HappyCloud.aboutFooter : Strings.Settings.aboutFooter
+        let about = cloud ? Strings.HappyCloud.aboutFooter : Strings.Settings.aboutFooter
+        return context.account.localSettings.devModeEnabled ? Strings.developerModeFooter + "\n\n" + about : about
     }
 
     /// What search looks through: the page's rows and the profiles.
