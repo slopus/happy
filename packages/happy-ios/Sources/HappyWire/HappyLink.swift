@@ -60,7 +60,7 @@ public struct HappyLink: Equatable, Sendable {
         case providersAddAPIKey = "providers/add/api-key"
         case usage, voice
         case mobileAccess = "mobile-access"
-        case members, roles, policy, mcp, computes
+        case members, roles, policy, mcp, computes, zones, permissions
     }
 
     public enum Target: Equatable, Sendable {

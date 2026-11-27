@@ -26,11 +26,15 @@ class SettingsLinksTest {
         assertEquals(SettingsPlace.Members, SettingsLinks.place("members", cloud, cloud = true))
         assertEquals(SettingsPlace.Compute, SettingsLinks.place("computes", cloud, cloud = true))
         assertNull(SettingsLinks.place("computes", desktop, cloud = false))
+        assertEquals(SettingsPlace.Zones, SettingsLinks.place("zones", cloud, cloud = true))
+        assertEquals(SettingsPlace.Zones, SettingsLinks.place("permissions", cloud, cloud = true))
+        assertEquals(SettingsPlace.Secrets, SettingsLinks.place("secrets", cloud, cloud = true))
+        for (page in listOf("zones", "permissions", "secrets")) assertNull(SettingsLinks.place(page, desktop, cloud = false))
     }
 
     @Test
     fun theRestAreTheServersWebSettingsOnHappyCloudAndNothingElsewhere() {
-        val web = HappyUrls.SETTINGS_PAGES - setOf("general", "account", "sharing", "voice", "servers", "members", "instructions", "mobile-access", "computes") - PROVIDERS
+        val web = HappyUrls.SETTINGS_PAGES - setOf("general", "account", "sharing", "voice", "servers", "members", "instructions", "mobile-access", "computes", "zones", "permissions", "secrets") - PROVIDERS
         for (page in web) {
             assertEquals(page, SettingsPlace.Web(HappyCloud.webSettings(cloud, page)!!), SettingsLinks.place(page, cloud, cloud = true))
             assertEquals("https://acme.${BuildConfig.HAPPY_CLOUD_WEB}/#/settings/$page", HappyCloud.webSettings(cloud, page))

@@ -114,7 +114,7 @@ data class AgentSettingsRow(val id: String, val title: String, val icon: Ionicon
  * connection away. The titles are the page's own (`AgentSettingsIndexTest`).
  */
 @Composable
-fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable: Boolean = false, providerAccountsAvailable: Boolean = false): List<AgentSettingsRow> {
+fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable: Boolean = false, providerAccountsAvailable: Boolean = false, cloud: Boolean = false): List<AgentSettingsRow> {
     fun row(id: String, title: String, icon: Ionicon, place: AgentSettingsPlace = AgentSettingsPlace.Settings, ask: String? = null) =
         AgentSettingsRow(id, title, icon, place, ask)
     return listOfNotNull(
@@ -134,6 +134,8 @@ fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable
         row(AgentVoiceTags.SUPPORT, stringResource(R.string.agent_voice_support_title), Ionicon.Heart),
         row(AgentAgentsTags.ROW, stringResource(R.string.settings_agents), Ionicon.OptionsOutline),
         row(ProviderAccountsTags.ROW, stringResource(R.string.provider_accounts_title), Ionicon.KeyOutline).takeIf { providerAccountsAvailable },
+        row(AgentSettingsTags.ZONES, stringResource(R.string.cloud_settings_zones), Ionicon.ShieldCheckmarkOutline).takeIf { cloud },
+        row(AgentSettingsTags.SECRETS, stringResource(R.string.cloud_settings_secrets), Ionicon.LockClosedOutline).takeIf { cloud },
         row(AgentUsageTags.ROW, stringResource(R.string.usage_title), Ionicon.AnalyticsOutline),
         row(PrivacyTags.ROW, stringResource(R.string.settings_account_privacy), Ionicon.LockClosedOutline),
         row(SettingsPageTags.ADD_AGENT, stringResource(R.string.settings_add_agent), Ionicon.Add),
@@ -172,6 +174,8 @@ object AgentSettingsTags {
     const val BAR = "agentSettings.bar"
     const val PROFILE = "agentSettings.profile"
     const val APPEARANCE = "agentSettings.appearance"
+    const val ZONES = "agentSettings.zones"
+    const val SECRETS = "agentSettings.secrets"
     /** The picture's two asks, as search finds them. */
     const val ASK_NAME = "agentSettings.ask.name"
     const val ASK_AVATAR = "agentSettings.ask.avatar"
@@ -202,6 +206,8 @@ class AgentSettingsActions(
     val onPolicy: ((com.slopus.happy.agent.PolicyDocument) -> Unit)? = null,
     /** Happy Cloud's machines and join requests; absent without compute.use. */
     val onCompute: (() -> Unit)? = null,
+    val onZones: (() -> Unit)? = null,
+    val onSecrets: (() -> Unit)? = null,
     /** Usage: what the provider accounts spent and what is left of their plans; null where it isn't offered. */
     val onUsage: (() -> Unit)? = null,
     /** Plugins, the same page home's Plugins row opens; null where the server doesn't serve them. */
@@ -278,7 +284,7 @@ fun AgentConnectionSettingsScreen(
     // unheaded first group (General, here Appearance; Account, here Profile;
     // Voice; the phone's Data and Storage; and Notifications, Steve's
     // "Sharing is notifications"), then Agents (what new sessions start on, Inference,
-    // Compute, Usage, Plugins) and Team (Members; with none, no header). The phone's own cards keep their places: the accounts at the top,
+    // Compute, Zones, Secrets, Usage, Plugins) and Team (Members; with none, no header). The phone's own cards keep their places: the accounts at the top,
     // Support Happy under the first group, Privacy and About at the end.
     val sections = listOf(
         SettingsSection(
@@ -353,12 +359,28 @@ fun AgentConnectionSettingsScreen(
                         )
                     }
                 }.toTypedArray(),
-                // Compute follows Inference, as desktop's Agents group has it.
+                // Compute, Zones and Secrets follow Inference and policy, as on desktop.
                 actions.onCompute?.let { open ->
                     SettingsEntry(
                         id = ComputeTags.ROW,
                         title = stringResource(R.string.compute_title),
                         icon = { SettingsTile(Ionicon.ServerOutline, SettingsTiles.blue) },
+                        onClick = open,
+                    )
+                },
+                actions.onZones?.let { open ->
+                    SettingsEntry(
+                        id = AgentSettingsTags.ZONES,
+                        title = stringResource(R.string.cloud_settings_zones),
+                        icon = { SettingsTile(Ionicon.ShieldCheckmarkOutline, SettingsTiles.purple) },
+                        onClick = open,
+                    )
+                },
+                actions.onSecrets?.let { open ->
+                    SettingsEntry(
+                        id = AgentSettingsTags.SECRETS,
+                        title = stringResource(R.string.cloud_settings_secrets),
+                        icon = { SettingsTile(Ionicon.LockClosedOutline, SettingsTiles.indigo) },
                         onClick = open,
                     )
                 },
@@ -591,6 +613,8 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onProviders = if (cloud) ({ nav.openCloudProviders(connectionId) }) else null,
             onPolicy = if (policy) ({ document -> nav.navigate(PolicyDocumentRoute(connectionId, document.id)) }) else null,
             onCompute = if (compute) ({ nav.navigate(CloudComputeRoute(connectionId)) }) else null,
+            onZones = if (cloud) ({ nav.navigate(CloudZonesRoute(connectionId)) }) else null,
+            onSecrets = if (cloud) ({ nav.navigate(CloudSecretsRoute(connectionId)) }) else null,
             onUsage = { nav.navigate(AgentUsageRoute(connectionId)) },
             onPlugins = if (plugins) ({ nav.navigate(PluginsRoute(connectionId)) }) else null,
             onNotifications = if (cloud) ({ nav.navigate(CloudPushSettingsRoute(connectionId)) }) else null,

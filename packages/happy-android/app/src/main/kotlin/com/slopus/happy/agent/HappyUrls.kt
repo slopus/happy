@@ -60,7 +60,7 @@ object HappyUrls {
     val SETTINGS_PAGES = listOf(
         "general", "account", "sharing", "servers", "instructions", "secrets", "providers", "providers/import",
         "providers/add", "providers/add/openai", "providers/add/anthropic", "providers/add/api-key",
-        "usage", "voice", "mobile-access", "members", "roles", "policy", "mcp", "computes",
+        "usage", "voice", "mobile-access", "members", "roles", "policy", "mcp", "computes", "zones", "permissions",
     )
 
     /** What a settings link's query may carry, and each key's values: navigation only, never a secret. */

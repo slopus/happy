@@ -260,7 +260,7 @@ final class ProfileCarouselView: UIView, UIScrollViewDelegate {
 
 /// A row in a settings card: what it says and does.
 struct SettingsRow {
-    enum Tile { case orange, gray, blue, purple, green, red, teal, indigo, action }
+    enum Tile: Equatable { case orange, gray, blue, purple, green, red, teal, indigo, action, custom(ColorToken) }
     var id: String
     var title: String
     var icon: (glyph: String, tile: Tile)?
@@ -628,6 +628,7 @@ final class SettingsCardView: UIView {
             case .teal: Palette.settingsTileTeal
             case .indigo: Palette.settingsTileIndigo
             case .action: Palette.textLink
+            case .custom(let color): color
             }
         }
 

@@ -4,6 +4,21 @@
   packages/happy-i18n/translations/en.json (en). Do not edit.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation,UnusedQuantity,UnusedResources,Typos,PluralsCandidate,StringFormatCount,ImpliedQuantity">
+    <string name="cloud_settings_zones">Zones</string>
+    <string name="cloud_settings_secrets">Secrets</string>
+    <string name="cloud_settings_default_zone">Default zone</string>
+    <string name="cloud_settings_critical_zone">Critical zone</string>
+    <string name="cloud_settings_all_members">All members</string>
+    <string name="cloud_settings_no_members">No members</string>
+    <string name="cloud_settings_may_join">May join: %1$s</string>
+    <string name="cloud_settings_manage_on_desktop">Manage on desktop</string>
+    <string name="cloud_settings_no_zones">No zones to show</string>
+    <string name="cloud_settings_no_secrets">No secrets to show</string>
+    <string name="cloud_settings_load_failed">Couldn’t load this list</string>
+    <string name="cloud_settings_owner_team">Team</string>
+    <string name="cloud_settings_owner_mine">Mine</string>
+    <string name="cloud_settings_owner_agent">Agent</string>
+
     <string name="voice_status_bar_tap_to_end">tap to end</string>
     <string name="voice_status_bar_connecting">Connecting…</string>
     <string name="voice_status_bar_error">Connection error</string>

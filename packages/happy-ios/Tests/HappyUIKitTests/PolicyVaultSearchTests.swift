@@ -16,7 +16,9 @@ final class PolicyVaultSearchTests: XCTestCase {
     func testProjectVisibilitySearchIsCloudSpecific() {
         XCTAssertFalse(SettingsIndex.computer(isCloud: true).contains { $0.id == "hide-projects" })
         XCTAssertTrue(SettingsIndex.computer(isCloud: false).contains { $0.id == "hide-projects" })
-        XCTAssertEqual(SettingsIndex.computer(isCloud: true).map(\.id), SettingsIndex.computer.filter { $0.id != "hide-projects" }.map(\.id))
+        let cloud = SettingsIndex.computer(isCloud: true, computeAvailable: true).map(\.id)
+        XCTAssertEqual(cloud.filter { ["computes", "zones", "secrets", "usage"].contains($0) }, ["computes", "zones", "secrets", "usage"])
+        XCTAssertEqual(cloud.filter { !["computes", "zones", "secrets"].contains($0) }, SettingsIndex.computer.filter { $0.id != "hide-projects" }.map(\.id))
     }
 }
 #endif

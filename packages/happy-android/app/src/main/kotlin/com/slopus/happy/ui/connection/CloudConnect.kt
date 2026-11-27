@@ -161,6 +161,7 @@ fun NavGraphBuilder.cloudRoutes(graph: AppGraph, nav: NavHostController) {
     }
     cloudProviderRoutes(graph, nav)
     cloudComputeRoutes(graph, nav)
+    cloudMetadataRoutes(graph, nav)
     cloudPushSettingsRoutes(graph, nav)
 }
 

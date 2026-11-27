@@ -4,6 +4,21 @@
   packages/happy-i18n/translations/ca.json (ca). Do not edit.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation,UnusedQuantity,UnusedResources,Typos,PluralsCandidate,StringFormatCount,ImpliedQuantity">
+    <string name="cloud_settings_zones">Zones</string>
+    <string name="cloud_settings_secrets">Secrets</string>
+    <string name="cloud_settings_default_zone">Zona predeterminada</string>
+    <string name="cloud_settings_critical_zone">Zona crítica</string>
+    <string name="cloud_settings_all_members">Tots els membres</string>
+    <string name="cloud_settings_no_members">Cap membre</string>
+    <string name="cloud_settings_may_join">Hi poden accedir: %1$s</string>
+    <string name="cloud_settings_manage_on_desktop">Gestiona-ho des de l’aplicació d’escriptori</string>
+    <string name="cloud_settings_no_zones">No hi ha zones per mostrar</string>
+    <string name="cloud_settings_no_secrets">No hi ha secrets per mostrar</string>
+    <string name="cloud_settings_load_failed">No s’ha pogut carregar la llista</string>
+    <string name="cloud_settings_owner_team">Equip</string>
+    <string name="cloud_settings_owner_mine">Meus</string>
+    <string name="cloud_settings_owner_agent">Agent</string>
+
     <string name="voice_status_bar_tap_to_end">toca per finalitzar</string>
     <string name="voice_status_bar_connecting">Connectant…</string>
     <string name="voice_status_bar_error">Error de connexió</string>

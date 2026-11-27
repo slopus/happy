@@ -17,6 +17,8 @@ public enum SettingsLinkPlace: Equatable, Sendable {
     case servers
     /// Read-only Happy Cloud compute pools and machines.
     case computes
+    case zones
+    case secrets
     /// The page in the web app, in the system browser.
     case web(URL)
     /// A Happy Cloud server's AI providers: the list, the chooser or one
@@ -37,6 +39,8 @@ public enum SettingsLinkPlace: Equatable, Sendable {
         case .providersImport:
             return cloud ? .providers(.providersAdd) : HappyCloud.webSettings(server: server, page: page).map(SettingsLinkPlace.web)
         case .computes: return cloud ? .computes : nil
+        case .zones, .permissions: return cloud ? .zones : nil
+        case .secrets: return cloud ? .secrets : nil
         default: return HappyCloud.webSettings(server: server, page: page).map(SettingsLinkPlace.web)
         }
     }

@@ -1,5 +1,6 @@
 import Foundation
 @testable import HappyCore
+import HappyWire
 import XCTest
 
 /// parseMarkdown.test.ts, parseMarkdownBlock.test.ts and linkUtils.test.ts,
@@ -257,6 +258,12 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertEqual(SettingsLinkPlace.place(.providersAddOpenAI, server: cloud), .providers(.providersAddOpenAI))
         XCTAssertEqual(SettingsLinkPlace.place(.providersImport, server: cloud), .providers(.providersAdd))
         XCTAssertEqual(SettingsLinkPlace.place(.members, server: cloud), .web(URL(string: "https://acme.happybases.com/#/settings/members")!))
+        XCTAssertEqual(SettingsLinkPlace.place(.zones, server: cloud), .zones)
+        XCTAssertEqual(SettingsLinkPlace.place(.permissions, server: cloud), .zones)
+        XCTAssertEqual(SettingsLinkPlace.place(.secrets, server: cloud), .secrets)
+        for page in [HappyLink.SettingsPage.zones, .permissions, .secrets] {
+            XCTAssertNil(SettingsLinkPlace.place(page, server: "https://team.example"))
+        }
         XCTAssertNil(SettingsLinkPlace.place(.providers, server: nil))
         XCTAssertNil(SettingsLinkPlace.place(.providers, server: "https://team.example"))
         XCTAssertTrue(SettingsLinkPlace.opens("happy://settings/providers", server: cloud))
