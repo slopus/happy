@@ -296,7 +296,15 @@ class LegacyCallTargetsTest {
         override suspend fun isCurrent(sessionId: String) = true
         override fun modes(chat: ChatState) = modes
         override suspend fun setModes(sessionId: String, model: String?, effort: String?) { modeSets += Triple(sessionId, model, effort) }
-        override suspend fun send(sessionId: String, text: String): Boolean { sends += sessionId to text; return true }
+        var sendDelay = 0L
+        val online = ArrayList<Boolean>()
+        override suspend fun send(sessionId: String, text: String, online: Boolean, onAccepted: () -> Unit): Boolean {
+            if (sendDelay > 0) kotlinx.coroutines.delay(sendDelay)
+            this.online += online
+            sends += sessionId to text
+            onAccepted()
+            return true
+        }
         override fun newWorkPlace(bot: Boolean) = place
         override suspend fun spawn(options: SpawnSessionOptions): SpawnSessionResult { spawns += options; return spawned.removeAt(0) }
         override suspend fun awaitSession(sessionId: String): Boolean {
@@ -364,6 +372,29 @@ class LegacyCallTargetsTest {
         assertEquals(CallSendOutcome.Queued, targets.send(draft.agentId, "and the tests", "m2", null))
         assertEquals("made" to "and the tests", cli.sends.last())
         assertEquals(draft.agentId, targets.state(draft.agentId)!!.target.agentId)
+        // Its first message needed no presence yet; the next one did.
+        assertEquals(listOf(false, true), cli.online)
+        // Listed, followed and told by the draft's ref, never the session's own ID.
+        assertEquals(listOf(draft.agentId), targets.directory().map { it.agentId })
+        val heard = kotlinx.coroutines.CompletableDeferred<CallTargetState>()
+        kotlinx.coroutines.withContext(Dispatchers.Main) { targets.onChange = { heard.complete(it) } }
+        targets.follow(draft.agentId, true)
+        assertEquals(listOf(draft.agentId), targets.following)
+        assertEquals(draft.agentId, kotlinx.coroutines.withTimeout(5_000) { heard.await() }.target.agentId)
+        targets.close()
+    }
+
+    @Test
+    fun theSameIdAgainWaitsForTheSendUnderWayAndGoesOnce() = runBlocking {
+        val cli = FakeAccount(listOf(target))
+        cli.chatOf("s").value = chat(listOf(user("u1", "hi")))
+        cli.sendDelay = 500
+        val targets = LegacyCallTargets(cli) { null }
+        // The first try's deadline passes mid-send; the retry under the same ID finds it, not a second send.
+        val first = kotlinx.coroutines.withTimeoutOrNull(100) { targets.send("s", "run it", "m1", null) }
+        assertNull(first)
+        assertEquals(CallSendOutcome.Queued, targets.send("s", "run it", "m1", null))
+        assertEquals(listOf("s" to "run it"), cli.sends)
         targets.close()
     }
 

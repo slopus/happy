@@ -42,6 +42,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -74,8 +75,12 @@ interface LegacyCallAccount {
     fun modes(chat: ChatState): LegacyCallModes
     /** Picks [model] and [effort] (null: as they are) as the chips do; the next message goes with them. */
     suspend fun setModes(sessionId: String, model: String?, effort: String?)
-    /** [text] as the composer sends it, from voice: the draft is left alone. False when nothing was queued. */
-    suspend fun send(sessionId: String, text: String): Boolean
+    /**
+     * [text] as the composer sends it, from voice: the draft is left alone. Checked again as it goes into the
+     * outbox: refused there if the session is archived or being archived, or, with [online], isn't online.
+     * [onAccepted] runs once it is in the outbox, even if the caller stopped waiting. False when nothing was queued.
+     */
+    suspend fun send(sessionId: String, text: String, online: Boolean, onAccepted: () -> Unit): Boolean
     /** Where a new task, or with [bot] a new bot, starts by voice now ([LegacyCallTargets.newWorkPlace]). */
     fun newWorkPlace(bot: Boolean): LegacyNewWork
     /** Asks the computer for the session, once: a pending answer is asked again by the caller. */
@@ -126,11 +131,11 @@ class LegacyCallTargets(
     /** Each followed chat as it was last reduced. */
     private val latest = HashMap<String, ChatState>()
     /** The message IDs the call sent under: the same ID again went the first time. */
-    private val sent = HashSet<String>()
+    private val sent: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet() // marked from the sender's thread
     /** New work the call started, by its draft's ID, and the session that made it once there is one. */
     private val drafts = HashMap<String, Draft>()
-    /** Starts under way, by message ID: one the tool's deadline left behind still finishes. */
-    private val starting = HashMap<String, Deferred<CallSendOutcome>>()
+    /** Sends and starts under way, by message ID: one the tool's deadline left behind still finishes, and the same ID again waits for it. */
+    private val sending = HashMap<String, Deferred<CallSendOutcome>>()
     private val watching = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     override var onChange: ((CallTargetState) -> Unit)? = null
     private var closed = false
@@ -144,15 +149,16 @@ class LegacyCallTargets(
         held.clear()
         latest.clear()
         drafts.clear()
-        starting.clear()
+        sending.clear()
         watching.coroutineContext[Job]?.cancel()
         onChange = null
     }
 
-    override val focusedNow: String? get() = screen()?.focused
+    override val focusedNow: String? get() = screen()?.focused?.let(::called)
 
-    override val directoryChanges: Flow<List<CallTarget>> get() = cli.directoryChanges
+    override val directoryChanges: Flow<List<CallTarget>> get() = cli.directoryChanges.map { list -> list.map(::outward) }
 
+    /** By the call's own IDs: a draft's, once it made a session. */
     override val following: List<String> get() = held.keys.toList()
 
     private fun listed(sessionId: String): CallTarget? = cli.directory().firstOrNull { it.agentId == sessionId }
@@ -160,7 +166,13 @@ class LegacyCallTargets(
     /** The session [agentId] names: itself, or what a draft of the call's made. */
     private fun session(agentId: String): String? = drafts[agentId]?.let { it.made } ?: agentId.takeUnless { it in drafts }
 
-    override suspend fun directory(): List<CallTarget> = cli.directory()
+    /** What the call calls [sessionId]: the draft that made it, else itself. */
+    private fun called(sessionId: String): String = drafts.entries.firstOrNull { it.value.made == sessionId }?.key ?: sessionId
+
+    /** [target] under the call's own ID, so a session new work made stays the one ref the call knows it by. */
+    private fun outward(target: CallTarget): CallTarget = called(target.agentId).let { if (it == target.agentId) target else target.copy(agentId = it) }
+
+    override suspend fun directory(): List<CallTarget> = onMain { cli.directory().map(::outward) }
 
     override suspend fun state(agentId: String): CallTargetState? = onMain {
         val draft = drafts[agentId]
@@ -215,26 +227,30 @@ class LegacyCallTargets(
     override suspend fun send(agentId: String, text: String, id: String, change: CallModeChange?): CallSendOutcome = onMain {
         if (closed) return@onMain CallSendOutcome.Refused("The call has ended.")
         if (id in sent) return@onMain CallSendOutcome.Queued
-        val draft = drafts[agentId]
-        if (draft != null && draft.made == null) {
-            // Not cancelled with the tool's deadline: a start the agent heard nothing of still sends its first message.
-            val start = starting.getOrPut(id) { watching.async { start(draft, text, id, change) } }
-            return@onMain start.await()
+        // Not cancelled with the tool's deadline: a send the agent heard nothing of still goes, once, and is kept as sent.
+        val going = sending.getOrPut(id) {
+            val draft = drafts[agentId]
+            watching.async { if (draft != null && draft.made == null) start(draft, text, id, change) else deliver(agentId, text, id, change) }
         }
-        val session = session(agentId) ?: return@onMain CallSendOutcome.Refused("That conversation can't take a message now.")
+        // A refusal is the answer once: the same words asked again are a new try.
+        going.await().also { if (it is CallSendOutcome.Refused) sending.remove(id) }
+    }
+
+    /** One message to a session that is (or a draft made): checked where it goes, as the composer's send would be. */
+    private suspend fun deliver(agentId: String, text: String, id: String, change: CallModeChange?): CallSendOutcome {
+        val session = session(agentId) ?: return CallSendOutcome.Refused("That conversation can't take a message now.")
         // Checked again here, where the send happens: a permission asked for meanwhile still stops it.
-        val now = state(session) ?: return@onMain CallSendOutcome.Refused("That conversation can't be read now.")
-        when {
+        val now = state(session) ?: return CallSendOutcome.Refused("That conversation can't be read now.")
+        return when {
             !now.writable -> CallSendOutcome.Refused("That conversation can't take a message now.")
             now.needsInput -> CallSendOutcome.Refused("It's waiting for the person in the app; answer there first.")
             closed -> CallSendOutcome.Refused("The call has ended.")
             else -> {
                 change?.let { switch(session, now, it) }
-                if (cli.send(session, text)) {
-                    sent += id
+                if (cli.send(session, text, online = true) { sent += id }) {
                     CallSendOutcome.Queued
                 } else {
-                    CallSendOutcome.Refused("It couldn't be kept on this phone.")
+                    CallSendOutcome.Refused("That conversation can't take a message now.")
                 }
             }
         }
@@ -250,16 +266,17 @@ class LegacyCallTargets(
     override suspend fun follow(agentId: String, following: Boolean) = onMain {
         val id = session(agentId) ?: return@onMain
         if (!following) {
-            held.remove(id)?.cancel()
+            held.remove(agentId)?.cancel()
             latest.remove(id)
             return@onMain
         }
-        if (closed || held.containsKey(id) || listed(id) == null) return@onMain
-        held[id] = watching.launch {
+        if (closed || held.containsKey(agentId) || listed(id) == null) return@onMain
+        // Held and told under the call's own ID: a draft's, for the session it made.
+        held[agentId] = watching.launch {
             cli.chat(id).collect { chat ->
                 latest[id] = chat
                 val target = listed(id) ?: return@collect
-                if (isRead(chat)) onChange?.invoke(read(chat, target))
+                if (isRead(chat)) onChange?.invoke(read(chat, target.copy(agentId = agentId)))
             }
         }
     }
@@ -342,8 +359,10 @@ class LegacyCallTargets(
         }
         if (!cli.awaitSession(session)) return CallSendOutcome.Refused("It started, but hasn't reached this phone yet; look for it in the app.")
         draft.made = session
-        if (!cli.send(session, text)) return CallSendOutcome.Refused("It started, but its first message couldn't be kept on this phone.")
-        sent += messageId
+        // Just made: its presence may not have reached this phone yet, so only archiving refuses it.
+        if (!cli.send(session, text, online = false) { sent += messageId }) {
+            return CallSendOutcome.Refused("It started, but its first message couldn't be kept on this phone.")
+        }
         return CallSendOutcome.Queued
     }
 

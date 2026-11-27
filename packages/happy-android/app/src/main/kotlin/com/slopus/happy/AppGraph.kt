@@ -17,6 +17,7 @@ import com.slopus.happy.call.LegacyCallModes
 import com.slopus.happy.call.LegacyCallTargets
 import com.slopus.happy.chat.ChatState
 import com.slopus.happy.chat.ComposerModeResolver
+import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.settings.ModeOptions
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.ComposerMirror
@@ -859,10 +860,16 @@ class AppGraph(
                     }
                     if (patch.isNotEmpty() && accountState.value === sync) sync.composer.setAgentModes(sessionId, patch)
                 }
-                override suspend fun send(sessionId: String, text: String): Boolean {
-                    if (accountState.value !== sync) return false
-                    val options = SendOptions(source = "voice", isCurrent = { accountState.value === sync })
-                    return sync.sender.send(sessionId, text, options) is SendResult.Accepted
+                override suspend fun send(sessionId: String, text: String, online: Boolean, onAccepted: () -> Unit): Boolean {
+                    // Checked again where the sender puts it in the outbox, nothing suspending after; the store read is off the main thread.
+                    fun takes(): Boolean {
+                        if (accountState.value !== sync || sessionId in home.archiver.archiving.value) return false
+                        val session = store.session(sessionId) ?: return false
+                        if (SessionMetadata.parse(session.metadataJson)?.lifecycleState == "archived") return false
+                        return !online || session.active
+                    }
+                    val options = SendOptions(source = "voice", isCurrent = ::takes, onAccepted = onAccepted)
+                    return withContext(Dispatchers.IO) { sync.sender.send(sessionId, text, options) } is SendResult.Accepted
                 }
                 override fun newWorkPlace(bot: Boolean) = LegacyCallTargets.newWorkPlace(
                     home.snapshots.value?.machines.orEmpty(), home.newSession(appContext).draft.value.selectedMachineId, bot,

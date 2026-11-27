@@ -31,8 +31,10 @@ import java.io.File
  * `|`) goes in once the agent is quiet. Then mute and end from the bar.
  * With `used` set, the free time is spent first and the tap must show the
  * used-up sheet instead (the one allowance every call counts against).
- * Skipped without an agent ID or a Happy account open. Shots and `live.txt`
- * go to the app's external files under `relay-live/`. A billed conversation.
+ * Runs only when asked for by name (`-e live 1`): it is a billed conversation
+ * that reaches real sessions. Skipped too without an agent ID or a Happy
+ * account open. Shots and `live.txt` (what was said and the tools run) go to
+ * the app's external files under `relay-live/`; nothing goes to logcat.
  */
 @RunWith(AndroidJUnit4::class)
 class LegacyCallLiveDeviceCheck {
@@ -66,6 +68,7 @@ class LegacyCallLiveDeviceCheck {
 
     @Test
     fun aRealCallOnTheOpenHappyAccount() {
+        assumeTrue("a live call only with -e live 1", arguments.getString("live") == "1")
         assumeTrue("no agent ID in this build", CallAgent.hostedAgentId != null)
         assumeTrue("no Happy account open", graph.openAccount.value is OpenAccount.Happy)
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
@@ -112,9 +115,7 @@ class LegacyCallLiveDeviceCheck {
             CallProbe.lines.value.forEach { log.append("${it.role}: ${it.text}\n") }
             CallProbe.tools.value.forEach { log.append("TOOL ${it.name} ${it.parameters} -> ${if (it.isError) "ERROR " else ""}${it.result}\n") }
             CallProbe.sent.value.forEach { log.append("CONTEXT ${it.kind} ${it.bytes} bytes\n") }
-            CallProbe.sent.value.firstOrNull()?.let { log.append("\nFIRST CONTEXT\n${it.text}\n") }
             File(dir, "live.txt").writeText(log.toString())
-            android.util.Log.i("HappyCall", "relay live check done\n$log")
         }
     }
 }
