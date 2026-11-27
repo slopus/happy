@@ -32,13 +32,19 @@ enum PipelinesGate {
 
     /// One move back to the screen under the first Pipelines screen, on a
     /// phone's stack or the main panel's beside the sidebar; a push or pop
-    /// under way finishes first.
+    /// under way finishes first. Pipelines the phone's drawer made the
+    /// root gives way to home.
     static func leave(in window: UIWindow?) {
         guard let shell = window?.rootViewController as? ShellViewController else { return }
         let stack = shell.stack
-        guard let first = stack.firstIndex(where: { $0 is PipelinesScreen }), first > 0 else { return }
+        let drawer = shell.isExpanded ? nil : PhoneDrawer.of(shell.phone)
+        guard let first = stack.firstIndex(where: { $0 is PipelinesScreen }), first > 0 || drawer != nil else { return }
         if let transition = shell.stackTransition {
             transition.animate(alongsideTransition: nil) { _ in leave(in: window) }
+            return
+        }
+        if first == 0 {
+            drawer?.showHome()
             return
         }
         shell.setStack(Array(stack[..<first]), animated: true)

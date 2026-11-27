@@ -107,8 +107,9 @@ final class HostedHeaderBarTests: XCTestCase {
             XCTAssertTrue(switcher.bounds.contains(child.frame), "\(child) is cut by the bar")
         }
         let right = item.rightBarButtonItems?.map(\.accessibilityIdentifier) ?? []
-        // Right to left: Settings, then the call.
-        XCTAssertEqual(right, ["settings", "voice-call"])
+        // Right to left: Settings, then the call; an iPhone's Settings is
+        // its drawer's.
+        XCTAssertEqual(right, UIDevice.current.userInterfaceIdiom == .phone ? ["voice-call"] : ["settings", "voice-call"])
         XCTAssertTrue(home.toolbarItems?.contains { $0.accessibilityIdentifier == "compose" } == true)
         let bar = try XCTUnwrap(home.navigationController?.navigationBar)
         Self.assertClear(bar)
@@ -129,9 +130,11 @@ final class HostedHeaderBarTests: XCTestCase {
             home.search.begin()
             try await Task.sleep(for: .milliseconds(600))
             XCTAssertTrue(home.search.isActive)
-            // The header stays as it was: account and settings, while search is open.
+            // The header stays as it was: account and settings (an
+            // iPhone's call, its settings the drawer's), while search is open.
+            let outermost = UIDevice.current.userInterfaceIdiom == .phone ? "voice-call" : "settings"
             XCTAssertEqual(home.navigationItem.leftBarButtonItem?.customView?.accessibilityIdentifier, "account-switcher")
-            XCTAssertEqual(home.navigationItem.rightBarButtonItems?.first?.accessibilityIdentifier, "settings")
+            XCTAssertEqual(home.navigationItem.rightBarButtonItems?.first?.accessibilityIdentifier, outermost)
             XCTAssertEqual(state(sidebar), before, "opening search moved home")
             let results = try XCTUnwrap(Self.subview(HomeSearchResultsView.self, in: home.view))
             XCTAssertTrue(results.showsResults, "empty search also covers home")
@@ -175,7 +178,7 @@ final class HostedHeaderBarTests: XCTestCase {
             XCTAssertFalse(home.search.isActive)
             XCTAssertFalse(results.showsResults)
             XCTAssertEqual(home.navigationItem.leftBarButtonItem?.customView?.accessibilityIdentifier, "account-switcher")
-            XCTAssertEqual(home.navigationItem.rightBarButtonItems?.first?.accessibilityIdentifier, "settings")
+            XCTAssertEqual(home.navigationItem.rightBarButtonItems?.first?.accessibilityIdentifier, outermost)
             XCTAssertEqual(state(sidebar), before, "closing search moved home")
             keep(window, "search-closed-\(name)")
         }

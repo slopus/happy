@@ -15,8 +15,9 @@ public enum SidebarRows {
 
     /// `users`: the team members the tasks belong to, as last read, by ID.
     /// `feed`: the Feed's row, nil for none. `plugins`: a Happy Cloud
-    /// server's Plugins row under Artifacts. `pipelines`: its Pipelines row,
-    /// directly under Plugins, as desktop places it.
+    /// server's Plugins row under TODOs (Steve: desktop has it in Settings
+    /// alone, the phones and the iPad here too). `pipelines`: its Pipelines
+    /// row, directly under that.
     public static func make(_ desktop: DesktopSnapshot, settings: [String: JSONValue], users: [String: TeamUser] = [:], feed: FeedRow? = nil, plugins: Bool = false, pipelines: Bool = false) -> [Row] {
         var rows: [Row] = []
         var descendants = Set<String>()
@@ -67,8 +68,8 @@ public enum SidebarRows {
             guard bot.botKind == .shared || attention?["hidden"] != .bool(true) else { return }
             agentRow(agent, depth: 0, label: bot.name, owner: bot, kind: "bot", muted: attention?["muted"] == .bool(true))
         }
-        // Desktop's first group: Activity, Artifacts, Plugins, Pipelines,
-        // Documents, TODOs, then the person's other Surfaces, and a Happy
+        // Desktop's first group: Activity, Artifacts, Documents, TODOs,
+        // Plugins, Pipelines, then the person's other Surfaces, and a Happy
         // Cloud server's shared bot last (only owners are ever sent one).
         if let feed {
             // Bold while something is unread, with how many beside it.
@@ -77,14 +78,14 @@ public enum SidebarRows {
             rows.append(row)
         }
         rows.append(Row(id: "direct:artifacts", nodeId: "direct:artifacts", kind: .space, label: "Artifacts", mark: .glyph("doc"), targetKind: "artifacts"))
+        rows.append(Row(id: "direct:documents", nodeId: "direct:documents", kind: .space, label: "Documents", mark: .glyph(Rows.surfaceGlyph("document")), targetKind: "documents"))
+        rows.append(Row(id: "direct:todos", nodeId: "direct:todos", kind: .space, label: "TODOs", mark: .glyph(Rows.surfaceGlyph("todo")), targetKind: "todos"))
         if plugins {
             rows.append(Row(id: "direct:plugins", nodeId: "direct:plugins", kind: .space, label: "Plugins", mark: .glyph("plugin"), targetKind: "plugins"))
         }
         if pipelines {
             rows.append(Row(id: "direct:pipelines", nodeId: "direct:pipelines", kind: .space, label: "Pipelines", mark: .glyph("pipeline"), targetKind: "pipelines"))
         }
-        rows.append(Row(id: "direct:documents", nodeId: "direct:documents", kind: .space, label: "Documents", mark: .glyph(Rows.surfaceGlyph("document")), targetKind: "documents"))
-        rows.append(Row(id: "direct:todos", nodeId: "direct:todos", kind: .space, label: "TODOs", mark: .glyph(Rows.surfaceGlyph("todo")), targetKind: "todos"))
         // A document or todo list is listed under its row above, not here.
         rows += joinedSurfaces(desktop).filter { !Rows.sectionedSurfaces.contains($0.surfaceType ?? "") }
         for bot in bots where bot.botKind == .shared { botRow(bot) }

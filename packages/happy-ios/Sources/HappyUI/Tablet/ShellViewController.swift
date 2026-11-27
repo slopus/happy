@@ -249,9 +249,17 @@ public final class ShellViewController: UIViewController {
             main.setViewControllers(columns.main, animated: animated && sameRoot)
         } else {
             phone.setViewControllers(stack, animated: animated)
+            PhoneDrawer.follow(phone, root: stack.first)
         }
         updateMode()
         followMainPanel()
+    }
+
+    /// The agent connection's home the stack is over: its root, or, on an
+    /// iPhone, the one behind the place its drawer made the root.
+    var agentHome: AgentHomeViewController? {
+        if let home = stack.first as? AgentHomeViewController { return home }
+        return isExpanded ? nil : PhoneDrawer.home(of: phone)
     }
 
     /// The screen on top: the main panel's (its placeholder, with nothing

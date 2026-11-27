@@ -37,6 +37,10 @@ enum SettingsIndex {
     static var securityPolicy: Entry { Entry(id: "security-policy", title: Strings.PolicyDocuments.title(.security), glyph: "shield-checkmark-outline", tile: .green) }
     /// What each provider account has spent: a year of daily tokens, plans and models.
     static var usage: Entry { Entry(id: "usage", title: Strings.Usage.title, glyph: "flash-outline", tile: .teal) }
+    /// Last in the Agents group, as desktop's Settings has it, where the
+    /// server serves plugins. Not in `computer`, which home's search reads:
+    /// home's own Plugins row is found there already.
+    static var plugins: Entry { Entry(id: "plugins", title: Strings.Plugins.title, glyph: "plugin", tile: .orange) }
     /// On Agents, this phone's own: whether home's microphone opens the task it starts.
     static var dictationOpensTask: Entry { Entry(id: "dictation-opens-task", title: Strings.Record.opensTask, glyph: "mic-outline", tile: .blue) }
     /// On Agents, this phone's own: whether dictation listens in two languages.

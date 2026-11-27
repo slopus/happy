@@ -83,6 +83,20 @@ final class HomeViewController: UIViewController {
     /// Home's list moved, however it moved, for the screen around this
     /// one: the iPad sidebar's search field rides on it.
     var onListScroll: (() -> Void)?
+    /// Home's rows changed (`HomeSnapshot.rows`): the phone's drawer lists
+    /// its places from them.
+    var onRows: (([Row]) -> Void)?
+    /// The phone's home, with the drawer beside it: the bots and tasks
+    /// alone (`Drawer.home`). Its places are the drawer's.
+    var botsAndTasksOnly = false {
+        didSet { if botsAndTasksOnly != oldValue { sidebar.apply(listed(snapshot.rows)) } }
+    }
+
+    /// The rows home's list draws.
+    private func listed(_ rows: [Row]) -> [Row] { botsAndTasksOnly ? Drawer.home(rows) : rows }
+
+    /// Home's rows as last derived, for the drawer opening before the next change.
+    var rows: [Row] { snapshot.rows }
 
     /// The scroll edge the bar shades: it follows home's list.
     var list: UIScrollView { sidebar.edge }
@@ -242,8 +256,9 @@ final class HomeViewController: UIViewController {
         snapshot.error = (waitingForNetwork ? nil : agentHome.error) ?? agentHome.notice.map { $0.isEmpty ? Strings.refused : $0 }
         onSnapshot?(snapshot)
         if previous != snapshot.rows {
-            sidebar.apply(snapshot.rows)
+            sidebar.apply(listed(snapshot.rows))
             if shownBeside != nil { updateSelection() }
+            onRows?(snapshot.rows)
         }
         if search != nil { showResults() }
         warmUp()
@@ -773,35 +788,14 @@ final class HomeViewController: UIViewController {
         case .space where row.targetKind == "project" || row.targetKind == "workspace":
             // A folder opens nothing: its sessions are listed under it.
             break
-        case .space where row.targetKind == "artifacts":
+        case .space where Drawer.placeKinds.contains(row.targetKind ?? "") || row.targetKind == "surface":
+            guard let controller = place(row) else { return }
             sidebar.selectedRowId = row.id
-            show(ArtifactsViewController(session: session), for: row, animated: animated)
-        case .space where row.targetKind == "plugins":
-            sidebar.selectedRowId = row.id
-            show(PluginsViewController(session: session), for: row, animated: animated)
-        case .space where row.targetKind == "pipelines":
-            sidebar.selectedRowId = row.id
-            show(PipelinesViewController(session: session), for: row, animated: animated)
-        case .space where row.targetKind == "documents":
-            sidebar.selectedRowId = row.id
-            show(SurfaceListViewController(session: session, section: .documents), for: row, animated: animated)
-        case .space where row.targetKind == "todos":
-            sidebar.selectedRowId = row.id
-            show(SurfaceListViewController(session: session, section: .todos), for: row, animated: animated)
-        case .space where row.targetKind == "feed":
-            sidebar.selectedRowId = row.id
-            show(FeedViewController(session: session), for: row, animated: animated)
+            show(controller, for: row, animated: animated)
         case .search:
             beginSearch()
         case .create:
             makeNewWork()
-        case .space where row.targetKind == "surface":
-            guard let surfaceId = row.targetId else { return }
-            sidebar.selectedRowId = row.id
-            let surface = AgentWire.Surface(id: surfaceId, type: row.surfaceType ?? "", name: row.label)
-            let controller = SurfaceScreens.make(session: session, surface: surface)
-            MainPanelKey.record("surface:\(surfaceId)", for: controller)
-            show(controller, for: row, animated: animated)
         case .space, .session:
             guard let agentId = row.agentId else { return }
             sidebar.selectedRowId = row.id
@@ -811,6 +805,27 @@ final class HomeViewController: UIViewController {
             show(chat, for: row, animated: animated)
         default:
             break
+        }
+    }
+
+    /// The screen a place's row or a Surface's opens: home's own rows
+    /// beside the iPad's sidebar, the phone's drawer (`PhoneDrawer`).
+    func place(_ row: Row) -> UIViewController? {
+        guard let session else { return nil }
+        switch row.targetKind {
+        case "artifacts": return ArtifactsViewController(session: session)
+        case "plugins": return PluginsViewController(session: session)
+        case "pipelines": return PipelinesViewController(session: session)
+        case "documents": return SurfaceListViewController(session: session, section: .documents)
+        case "todos": return SurfaceListViewController(session: session, section: .todos)
+        case "feed": return FeedViewController(session: session)
+        case "surface":
+            guard let surfaceId = row.targetId else { return nil }
+            let surface = AgentWire.Surface(id: surfaceId, type: row.surfaceType ?? "", name: row.label)
+            let controller = SurfaceScreens.make(session: session, surface: surface)
+            MainPanelKey.record("surface:\(surfaceId)", for: controller)
+            return controller
+        default: return nil
         }
     }
 

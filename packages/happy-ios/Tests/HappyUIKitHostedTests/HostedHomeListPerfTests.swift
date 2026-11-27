@@ -103,7 +103,9 @@ final class HostedHomeListPerfTests: XCTestCase {
         return rows
     }
 
-    private func home(style: UIUserInterfaceStyle = .light, rows: [Row], transport: any AgentTransport = PerfUnreachable()) async throws -> (UIWindow, AgentHomeViewController, HomeViewController) {
+    /// `everything`: every row as the iPad's home lists it, the projects
+    /// too, where an iPhone's lists the bots and tasks alone.
+    private func home(style: UIUserInterfaceStyle = .light, rows: [Row], everything: Bool = false, transport: any AgentTransport = PerfUnreachable()) async throws -> (UIWindow, AgentHomeViewController, HomeViewController) {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()),
             clientID: "ios/test",
@@ -134,6 +136,7 @@ final class HostedHomeListPerfTests: XCTestCase {
         // The engine's own first snapshot (nothing, unreachable) lands first.
         try await Task.sleep(for: .milliseconds(800))
         let v2 = try XCTUnwrap(home.children.compactMap { $0 as? HomeViewController }.first)
+        if everything { v2.botsAndTasksOnly = false }
         var snapshot = HomeSnapshot()
         snapshot.loaded = true
         snapshot.live = true
@@ -217,7 +220,7 @@ final class HostedHomeListPerfTests: XCTestCase {
             return row
         }
         for (name, shown) in [("before", before), ("after", rows)] {
-            let (window, _, v2) = try await home(rows: shown, transport: PerfProjectPictures())
+            let (window, _, v2) = try await home(rows: shown, everything: true, transport: PerfProjectPictures())
             try await Task.sleep(for: .milliseconds(1200))
             keep(window, "\(device)-projects-\(name)")
             if name == "after" {

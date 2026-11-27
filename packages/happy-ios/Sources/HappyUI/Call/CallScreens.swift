@@ -62,7 +62,12 @@ enum CallScreens {
             await VoiceTouch.play(control)
         }
         let stack = shell.stack
-        if stack.count > 1, let root = stack.first {
+        if !shell.isExpanded, let drawer = PhoneDrawer.of(shell.phone), stack.first !== drawer.home {
+            // A place the phone's drawer made the root: home is the drawer's,
+            // in the stack's place at once.
+            drawer.showHome()
+            await settle(shell.stackTransition)
+        } else if stack.count > 1, let root = stack.first {
             shell.setStack([root], animated: true)
             await settle(shell.stackTransition)
         }

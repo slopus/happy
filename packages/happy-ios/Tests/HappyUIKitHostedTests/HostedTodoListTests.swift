@@ -682,7 +682,8 @@ final class HostedTodoListsTests: HostedTodoCase {
     }
 
     /// Home's two rows open their lists, and no document or list of the
-    /// person's is a row of its own.
+    /// person's is a row of its own. On an iPhone the rows are the drawer's
+    /// (`PhoneDrawer`), whose list becomes the root.
     func testHomeOpensEachSection() async throws {
         let computer = TodoComputer()
         await computer.seed("Milk")
@@ -690,7 +691,11 @@ final class HostedTodoListsTests: HostedTodoCase {
         let home = AgentHomeViewController(context: opened.context, id: opened.id)
         opened.navigation.setViewControllers([home], animated: false)
         opened.window.overrideUserInterfaceStyle = .light
-        let sidebar = try XCTUnwrap(Self.subview(SidebarList.self, in: home.view))
+        let phone = UIDevice.current.userInterfaceIdiom == .phone
+        if phone { try await wait("the drawer") { PhoneDrawer.of(opened.navigation) != nil } }
+        let drawer = phone ? try XCTUnwrap(PhoneDrawer.of(opened.navigation), "no drawer on an iPhone") : nil
+        let sidebar = try XCTUnwrap(drawer?.list ?? Self.subview(SidebarList.self, in: home.view))
+        drawer?.open(animated: false)
         try await wait("the rows") { sidebar.view(for: "direct:documents") != nil && sidebar.view(for: "direct:todos") != nil }
         XCTAssertEqual(sidebar.view(for: "direct:documents")?.row.label, "Documents")
         XCTAssertEqual(sidebar.view(for: "direct:todos")?.row.label, "TODOs")
@@ -699,9 +704,10 @@ final class HostedTodoListsTests: HostedTodoCase {
         try await Task.sleep(for: .milliseconds(400))
         capture(opened.window, "home-sections")
         for (id, section) in [("direct:documents", SurfaceSection.documents), ("direct:todos", .todos)] {
+            drawer?.open(animated: false)
             let row = try XCTUnwrap(sidebar.view(for: id))
             sidebar.tap(row, at: CGPoint(x: row.box.midX, y: row.box.midY))
-            let top = await waitForTop(opened.navigation) { $0 is SurfaceListViewController }
+            let top = await waitForTop(opened.navigation) { $0 is SurfaceListViewController && ($0 as? SurfaceListViewController)?.section == section }
             let list = try XCTUnwrap(top as? SurfaceListViewController, "\(opened.navigation.viewControllers)")
             XCTAssertEqual(list.section, section)
             try await wait("its rows") { list.list.items.contains { $0.kind == .row } }
@@ -709,8 +715,12 @@ final class HostedTodoListsTests: HostedTodoCase {
                 try await Task.sleep(for: .milliseconds(300))
                 capture(opened.window, "home-todos-pushed")
             }
-            opened.navigation.popViewController(animated: false)
-            XCTAssertTrue(opened.navigation.topViewController === home)
+            if phone {
+                XCTAssertEqual(opened.navigation.viewControllers.count, 1, "a place is the root")
+            } else {
+                opened.navigation.popViewController(animated: false)
+                XCTAssertTrue(opened.navigation.topViewController === home)
+            }
         }
     }
 

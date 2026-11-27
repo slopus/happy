@@ -21,11 +21,12 @@ final class SurfaceSectionsTests: XCTestCase {
         try JSONDecoder().decode(DesktopSnapshot.self, from: Data(Self.fixture.utf8))
     }
 
-    func testTheTwoRowsComeAfterPipelinesAndBeforeTheOtherSurfaces() throws {
+    /// Plugins and Pipelines follow them, as the drawer lists them.
+    func testTheTwoRowsComeAfterArtifactsAndBeforePluginsAndTheOtherSurfaces() throws {
         let rows = SidebarRows.make(try desktop(), settings: [:], feed: SidebarRows.FeedRow(unread: 0), plugins: true, pipelines: true)
         XCTAssertEqual(Array(rows.map(\.id).prefix(8)), [
-            "direct:feed", "direct:artifacts", "direct:plugins", "direct:pipelines",
-            "direct:documents", "direct:todos", "surface:cal", "surface:vault",
+            "direct:feed", "direct:artifacts", "direct:documents", "direct:todos",
+            "direct:plugins", "direct:pipelines", "surface:cal", "surface:vault",
         ])
         let documents = try XCTUnwrap(rows.first { $0.id == "direct:documents" })
         XCTAssertEqual([documents.label, documents.targetKind], ["Documents", "documents"])

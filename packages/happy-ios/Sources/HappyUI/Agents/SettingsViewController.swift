@@ -107,6 +107,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     /// Whether the shown computer serves provider sign-in; read from its
     /// health each time it is shown.
     private var providerSignIn = false
+    /// Whether the shown computer serves plugins: its home has their row.
+    private var pluginsServed = false
     private var providerSignInRead: Task<Void, Never>?
     /// What the shown computer's new sessions start on, and its models
     /// followed while its page shows, for New Sessions.
@@ -380,6 +382,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         watchProfile()
         connectionSettingsWatch?.cancel(); connectionSettingsWatch = nil
         projectsHidden = false
+        pluginsServed = false
         providerSignIn = false
         providerSignInRead?.cancel(); providerSignInRead = nil
         modelPreferences = ModelPreferences()
@@ -410,9 +413,11 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 guard !Task.isCancelled, let self else { return }
                 let hidden = DesktopSettingKeys.projectsHidden(snapshot.settings)
                 let preferences = ModelPreferences(snapshot.settings)
-                guard hidden != projectsHidden || preferences != modelPreferences else { continue }
+                let plugins = snapshot.allRows.contains { $0.targetKind == "plugins" }
+                guard hidden != projectsHidden || preferences != modelPreferences || plugins != pluginsServed else { continue }
                 projectsHidden = hidden
                 modelPreferences = preferences
+                pluginsServed = plugins
                 rebuild()
             }
         }
@@ -528,6 +533,13 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     self?.navigationController?.pushViewController(UsageViewController(session: session), animated: true)
                 })]
             } ?? []
+            // Plugins ends the group, as desktop's Settings has it, where the
+            // server serves them.
+            let pluginRows: [SettingsRow] = pluginsServed ? Session.session(for: id, context: context).map { session in
+                [Row(Index.plugins, action: { [weak self] in
+                    self?.navigationController?.pushViewController(PluginsViewController(session: session), animated: true)
+                })]
+            } ?? [] : []
             // Desktop's sidebar, group for group: its unheaded first group
             // (General, here Appearance; Account, here Profile; Voice; and
             // the phone's Data and Storage), then Agents (what new sessions
@@ -542,7 +554,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
                 [supportRow()],
-                ([Row(Index.agents, action: { [weak self] in self?.open(.agents) })] + providersRows(id) + providerAccountRows(id) + computeRows + usageRows).withHeader(Strings.SettingsGroups.agents),
+                ([Row(Index.agents, action: { [weak self] in self?.open(.agents) })] + providersRows(id) + providerAccountRows(id) + computeRows + usageRows + pluginRows).withHeader(Strings.SettingsGroups.agents),
             ]
             return ([
                 accountRows(),

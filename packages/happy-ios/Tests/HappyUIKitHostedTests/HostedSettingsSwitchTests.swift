@@ -397,7 +397,7 @@ final class HostedSettingsSwitchTests: XCTestCase {
         let pending = AvatarPlaceholderImages.pending(side: AccountSwitcher.menuPicture)
         let picture = button.flatMap { Mirror(reflecting: $0).children.first { $0.label == "pictureView" }?.value as? UIImageView }?.image
         XCTAssertTrue(picture != nil && picture !== pending, "\(leg): the switcher has no picture", line: line)
-        XCTAssertTrue(home.navigationItem.rightBarButtonItems?.contains { $0.accessibilityIdentifier == "settings" } ?? false, "\(leg): no settings", line: line)
+        XCTAssertTrue(Self.hasSettings(home), "\(leg): no settings", line: line)
     }
 
     // MARK: Back to the new home
@@ -421,6 +421,12 @@ final class HostedSettingsSwitchTests: XCTestCase {
         var whole: Bool { switcher && picture && settings && search && content }
     }
 
+    /// Settings in home's bar, or, on an iPhone's agent home, its drawer's.
+    private static func hasSettings(_ home: UIViewController) -> Bool {
+        if home is AgentHomeViewController, UIDevice.current.userInterfaceIdiom == .phone { return true }
+        return home.navigationItem.rightBarButtonItems?.contains { $0.accessibilityIdentifier == "settings" } ?? false
+    }
+
     private static func descendants(of view: UIView) -> [UIView] {
         view.subviews + view.subviews.flatMap(descendants)
     }
@@ -431,7 +437,7 @@ final class HostedSettingsSwitchTests: XCTestCase {
         let button = Self.descendants(of: bar).first { $0 === own && $0.window != nil && !$0.isHidden } as? AccountSwitcherButton
         let pending = AvatarPlaceholderImages.pending(side: AccountSwitcher.menuPicture)
         let picture = button.flatMap { Mirror(reflecting: $0).children.first { $0.label == "pictureView" }?.value as? UIImageView }?.image
-        let settings = home.navigationItem.rightBarButtonItems?.contains { $0.accessibilityIdentifier == "settings" } ?? false
+        let settings = Self.hasSettings(home)
         // A computer's home searches from the toolbar; a Happy account's
         // has none to show.
         let search = home is AgentHomeViewController ? home.toolbarItems?.contains { $0 === home.navigationItem.searchBarPlacementBarButtonItem } == true && !app.navigation.isToolbarHidden : true

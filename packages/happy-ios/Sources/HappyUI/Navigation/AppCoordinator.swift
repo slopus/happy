@@ -270,7 +270,7 @@ public final class AppCoordinator {
     /// connection's home.
     private func openInstanceTarget() {
         guard let target = instanceTarget, case .agentConnection(let shown) = context.account.state, shown.id == target.connection,
-              shell.stack.first is AgentHomeViewController, let session = Session.session(for: target.connection, context: context) else { return }
+              shell.agentHome != nil, let session = Session.session(for: target.connection, context: context) else { return }
         instanceTarget = nil
         shell.presentedViewController?.dismiss(animated: false)
         if case .settings(let page) = target.link.target, let top = shell.topViewController {
