@@ -1374,7 +1374,9 @@ change its wire behaviour on Android alone.
   both kinds of Settings, in developer mode only (ten taps on Version), and
   nowhere else: outside developer mode no card, footer or search result,
   never on Start or in onboarding. Entering or leaving developer mode
-  changes nothing but whether it shows.
+  changes nothing but whether it shows. While developer mode is on, About's
+  footer opens with a line saying so and that ten more taps on Version turn
+  it off (`settings_developer_mode_footer`).
   Its invite links' intent filters sit on the main manifest's disabled
   `HappyCloudLinks` alias, which the switch enables; servers already added
   keep working either way.

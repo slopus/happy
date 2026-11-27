@@ -226,12 +226,14 @@ internal fun supportAction(nav: NavHostController): () -> Unit = { nav.navigate(
 internal fun rememberAboutInfo(graph: AppGraph): AboutInfo {
     val resources = LocalResources.current
     val pro by graph.subscription.pro.collectAsStateWithLifecycle()
+    val local by graph.localSettings.values.collectAsStateWithLifecycle()
     return AboutInfo(
         versionName = versionDetail(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
         versionSubtitle = buildSubtitle(BuildConfig.BUILD_COMMIT_SHA, BuildConfig.BUILD_COMMIT_TIMESTAMP, resources.getString(R.string.settings_commit)) {
             resources.getString(R.string.settings_commit_at, it)
         },
         isPro = BuildConfig.DEBUG || pro,
+        devMode = local.devModeEnabled,
     )
 }
 

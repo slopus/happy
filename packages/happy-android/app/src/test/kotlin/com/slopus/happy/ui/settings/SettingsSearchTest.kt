@@ -1,6 +1,9 @@
 package com.slopus.happy.ui.settings
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextEquals
@@ -103,6 +106,20 @@ class SettingsSearchTest {
         rule.onAllNodesWithTag(com.slopus.happy.ui.connection.HappyCloudSwitchTags.SWITCH, useUnmergedTree = true).assertCountEquals(1)
         search("Happy Cloud")
         assertTrue(resultTitles().toString(), "Happy Cloud" in resultTitles())
+    }
+
+    /** Developer mode's line under About, first, while it is on; the app's line either way. */
+    @Test
+    fun developerModesLineIsUnderAboutWhileItIsOn() {
+        var devMode by mutableStateOf(true)
+        rule.setHappyContent { AboutCard(AboutInfo("1.8.0 (412)", devMode = devMode), AboutActions()) }
+        val line = "Developer mode is on. Tap Version ten times to turn it off."
+        rule.onAllNodesWithText(line, substring = true).assertCountEquals(1)
+        rule.onAllNodesWithText("Happy Coder is a Codex", substring = true).assertCountEquals(1)
+        devMode = false
+        rule.waitForIdle()
+        rule.onAllNodesWithText(line, substring = true).assertCountEquals(0)
+        rule.onAllNodesWithText("Happy Coder is a Codex", substring = true).assertCountEquals(1)
     }
 
     @Test

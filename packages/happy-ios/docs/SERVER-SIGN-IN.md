@@ -109,6 +109,9 @@ split contract (v1, frozen 2026-11-15).
   Version), and nowhere else: outside developer mode no card, footer or
   search result (home's search included), never on Start or in onboarding.
   Entering or leaving developer mode changes nothing but whether it shows.
+  While developer mode is on, About's footer opens with a line saying so
+  and that ten more taps on Version turn it off
+  (`Strings.developerModeFooter`).
 - **Screens.** Desktop's steps and words (happy-desktop
   `CloudConnectScreen.tsx`), every one a full-screen page on the first
   screen's grain gradient, under the standard bar with Back: Welcome, Sign
