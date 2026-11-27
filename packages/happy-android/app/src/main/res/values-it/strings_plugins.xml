@@ -3,6 +3,7 @@
     <string name="plugins_title">Plugin</string>
     <string name="plugins_installed">Installati</string>
     <string name="plugins_available">Disponibili</string>
+    <string name="plugins_features">Funzionalità</string>
     <string name="plugins_loading">Caricamento plugin…</string>
     <string name="plugins_empty">Questo server non offre ancora plugin.</string>
     <string name="plugins_failed">Impossibile caricare i plugin</string>

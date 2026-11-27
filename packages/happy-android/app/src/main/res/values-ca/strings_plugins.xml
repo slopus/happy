@@ -3,6 +3,7 @@
     <string name="plugins_title">Connectors</string>
     <string name="plugins_installed">Instal·lats</string>
     <string name="plugins_available">Disponibles</string>
+    <string name="plugins_features">Funcions</string>
     <string name="plugins_loading">S’estan carregant els connectors…</string>
     <string name="plugins_empty">Aquest servidor encara no ofereix connectors.</string>
     <string name="plugins_failed">No s’han pogut carregar els connectors</string>

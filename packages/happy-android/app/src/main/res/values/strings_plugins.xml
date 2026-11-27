@@ -8,6 +8,7 @@
     <string name="plugins_title">Plugins</string>
     <string name="plugins_installed">Installed</string>
     <string name="plugins_available">Available</string>
+    <string name="plugins_features">Features</string>
     <string name="plugins_loading">Loading plugins…</string>
     <string name="plugins_empty">This server offers no plugins yet.</string>
     <string name="plugins_failed">Plugins couldn\'t be loaded</string>

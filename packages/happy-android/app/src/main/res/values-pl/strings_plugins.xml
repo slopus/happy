@@ -3,6 +3,7 @@
     <string name="plugins_title">Wtyczki</string>
     <string name="plugins_installed">Zainstalowane</string>
     <string name="plugins_available">Dostępne</string>
+    <string name="plugins_features">Funkcje</string>
     <string name="plugins_loading">Wczytywanie wtyczek…</string>
     <string name="plugins_empty">Ten serwer nie oferuje jeszcze wtyczek.</string>
     <string name="plugins_failed">Nie udało się wczytać wtyczek</string>

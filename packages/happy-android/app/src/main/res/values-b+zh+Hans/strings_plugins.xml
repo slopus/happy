@@ -3,6 +3,7 @@
     <string name="plugins_title">插件</string>
     <string name="plugins_installed">已安装</string>
     <string name="plugins_available">可用</string>
+    <string name="plugins_features">功能</string>
     <string name="plugins_loading">正在加载插件…</string>
     <string name="plugins_empty">此服务器暂未提供插件。</string>
     <string name="plugins_failed">无法加载插件</string>

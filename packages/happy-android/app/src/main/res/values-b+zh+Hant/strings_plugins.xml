@@ -3,6 +3,7 @@
     <string name="plugins_title">外掛程式</string>
     <string name="plugins_installed">已安裝</string>
     <string name="plugins_available">可用</string>
+    <string name="plugins_features">功能</string>
     <string name="plugins_loading">正在載入外掛程式…</string>
     <string name="plugins_empty">此伺服器尚未提供外掛程式。</string>
     <string name="plugins_failed">無法載入外掛程式</string>

@@ -2779,7 +2779,9 @@ words are `strings_plugins.xml` in every locale.
   reconnect, after every write and when a page resumes (back from a sign-in
   in the browser). Refusals are a typed `PluginRefusal`; refused setup fields
   show under their field in the server's words.
-- **Pages:** the list (Installed, then Available), a plugin (Install, Install
+- **Pages:** the list (Installed, then Available, then Features: feature
+  plugins not installed, apart so the role note under Available isn't
+  read as theirs), a plugin (Install, Install
   again where it may be installed more than once, its installations and
   tools), an installation (Set up by OAuth in a Custom Tab or by fields,
   Signed in with per-account Disconnect, Remove; each confirmed). Someone

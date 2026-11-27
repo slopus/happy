@@ -25,6 +25,7 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -248,5 +249,17 @@ class PluginScreensTest {
         rule.setHappyContent { PluginsScreen(PluginsState.Loaded(PluginsSnapshot(listOf(pipelines), emptyList(), canManage = false)), onOpen = {}, onRetry = {}, onBack = {}) }
         rule.node(PluginsTags.available("pipelines")).assertIsDisplayed()
         assertEquals(0, rule.onAllNodesWithText("Only people whose role can manage plugins can install and set them up.").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun theRoleNoteStaysWithTheIntegrations() {
+        val linear = plugin("linear", "Linear", "Issues and projects.")
+        rule.setHappyContent { PluginsScreen(PluginsState.Loaded(PluginsSnapshot(listOf(linear, pipelines), emptyList(), canManage = false)), onOpen = {}, onRetry = {}, onBack = {}) }
+        val note = rule.onNodeWithText("Only people whose role can manage plugins can install and set them up.").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val features = rule.onNodeWithText("FEATURES").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        // Under Available, Linear's group; Pipelines is in Features, below it.
+        assertTrue(rule.node(PluginsTags.available("linear")).fetchSemanticsNode().boundsInRoot.bottom < note.top)
+        assertTrue(note.bottom < features.top)
+        assertTrue(features.bottom < rule.node(PluginsTags.available("pipelines")).fetchSemanticsNode().boundsInRoot.top)
     }
 }

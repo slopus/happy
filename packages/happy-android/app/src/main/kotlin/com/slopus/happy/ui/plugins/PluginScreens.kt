@@ -99,9 +99,10 @@ internal fun statusColor(installation: PluginInstallation): Color {
  * The connection's plugins (home's Plugins row; desktop's catalog page):
  * Installed, one row per installation with its picture, its name and its
  * state on the right, then Available, the plugins with no installation,
- * each with its description under its name. Every row opens its plugin.
- * A member whose role may not manage plugins reads why under the list,
- * unless all there is to install is feature plugins, which are theirs.
+ * each with its description under its name, then Features, the feature
+ * plugins not installed. Every row opens its plugin. A member whose role
+ * may not manage plugins reads why under Available; feature plugins are
+ * everyone's own, so Features says nothing of roles.
  * Rows are [Item]s: 32 picture, 16/24 title, 14/20 subtitle.
  */
 @Composable
@@ -151,24 +152,31 @@ private fun PluginsList(snapshot: PluginsSnapshot, onOpen: (String) -> Unit) {
             }
         }
     }
-    val available = snapshot.available
+    val (features, available) = snapshot.available.partition { it.feature }
     if (available.isNotEmpty()) {
         ItemGroup(
             title = stringResource(R.string.plugins_available),
-            // Feature plugins are everyone's own to install: the note is for the rest.
-            footer = if (snapshot.canManage || available.all { it.feature }) null else stringResource(R.string.plugins_manage_note),
+            footer = if (snapshot.canManage) null else stringResource(R.string.plugins_manage_note),
         ) {
-            for (plugin in available) {
-                Item(
-                    title = plugin.name,
-                    subtitle = plugin.description.ifBlank { null },
-                    icon = { PluginMark(plugin.image, PluginsSpec.rowMark) },
-                    onClick = { onOpen(plugin.key) },
-                    modifier = Modifier.testTag(PluginsTags.available(plugin.key)),
-                )
-            }
+            for (plugin in available) AvailableRow(plugin, onOpen)
         }
     }
+    if (features.isNotEmpty()) {
+        ItemGroup(title = stringResource(R.string.plugins_features)) {
+            for (plugin in features) AvailableRow(plugin, onOpen)
+        }
+    }
+}
+
+@Composable
+private fun AvailableRow(plugin: Plugin, onOpen: (String) -> Unit) {
+    Item(
+        title = plugin.name,
+        subtitle = plugin.description.ifBlank { null },
+        icon = { PluginMark(plugin.image, PluginsSpec.rowMark) },
+        onClick = { onOpen(plugin.key) },
+        modifier = Modifier.testTag(PluginsTags.available(plugin.key)),
+    )
 }
 
 /**

@@ -3,6 +3,7 @@
     <string name="plugins_title">Плагины</string>
     <string name="plugins_installed">Установлены</string>
     <string name="plugins_available">Доступны</string>
+    <string name="plugins_features">Функции</string>
     <string name="plugins_loading">Загружаем плагины…</string>
     <string name="plugins_empty">Этот сервер пока не предлагает плагинов.</string>
     <string name="plugins_failed">Не удалось загрузить плагины</string>
