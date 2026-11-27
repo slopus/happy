@@ -297,10 +297,13 @@ class LegacyCallTargetsTest {
         override fun modes(chat: ChatState) = modes
         override suspend fun setModes(sessionId: String, model: String?, effort: String?) { modeSets += Triple(sessionId, model, effort) }
         var sendDelay = 0L
-        val online = ArrayList<Boolean>()
-        override suspend fun send(sessionId: String, text: String, online: Boolean, onAccepted: () -> Unit): Boolean {
+        val waits = ArrayList<Long>()
+        /** The directory as home had it when awaitSession was asked, by the call's IDs. */
+        var seenWhileWaiting: List<String>? = null
+        var targets: LegacyCallTargets? = null
+        override suspend fun send(sessionId: String, text: String, waitOnlineMillis: Long, onAccepted: () -> Unit): Boolean {
             if (sendDelay > 0) kotlinx.coroutines.delay(sendDelay)
-            this.online += online
+            waits += waitOnlineMillis
             sends += sessionId to text
             onAccepted()
             return true
@@ -308,7 +311,9 @@ class LegacyCallTargetsTest {
         override fun newWorkPlace(bot: Boolean) = place
         override suspend fun spawn(options: SpawnSessionOptions): SpawnSessionResult { spawns += options; return spawned.removeAt(0) }
         override suspend fun awaitSession(sessionId: String): Boolean {
+            // Home lists it before the store has it here: already under the draft's ref.
             listed.value = listed.value + CallTarget(sessionId, "New", CallTarget.Kind.Task, CallTarget.Status.Idle)
+            seenWhileWaiting = targets?.directory()?.map { it.agentId }
             chatOf(sessionId).value = chat(emptyList(), rigMetadata(), id = sessionId)
             return true
         }
@@ -348,6 +353,7 @@ class LegacyCallTargetsTest {
         val cli = FakeAccount(emptyList())
         cli.spawned = mutableListOf(SpawnSessionResult.Pending("m1", 250), SpawnSessionResult.Success("made"))
         val targets = LegacyCallTargets(cli) { null }
+        cli.targets = targets
         assertNull(targets.newWorkRefusal(CallTarget.Kind.Task, ""))
         assertTrue(targets.startsWork())
         val draft = targets.draft(CallTarget.Kind.Task, "")!!
@@ -372,8 +378,11 @@ class LegacyCallTargetsTest {
         assertEquals(CallSendOutcome.Queued, targets.send(draft.agentId, "and the tests", "m2", null))
         assertEquals("made" to "and the tests", cli.sends.last())
         assertEquals(draft.agentId, targets.state(draft.agentId)!!.target.agentId)
-        // Its first message needed no presence yet; the next one did.
-        assertEquals(listOf(false, true), cli.online)
+        // The alias was in before home's row came: the call never saw "made" under its own ID.
+        assertEquals(listOf(draft.agentId), cli.seenWhileWaiting)
+        // Its first message waited for the new session to come online; the next one didn't.
+        assertTrue(cli.waits[0] > 0)
+        assertEquals(0L, cli.waits[1])
         // Listed, followed and told by the draft's ref, never the session's own ID.
         assertEquals(listOf(draft.agentId), targets.directory().map { it.agentId })
         val heard = kotlinx.coroutines.CompletableDeferred<CallTargetState>()

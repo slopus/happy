@@ -33,8 +33,9 @@ import java.io.File
  * used-up sheet instead (the one allowance every call counts against).
  * Runs only when asked for by name (`-e live 1`): it is a billed conversation
  * that reaches real sessions. Skipped too without an agent ID or a Happy
- * account open. Shots and `live.txt` (what was said and the tools run) go to
- * the app's external files under `relay-live/`; nothing goes to logcat.
+ * account open. Shots go to the app's external files under `relay-live/`;
+ * what was said and the tools run are kept (`live.txt` there) only with
+ * `-e capture 1`, and nothing goes to logcat.
  */
 @RunWith(AndroidJUnit4::class)
 class LegacyCallLiveDeviceCheck {
@@ -75,6 +76,7 @@ class LegacyCallLiveDeviceCheck {
         val used = arguments.getString("used") == "1"
         rule.runOnUiThread { graph.calls.applyTestEnvironment("seen", used, null) }
         CallProbe.reset()
+        CallProbe.capture = arguments.getString("capture") == "1"
         assertTrue("no voice button on home", until(30_000) {
             rule.onAllNodes(androidx.compose.ui.test.hasTestTag(AgentHomeTags.VOICE), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         })
@@ -93,12 +95,12 @@ class LegacyCallLiveDeviceCheck {
         val log = StringBuilder()
         try {
             assertTrue("never connected: ${graph.calls.state.value}", until(30_000) { graph.calls.state.value is CallState.Active && CallProbe.live != null })
-            until(15_000) { agentLines > 0 }
+            if (CallProbe.capture) until(15_000) { agentLines > 0 } else until(8_000) { false }
             shot("connected")
             prompts.forEachIndexed { index, prompt ->
                 val before = agentLines
                 rule.runOnUiThread { CallProbe.live?.type(prompt) }
-                until(45_000) { agentLines > before }
+                if (CallProbe.capture) until(45_000) { agentLines > before } else until(20_000) { false }
                 // Its tools and its last words.
                 until(4_000) { false }
                 shot("answer-${index + 1}")
@@ -112,10 +114,11 @@ class LegacyCallLiveDeviceCheck {
             shot("ended")
         } finally {
             if (graph.calls.state.value.isLive) rule.runOnUiThread { graph.calls.close() }
-            CallProbe.lines.value.forEach { log.append("${it.role}: ${it.text}\n") }
-            CallProbe.tools.value.forEach { log.append("TOOL ${it.name} ${it.parameters} -> ${if (it.isError) "ERROR " else ""}${it.result}\n") }
+            if (CallProbe.capture) CallProbe.lines.value.forEach { log.append("${it.role}: ${it.text}\n") }
+            if (CallProbe.capture) CallProbe.tools.value.forEach { log.append("TOOL ${it.name} ${it.parameters} -> ${if (it.isError) "ERROR " else ""}${it.result}\n") }
             CallProbe.sent.value.forEach { log.append("CONTEXT ${it.kind} ${it.bytes} bytes\n") }
-            File(dir, "live.txt").writeText(log.toString())
+            if (CallProbe.capture) File(dir, "live.txt").writeText(log.toString())
+            CallProbe.capture = false
         }
     }
 }

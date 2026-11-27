@@ -149,7 +149,7 @@ class CallCueLiveDeviceCheck {
     fun theAgentOffersARestartOnTheCueAndTheRestartCarriesTheCallOver() {
         assumeTrue("no agent ID in this build", CallAgent.hostedAgentId != null)
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
-        CallProbe.reset()
+        CallProbe.reset(); CallProbe.capture = true
         val history = history("restart")
         // The limit 90 s off from the start: the cue comes 80 s before it, about 10 s in.
         val session = call(history, CallCues.Timing(callLimit = 100_000, callLimitLead = 80_000, silenceWarning = 600_000, silenceEnd = 700_000))
@@ -183,7 +183,7 @@ class CallCueLiveDeviceCheck {
     fun silenceHasTheAgentWarnThenTheAppEndsTheCall() {
         assumeTrue("no agent ID in this build", CallAgent.hostedAgentId != null)
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
-        CallProbe.reset()
+        CallProbe.reset(); CallProbe.capture = true
         val history = history("silence")
         val session = call(history, CallCues.Timing(silenceWarning = 20_000, silenceEnd = 40_000))
         try {
@@ -212,7 +212,7 @@ class CallCueLiveDeviceCheck {
     fun aDropPlaysTheSoundAndTheNextCallKnows() {
         assumeTrue("no agent ID in this build", CallAgent.hostedAgentId != null)
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
-        CallProbe.reset()
+        CallProbe.reset(); CallProbe.capture = true
         val history = history("drop")
         val first = call(history, CallCues.Timing())
         try {
@@ -303,7 +303,7 @@ class CallCueLiveDeviceCheck {
     private fun slowRelease(name: String): Triple<CallSession, Slow, CallTargetState> {
         assumeTrue("no agent ID in this build", CallAgent.hostedAgentId != null)
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
-        CallProbe.reset()
+        CallProbe.reset(); CallProbe.capture = true
         val release = conversations[1]
         val shipped = CallTurn("r1", "Ship the 2.1 notes", "Done: the 2.1 changelog is published.")
         val kept = CallTargetState(release, turns = listOf(shipped), fresh = false, checkedAt = System.currentTimeMillis() - 29 * 60_000)

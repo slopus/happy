@@ -120,7 +120,7 @@ class CallLiveDeviceCheck {
         val agentId = CallAgent.hostedAgentId
         assumeTrue("no agent ID in this build", agentId != null)
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
-        CallProbe.reset()
+        CallProbe.reset(); CallProbe.capture = true
         val targets = Targets()
         val context = CallContext(targets)
         val level = MutableStateFlow(0f)
@@ -183,7 +183,7 @@ class CallLiveDeviceCheck {
         val agentId = CallAgent.hostedAgentId
         assumeTrue("no agent ID in this build", agentId != null)
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
-        CallProbe.reset()
+        CallProbe.reset(); CallProbe.capture = true
         val context = CallContext(Targets())
         val level = MutableStateFlow(0f)
         lateinit var session: CallSession
@@ -244,7 +244,7 @@ class CallLiveDeviceCheck {
         val agentId = CallAgent.hostedAgentId
         assumeTrue("no agent ID in this build", agentId != null)
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
-        CallProbe.reset()
+        CallProbe.reset(); CallProbe.capture = true
         val five = conversations + CallTarget("task-3", "Fix login redirect", CallTarget.Kind.Task, status = CallTarget.Status.Idle)
         val states = five.associate { it.agentId to CallTargetState(it, listOf(CallMessage("m0-${it.agentId}", CallMessage.Role.Assistant, "Earlier: ${it.title} was set up.", 1_755_400_000_000L))) }.toMutableMap()
         val targets = object : CallTargets {

@@ -42,7 +42,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -76,11 +77,12 @@ interface LegacyCallAccount {
     /** Picks [model] and [effort] (null: as they are) as the chips do; the next message goes with them. */
     suspend fun setModes(sessionId: String, model: String?, effort: String?)
     /**
-     * [text] as the composer sends it, from voice: the draft is left alone. Checked again as it goes into the
-     * outbox: refused there if the session is archived or being archived, or, with [online], isn't online.
-     * [onAccepted] runs once it is in the outbox, even if the caller stopped waiting. False when nothing was queued.
+     * [text] as the composer sends it, from voice: the draft is left alone. Waits up to [waitOnlineMillis] for the
+     * session to be online (live presence, else the stored flag, as the chat has it), then checks again as it goes
+     * into the outbox: refused there if it is archived, being archived or not online. [onAccepted] runs once it is
+     * in the outbox, even if the caller stopped waiting. False when nothing was queued.
      */
-    suspend fun send(sessionId: String, text: String, online: Boolean, onAccepted: () -> Unit): Boolean
+    suspend fun send(sessionId: String, text: String, waitOnlineMillis: Long, onAccepted: () -> Unit): Boolean
     /** Where a new task, or with [bot] a new bot, starts by voice now ([LegacyCallTargets.newWorkPlace]). */
     fun newWorkPlace(bot: Boolean): LegacyNewWork
     /** Asks the computer for the session, once: a pending answer is asked again by the caller. */
@@ -156,7 +158,10 @@ class LegacyCallTargets(
 
     override val focusedNow: String? get() = screen()?.focused?.let(::called)
 
-    override val directoryChanges: Flow<List<CallTarget>> get() = cli.directoryChanges.map { list -> list.map(::outward) }
+    /** Bumped as a draft makes its session, so the directory is told under the draft's ref at once. */
+    private val aliases = MutableStateFlow(0)
+
+    override val directoryChanges: Flow<List<CallTarget>> get() = combine(cli.directoryChanges, aliases) { list, _ -> list.map(::outward) }
 
     /** By the call's own IDs: a draft's, once it made a session. */
     override val following: List<String> get() = held.keys.toList()
@@ -178,10 +183,10 @@ class LegacyCallTargets(
         val draft = drafts[agentId]
         if (draft != null && draft.made == null) return@onMain draftState(draft)
         val id = session(agentId) ?: return@onMain null
-        val target = listed(id) ?: cli.unlisted(id) ?: return@onMain null
+        // Made, but not on this phone yet: still the draft as it was.
+        val target = listed(id) ?: cli.unlisted(id) ?: return@onMain draft?.let(::draftState)
         val chat = latest[id]?.takeIf(::isRead) ?: withTimeoutOrNull(READ_MILLIS) { cli.chat(id).first(::isRead) } ?: return@onMain null
-        val state = read(chat, target)
-        if (draft != null) state.copy(target = state.target.copy(agentId = agentId)) else state
+        read(chat, target, agentId)
     }
 
     /** As opening the chat would: its catch-up, until it is in or [limitMillis] runs out. */
@@ -203,10 +208,12 @@ class LegacyCallTargets(
 
     private fun isRead(chat: ChatState): Boolean = chat.sessionLoaded && chat.snapshot.loaded
 
-    private suspend fun read(chat: ChatState, target: CallTarget): CallTargetState {
+    /** [chat] of [target]'s session, told under [called] (a draft's ref, for the session it made). */
+    private suspend fun read(chat: ChatState, target: CallTarget, called: String): CallTargetState {
         val modes = cli.modes(chat)
-        return state(chat, target, cli.isCurrent(target.agentId))
+        val state = state(chat, target, cli.isCurrent(target.agentId))
             .copy(models = modes.models, mode = modes.mode, modelLocked = modes.modelLocked, effortLocked = modes.effortLocked)
+        return if (called == target.agentId) state else state.copy(target = state.target.copy(agentId = called))
     }
 
     override suspend fun focused(): String? = onMain { focusedNow }
@@ -247,7 +254,7 @@ class LegacyCallTargets(
             closed -> CallSendOutcome.Refused("The call has ended.")
             else -> {
                 change?.let { switch(session, now, it) }
-                if (cli.send(session, text, online = true) { sent += id }) {
+                if (cli.send(session, text, waitOnlineMillis = 0) { sent += id }) {
                     CallSendOutcome.Queued
                 } else {
                     CallSendOutcome.Refused("That conversation can't take a message now.")
@@ -276,7 +283,7 @@ class LegacyCallTargets(
             cli.chat(id).collect { chat ->
                 latest[id] = chat
                 val target = listed(id) ?: return@collect
-                if (isRead(chat)) onChange?.invoke(read(chat, target.copy(agentId = agentId)))
+                if (isRead(chat)) onChange?.invoke(read(chat, target, agentId))
             }
         }
     }
@@ -357,10 +364,12 @@ class LegacyCallTargets(
             is SpawnSessionResult.Pending -> return CallSendOutcome.Refused("It's still starting on the computer; look for it in the app.")
             is SpawnSessionResult.RequestToApproveDirectoryCreation -> return CallSendOutcome.Refused(CallContext.CLI_NEW_WORK_REFUSED)
         }
-        if (!cli.awaitSession(session)) return CallSendOutcome.Refused("It started, but hasn't reached this phone yet; look for it in the app.")
+        // The draft's ref is the session's from now on, before home lists it under its own ID.
         draft.made = session
-        // Just made: its presence may not have reached this phone yet, so only archiving refuses it.
-        if (!cli.send(session, text, online = false) { sent += messageId }) {
+        aliases.value++
+        if (!cli.awaitSession(session)) return CallSendOutcome.Refused("It started, but hasn't reached this phone yet; look for it in the app.")
+        // Just made: it comes online as its computer takes it up.
+        if (!cli.send(session, text, waitOnlineMillis = NEW_ONLINE_MILLIS) { sent += messageId }) {
             return CallSendOutcome.Refused("It started, but its first message couldn't be kept on this phone.")
         }
         return CallSendOutcome.Queued
@@ -391,6 +400,8 @@ class LegacyCallTargets(
         private const val READ_MILLIS = 3_000L
         /** As compose's start: how many pending answers it waits through. */
         private const val MAX_PENDING = 20
+        /** How long new work's first message waits for its session to come online. */
+        private const val NEW_ONLINE_MILLIS = 15_000L
         /** A draft's ID: never a session's. */
         const val NEW_WORK_PREFIX = "new:"
 

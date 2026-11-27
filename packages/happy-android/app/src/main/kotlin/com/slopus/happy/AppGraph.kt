@@ -123,6 +123,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
@@ -860,13 +861,18 @@ class AppGraph(
                     }
                     if (patch.isNotEmpty() && accountState.value === sync) sync.composer.setAgentModes(sessionId, patch)
                 }
-                override suspend fun send(sessionId: String, text: String, online: Boolean, onAccepted: () -> Unit): Boolean {
+                override suspend fun send(sessionId: String, text: String, waitOnlineMillis: Long, onAccepted: () -> Unit): Boolean {
+                    // Online as the chat has it: live presence, else the stored flag.
+                    fun online(stored: Boolean) = sync.presence.sessions.value[sessionId]?.active ?: stored
+                    if (waitOnlineMillis > 0) withTimeoutOrNull(waitOnlineMillis) {
+                        sync.presence.sessions.first { it[sessionId]?.active ?: withContext(Dispatchers.IO) { store.session(sessionId)?.active == true } }
+                    }
                     // Checked again where the sender puts it in the outbox, nothing suspending after; the store read is off the main thread.
                     fun takes(): Boolean {
                         if (accountState.value !== sync || sessionId in home.archiver.archiving.value) return false
                         val session = store.session(sessionId) ?: return false
                         if (SessionMetadata.parse(session.metadataJson)?.lifecycleState == "archived") return false
-                        return !online || session.active
+                        return online(session.active)
                     }
                     val options = SendOptions(source = "voice", isCurrent = ::takes, onAccepted = onAccepted)
                     return withContext(Dispatchers.IO) { sync.sender.send(sessionId, text, options) } is SendResult.Accepted
