@@ -2837,7 +2837,12 @@ words are `strings_plugins.xml` in every locale.
   `AgentSession.pluginsAvailable`: health's `capabilities.plugins`, kept per
   connection so the row doesn't come and go, and for servers deployed before
   the flag a marked fallback probe of `GET /v0/plugins` (404/501: none).
-  Happy Agent hosts don't advertise it and show no row.
+  Happy Agent hosts don't advertise it and show no row. The same flag adds
+  Plugins to the agent's Settings, last in Agents after Usage (desktop's
+  place for it, after its Secrets; `PluginsTags.ROW`), opening the same
+  page over Settings, so the drawer lights Settings there and Plugins when
+  it was picked from the drawer. Desktop has it in Settings only; phones and
+  tablets keep the row too (Steve).
 - **Wire:** `PluginsBackend` (`ClusterPlugins`) reads the catalog and the
   installations (`canManage` from that answer, else `mcp.manage`);
   `PluginsSource` reads again on `plugins.changed`, role changes, each

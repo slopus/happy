@@ -5,6 +5,8 @@ import com.slopus.happy.agent.Permission
 import com.slopus.happy.agent.AutoJoinKind
 import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.ui.tablet.BackOrSidebarToggle
+import com.slopus.happy.ui.plugins.PluginsRoute
+import com.slopus.happy.ui.plugins.PluginsTags
 import com.slopus.happy.ui.settings.SettingsTags
 import com.slopus.happy.call.CallAllowance
 import com.slopus.happy.ui.components.ProvideRowReveal
@@ -202,6 +204,8 @@ class AgentSettingsActions(
     val onCompute: (() -> Unit)? = null,
     /** Usage: what the provider accounts spent and what is left of their plans; null where it isn't offered. */
     val onUsage: (() -> Unit)? = null,
+    /** Plugins, the same page home's Plugins row opens; null where the server doesn't serve them. */
+    val onPlugins: (() -> Unit)? = null,
     /** A Happy Cloud server: its push settings, on the same Notifications page. Every Cloud member can manage their own, read-only members included. */
     val onNotifications: (() -> Unit)? = null,
     /** Opens Notifications with one of its rows revealed, as search finds it; null where search shouldn't offer them. */
@@ -228,7 +232,7 @@ data class AgentPerson(val name: String = "", val photo: ImageBitmap? = null, va
  * desktop's Hide projects; the person's own Profile; Voice;
  * Data and Storage; Notifications, which is Sharing and on a Cloud server
  * its push settings too), Support Happy's boba row under it, Agents
- * (Agents, Inference: a Happy Agent's accounts or Cloud's providers, Compute, Usage), Team (Members,
+ * (Agents, Inference: a Happy Agent's accounts or Cloud's providers, Compute, Usage, Plugins), Team (Members,
  * on Cloud); Privacy;
  * the agent's version; About; Disconnect, after a
  * confirm. A device token can't reach
@@ -274,7 +278,7 @@ fun AgentConnectionSettingsScreen(
     // unheaded first group (General, here Appearance; Account, here Profile;
     // Voice; the phone's Data and Storage; and Notifications, Steve's
     // "Sharing is notifications"), then Agents (what new sessions start on, Inference,
-    // Compute, Usage) and Team (Members; with none, no header). The phone's own cards keep their places: the accounts at the top,
+    // Compute, Usage, Plugins) and Team (Members; with none, no header). The phone's own cards keep their places: the accounts at the top,
     // Support Happy under the first group, Privacy and About at the end.
     val sections = listOf(
         SettingsSection(
@@ -358,12 +362,20 @@ fun AgentConnectionSettingsScreen(
                         onClick = open,
                     )
                 },
-                // Usage closes the group, after Compute.
                 actions.onUsage?.let { open ->
                     SettingsEntry(
                         id = AgentUsageTags.ROW,
                         title = stringResource(R.string.usage_title),
                         icon = { SettingsTile(Ionicon.AnalyticsOutline, SettingsTiles.teal) },
+                        onClick = open,
+                    )
+                },
+                // Plugins closes the group, after Usage, as desktop's last row there (after its Secrets).
+                actions.onPlugins?.let { open ->
+                    SettingsEntry(
+                        id = PluginsTags.ROW,
+                        title = stringResource(R.string.plugins_title),
+                        icon = { SettingsTile(Ionicon.ExtensionPuzzleOutline, SettingsTiles.orange) },
                         onClick = open,
                     )
                 },
@@ -564,7 +576,8 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
     val policy = cloud && permissions?.let(com.slopus.happy.agent.PolicyDocument::served) == true
     // Happy Cloud keeps its own AI providers; a Happy Agent says it signs accounts in.
     val providerAccounts = !cloud && session?.providerSignInAvailable?.collectAsStateWithLifecycle()?.value == true
-    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, compute, policy, providerAccounts) {
+    val plugins = session?.pluginsAvailable?.collectAsStateWithLifecycle()?.value == true
+    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, compute, policy, providerAccounts, plugins) {
         AgentSettingsActions(
             onBack = { nav.popBackStack() },
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
@@ -579,6 +592,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onPolicy = if (policy) ({ document -> nav.navigate(PolicyDocumentRoute(connectionId, document.id)) }) else null,
             onCompute = if (compute) ({ nav.navigate(CloudComputeRoute(connectionId)) }) else null,
             onUsage = { nav.navigate(AgentUsageRoute(connectionId)) },
+            onPlugins = if (plugins) ({ nav.navigate(PluginsRoute(connectionId)) }) else null,
             onNotifications = if (cloud) ({ nav.navigate(CloudPushSettingsRoute(connectionId)) }) else null,
             onNotificationsRow = { reveal -> nav.navigate(AgentSharingRoute(connectionId, reveal = reveal)) },
             onPrivacy = { nav.navigate(PrivacyRoute) },

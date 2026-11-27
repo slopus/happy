@@ -30,6 +30,14 @@ import com.slopus.happy.agent.AgentFeedSection
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.ui.HomeRoute
+import com.slopus.happy.ui.SettingsRoute
+import com.slopus.happy.ui.connection.AgentConnectionSettingsScreen
+import com.slopus.happy.ui.connection.AgentPerson
+import com.slopus.happy.ui.connection.AgentSettingsActions
+import com.slopus.happy.ui.plugins.PluginsTags
+import com.slopus.happy.ui.settings.AboutInfo
+import com.slopus.happy.ui.settings.SettingsProfile
+import androidx.compose.ui.test.performScrollTo
 import com.slopus.happy.ui.RetainedNavHost
 import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.backStackEntries
@@ -67,7 +75,9 @@ import java.io.File
  * An agent connection's phone drawer on a device: home (bots and tasks
  * alone, the account's picture at the bar's start, which opens the drawer), the drawer open over it, Documents picked
  * from it (the stack's new root, its back the drawer's button), and the
- * drawer again with Documents lit. The real drawer, home, list and
+ * drawer again with Documents lit; Settings picked from it, scrolled to
+ * its Plugins row (last in Agents; Plugins stays in the drawer too), and
+ * the drawer over it with Settings lit. The real drawer, home, list and
  * [MainPanel] drawer opener as `TabletShell` and `AgentDrawerHost` put
  * them together, over made-up rows. Shots go to the app's external files
  * under `phone-drawer/<screen>-<theme>.png`. Run on an assigned emulator.
@@ -88,6 +98,7 @@ class PhoneDrawerDeviceShots {
             AgentFeedRow.Artifacts,
             AgentFeedRow.Documents,
             AgentFeedRow.Todos,
+            AgentFeedRow.Plugins,
             AgentFeedRow.Surface("cal", "Team calendar", "calendar"),
             AgentFeedRow.Surface("vault", "Company Drive", "vault"),
             AgentFeedRow.Conversation("chief", "Chief of Staff", ConversationKind.Bot, 0, seed = "chief", happy = true),
@@ -138,7 +149,7 @@ class PhoneDrawerDeviceShots {
                                     close()
                                     if (row == AgentFeedRow.Documents) panel.drawerOpener.open(row.panelKey()) { nav.navigate(DocumentListsRoute("fx")) }
                                 },
-                                onSettings = { close() },
+                                onSettings = { close(); panel.drawerOpener.open(MainPanelKey.SETTINGS) { nav.navigate(SettingsRoute()) } },
                             )
                         },
                     ) {
@@ -149,6 +160,13 @@ class PhoneDrawerDeviceShots {
                                     PlaceScaffold(stringResource(SurfaceList.Documents.title), { nav.popBackStack() }, tag = "document.lists.screen", actions = {
                                         BarIconButton(Ionicon.Add, stringResource(SurfaceList.Documents.create), {})
                                     }) { SurfaceListsContent(SurfaceList.Documents, documents, loaded = true, unsupported = false, onOpen = {}, onRefresh = {}) }
+                                }
+                                page<SettingsRoute> {
+                                    AgentConnectionSettingsScreen(
+                                        SettingsProfile("fx-connection", "Studio", "Happy Agent · Connected"), accounts,
+                                        AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onProviders = {}, onUsage = {}, onPlugins = {}),
+                                        AboutInfo("1.8.0 (412)"), person = AgentPerson("Alex Rivera"),
+                                    )
                                 }
                             }
                         }
@@ -163,6 +181,12 @@ class PhoneDrawerDeviceShots {
         capture("documents-from-drawer-$theme")
         drawerButton().performClick()
         capture("drawer-on-documents-$theme")
+        rule.onNode(hasTestTag(AgentDrawerTags.SETTINGS)).performClick()
+        capture("settings-from-drawer-$theme")
+        rule.onNode(hasTestTag(PluginsTags.ROW)).performScrollTo()
+        capture("settings-plugins-$theme")
+        drawerButton().performClick()
+        capture("drawer-on-settings-$theme")
         rule.onNode(hasTestTag(AgentDrawerTags.item(AgentDrawerItems.HOME))).performClick()
         capture("home-again-$theme")
     }

@@ -41,6 +41,8 @@ object PluginsTags {
     const val PAGE = "plugins.page"
     const val HERO = "plugins.hero"
     const val RETRY = "plugins.retry"
+    /** The Plugins row in an agent's Settings. */
+    const val ROW = "plugins.settingsRow"
     fun installation(id: String) = "plugins.installation.$id"
     fun available(key: String) = "plugins.available.$key"
 }

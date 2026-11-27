@@ -260,8 +260,31 @@ class AgentConnectionSettingsTest {
         rule.onNode(hasTestTag(ComputeTags.ROW) and hasAnyDescendant(hasText("Compute")), useUnmergedTree = true).assertExists()
         rule.onNode(hasTestTag(CloudProvidersTags.ROW) and hasAnyDescendant(hasText("Inference")), useUnmergedTree = true).assertExists()
         rule.onNode(hasTestTag(AgentUsageTags.ROW) and hasAnyDescendant(hasText("Usage")), useUnmergedTree = true).assertExists()
-        // Usage closes the group, under Compute.
+        // Usage under Compute.
         assertTrue(rule.onNode(hasTestTag(AgentUsageTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y > rule.onNode(hasTestTag(ComputeTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y)
+        // No plugins served, no Plugins row.
+        rule.onNode(hasTestTag(com.slopus.happy.ui.plugins.PluginsTags.ROW), useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    /** Where the server serves plugins, Plugins closes Agents, under Usage, and opens the plugins page (desktop's place for it). */
+    @Test
+    fun pluginsCloseTheAgentsGroup() {
+        var opened = 0
+        rule.setHappyContent {
+            AgentConnectionSettingsScreen(
+                profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
+                accounts = accounts,
+                actions = AgentSettingsActions(onAgents = {}, onProviders = {}, onCompute = {}, onUsage = {}, onMembers = {}, onPlugins = { opened++ }),
+                about = AboutInfo("1.8.0 (412)"),
+            )
+        }
+        val plugins = com.slopus.happy.ui.plugins.PluginsTags.ROW
+        rule.onNode(hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(AgentUsageTags.ROW)) and hasAnyDescendant(hasTestTag(plugins)), useUnmergedTree = true).assertExists()
+        rule.onNode(hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(CloudTags.MEMBERS)) and hasAnyDescendant(hasTestTag(plugins)), useUnmergedTree = true).assertDoesNotExist()
+        rule.onNode(hasTestTag(plugins) and hasAnyDescendant(hasText("Plugins")), useUnmergedTree = true).assertExists()
+        assertTrue(rule.onNode(hasTestTag(plugins), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y > rule.onNode(hasTestTag(AgentUsageTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y)
+        rule.node(plugins).performScrollTo().performClick()
+        assertEquals(1, opened)
     }
 
     /**
