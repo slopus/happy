@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -176,8 +176,13 @@ class AccountSync(
                 presence.reconcileMachines(store.machineActivity())
             }
         }
+        // What the sender is told below. The watcher starts later, on [io]: a
+        // change before then (MainActivity starting during a cold start) is
+        // its first value, not one to drop, or the sender stays in the
+        // background and fails every send at once.
+        val initial = foreground.value
         scope.launch {
-            foreground.drop(1).collect { active ->
+            foreground.dropWhile { it == initial }.collect { active ->
                 socket.emit("app-state", appState(active))
                 sender.setForeground(active)
                 if (active) {
@@ -192,7 +197,7 @@ class AccountSync(
             network.returns().collect { socket.redial() }
         }
         composer.start()
-        sender.setForeground(foreground.value)
+        sender.setForeground(initial)
         scope.launch { sender.resume() }
         socket.connect()
         deltaSync.invalidate()
