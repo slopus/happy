@@ -158,10 +158,11 @@ class LegacyCallTargetsTest {
         )
         assertEquals(listOf("new-bot", "old-bot", "unnamed-task", "task"), list.take(4).map { it.agentId })
         assertEquals(listOf(CallTarget.Kind.Bot, CallTarget.Kind.Bot, CallTarget.Kind.Task, CallTarget.Kind.Task), list.take(4).map { it.kind })
-        assertEquals(listOf("Docs", "Release", "Untitled", "Fix cache race"), list.take(4).map { it.title })
+        assertEquals(listOf("Docs", "Release", "New chat", "Fix cache race"), list.take(4).map { it.title })
         // Projects by their newest session; within one, newest made first. A reply moves nothing: activity isn't read.
         assertEquals(listOf("a2", "a1", "lib", "untitled", "offline-rig"), list.drop(4).map { it.agentId })
-        assertEquals("Untitled", list.single { it.agentId == "untitled" }.title)
+        // Unnamed, as its home row reads.
+        assertEquals("New chat", list.single { it.agentId == "untitled" }.title)
         assertEquals(listOf("project"), list.single { it.agentId == "a1" }.parents.map { it.kind })
         assertTrue(list.drop(4).all { it.kind == CallTarget.Kind.Conversation })
     }
@@ -233,8 +234,9 @@ class LegacyCallTargetsTest {
     }
 
     @Test
-    fun anOfflineHappyAgentSessionTakesMessagesAndAStoppedHappyCliOneDoesnt() {
-        assertTrue(LegacyCallTargets.state(chat(listOf(user("u", "hi")), metadata = rigMetadata(), online = false), target, true).writable)
+    fun onlyAnOnlineSessionTakesMessages() {
+        assertTrue(LegacyCallTargets.state(chat(listOf(user("u", "hi")), metadata = rigMetadata()), target, true).writable)
+        assertFalse(LegacyCallTargets.state(chat(listOf(user("u", "hi")), metadata = rigMetadata(), online = false), target, true).writable)
         val archived = rigMetadata { put("lifecycleState", "archived") }
         assertFalse(LegacyCallTargets.state(chat(listOf(user("u", "hi")), metadata = archived, online = false), target, true).writable)
         assertFalse(LegacyCallTargets.state(chat(listOf(user("u", "hi")), online = false), target, true).writable)

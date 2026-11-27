@@ -31,7 +31,8 @@ Preserve credential and push compatibility on upgrades.
   Settings' Voice row opens the agent connection's Voice page
   (`AgentVoiceRoute`). The directory is home's sessions (bots, tasks, then
   projects, each newest made first; no side chats, no stopped Happy CLI
-  session); reads are the chat screen's reduction (`ChatFeed`), sends the
+  session; an unnamed one reads "New chat", as its row does); a session
+  that isn't online is read, never sent to; reads are the chat screen's reduction (`ChatFeed`), sends the
   composer's sender marked `voice`, model and effort the composer's chips
   (refused only when the computer locks them). New tasks and named bots
   start through Happy Agent's spawn on compose's computer, else the only one

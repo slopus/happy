@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.Flow
  */
 data class CallTarget(
     val agentId: String,
-    /** Home's label, whatever it is: "New Task" or "Untitled" too. */
+    /** Home's label, whatever it is: "New Task", "Untitled" or "New chat" too. */
     val title: String,
     val kind: Kind,
     val status: Status,
@@ -68,7 +68,7 @@ data class CallTarget(
          * computer's, until the first message names it, and the rows' own
          * for none.
          */
-        val placeholders = setOf("", "New Task", "New Bot", "Untitled")
+        val placeholders = setOf("", "New Task", "New Bot", "Untitled", "New chat")
 
         /** Longest a title goes into the call, in UTF-8. */
         const val TITLE_BYTES = 200

@@ -375,8 +375,8 @@ class LegacyCallTargets(
         /** A draft's ID: never a session's. */
         const val NEW_WORK_PREFIX = "new:"
 
-        /** What a session nobody has named yet is called. */
-        const val UNTITLED = "Untitled"
+        /** What a session nobody has named yet is called: its home row's "New chat". */
+        const val NEW_CHAT = "New chat"
 
         /** The prefix Happy Agent gives a failed run's last words (`The run failed: …`). */
         const val RUN_FAILED = "The run failed: "
@@ -389,7 +389,7 @@ class LegacyCallTargets(
          * own checkout before its worktrees, each newest made first. What home
          * archives is left out (a Happy CLI session that stopped, one being
          * archived here in [archiving]), and side chats; a Happy Agent session
-         * whose computer is offline is listed.
+         * whose computer is offline is listed, to read.
          */
         fun directory(sessions: Collection<Session>, archiving: Set<String> = emptySet()): List<CallTarget> {
             val listed = sessions.filter { it.metadata?.isSideChat != true && !it.isArchived(archiving) }
@@ -429,7 +429,7 @@ class LegacyCallTargets(
 
         private fun target(session: Session, parents: List<CallTarget.Parent>) = CallTarget(
             agentId = session.id,
-            title = CallTarget.clean(session.displayName()?.takeIf { it.isNotBlank() } ?: UNTITLED),
+            title = CallTarget.clean(session.displayName()?.takeIf { it.isNotBlank() } ?: NEW_CHAT),
             kind = when {
                 session.metadata?.bot != null -> CallTarget.Kind.Bot
                 session.isTask -> CallTarget.Kind.Task
@@ -598,9 +598,8 @@ class LegacyCallTargets(
                 chat.thinking -> CallTarget.Status.Running
                 else -> CallTarget.Status.Idle
             }
-            val metadata = chat.session?.metadata
-            // A Happy CLI session takes messages while it runs; Happy Agent's server keeps them for its computer while it is offline.
-            val takes = chat.online || (metadata.isRig() && metadata?.lifecycleState != "archived")
+            // A session takes messages while it is online: a stopped Happy CLI session or Happy Agent's offline one is read, not sent to.
+            val takes = chat.online && chat.session?.metadata?.lifecycleState != "archived"
             return CallTargetState(
                 target = target.copy(status = status),
                 messages = messages,
