@@ -118,6 +118,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                     abort: processAbortController.signal,
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
+                    model: session.model,
                     mcpServers: session.mcpServers,
                     allowedTools: session.allowedTools,
                     hookSettingsPath: session.hookSettingsPath,

@@ -13,6 +13,8 @@ export class Session {
     readonly queue: MessageQueue2<EnhancedMode>;
     readonly claudeEnvVars?: Record<string, string>;
     claudeArgs?: string[];  // Made mutable to allow filtering
+    /** `happy --model`, which the interactive launcher passes on to Claude */
+    readonly model?: string;
     readonly mcpServers: Record<string, any>;
     readonly allowedTools?: string[];
     readonly sandboxConfig?: SandboxConfig;
@@ -41,6 +43,7 @@ export class Session {
         sessionId: string | null,
         claudeEnvVars?: Record<string, string>,
         claudeArgs?: string[],
+        model?: string,
         mcpServers: Record<string, any>,
         messageQueue: MessageQueue2<EnhancedMode>,
         onModeChange: (mode: 'local' | 'remote') => void,
@@ -60,6 +63,7 @@ export class Session {
         this.queue = opts.messageQueue;
         this.claudeEnvVars = opts.claudeEnvVars;
         this.claudeArgs = opts.claudeArgs;
+        this.model = opts.model;
         this.mcpServers = opts.mcpServers;
         this.allowedTools = opts.allowedTools;
         this.sandboxConfig = opts.sandboxConfig;

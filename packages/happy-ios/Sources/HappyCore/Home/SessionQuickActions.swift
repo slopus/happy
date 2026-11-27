@@ -132,7 +132,8 @@ public struct SessionQuickActions: Equatable, Sendable {
         let meta = try UserMessageEncoder.modeMeta(
             metadata: session.metadata ?? .object([:]),
             composer: composer,
-            settings: .object(settings.values)
+            settings: .object(settings.values),
+            resuming: true
         )
         return (meta["model"]?.stringValue, meta["permissionMode"]?.stringValue)
     }

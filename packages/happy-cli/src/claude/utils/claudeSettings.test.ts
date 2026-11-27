@@ -71,32 +71,40 @@ describe('Claude Settings', () => {
     });
 
     it('is undefined when nothing names a model', () => {
-      expect(readConfiguredClaudeModel(project, {})).toBeUndefined();
+      expect(readConfiguredClaudeModel(project, { CLAUDE_CONFIG_DIR: testClaudeDir })).toBeUndefined();
     });
 
     it('reads the user settings model', () => {
       writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({ model: 'claude-opus-5[1m]' }));
-      expect(readConfiguredClaudeModel(project, {})).toBe('claude-opus-5[1m]');
+      expect(readConfiguredClaudeModel(project, { CLAUDE_CONFIG_DIR: testClaudeDir })).toBe('claude-opus-5[1m]');
     });
 
     it('prefers project settings, local first, over the user settings', () => {
       writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({ model: 'claude-opus-5' }));
       writeFileSync(join(project, '.claude', 'settings.json'), JSON.stringify({ model: 'claude-sonnet-5-5' }));
-      expect(readConfiguredClaudeModel(project, {})).toBe('claude-sonnet-5-5');
+      expect(readConfiguredClaudeModel(project, { CLAUDE_CONFIG_DIR: testClaudeDir })).toBe('claude-sonnet-5-5');
       writeFileSync(join(project, '.claude', 'settings.local.json'), JSON.stringify({ model: 'claude-haiku-5-5' }));
-      expect(readConfiguredClaudeModel(project, {})).toBe('claude-haiku-5-5');
+      expect(readConfiguredClaudeModel(project, { CLAUDE_CONFIG_DIR: testClaudeDir })).toBe('claude-haiku-5-5');
     });
 
     it('prefers ANTHROPIC_MODEL over every settings file', () => {
       writeFileSync(join(project, '.claude', 'settings.local.json'), JSON.stringify({ model: 'claude-haiku-5-5' }));
-      expect(readConfiguredClaudeModel(project, { ANTHROPIC_MODEL: 'claude-fable-5-2' })).toBe('claude-fable-5-2');
+      expect(readConfiguredClaudeModel(project, { CLAUDE_CONFIG_DIR: testClaudeDir, ANTHROPIC_MODEL: 'claude-fable-5-2' })).toBe('claude-fable-5-2');
+    });
+
+    it('reads the user settings from the config dir Claude is given', () => {
+      const other = join(testClaudeDir, 'other-config');
+      mkdirSync(other);
+      writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({ model: 'claude-opus-5' }));
+      writeFileSync(join(other, 'settings.json'), JSON.stringify({ model: 'claude-sonnet-5-5' }));
+      expect(readConfiguredClaudeModel(project, { CLAUDE_CONFIG_DIR: other })).toBe('claude-sonnet-5-5');
     });
 
     it('skips blank and non-string models', () => {
       writeFileSync(join(project, '.claude', 'settings.local.json'), JSON.stringify({ model: ' ' }));
       writeFileSync(join(project, '.claude', 'settings.json'), JSON.stringify({ model: 5 }));
       writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({ model: 'opus' }));
-      expect(readConfiguredClaudeModel(project, { ANTHROPIC_MODEL: '' })).toBe('opus');
+      expect(readConfiguredClaudeModel(project, { CLAUDE_CONFIG_DIR: testClaudeDir, ANTHROPIC_MODEL: '' })).toBe('opus');
     });
   });
 

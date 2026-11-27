@@ -64,10 +64,13 @@ object MessageMetaResolver {
      * messageMeta.ts `resolveMessageModeMeta`: the composer's picks ([mirror]),
      * falling back to the agent defaults the composer displays; for Claude,
      * to the model its CLI reports running, which needs no sending.
+     * [resuming] leaves Claude's code default out: the new process reports
+     * the model its own configuration names, and a message sends the
+     * default only if it reports none.
      *
      * @throws UnsupportedPermissionModeException
      */
-    fun mode(metadata: SessionMetadata?, mirror: ComposerMirror, overrides: AgentDefaultOverrides?): MessageModeMeta {
+    fun mode(metadata: SessionMetadata?, mirror: ComposerMirror, overrides: AgentDefaultOverrides?, resuming: Boolean = false): MessageModeMeta {
         if (metadata.isRigV1()) return rigMode(metadata!!, mirror)
 
         val flavor = metadata?.flavor
@@ -102,7 +105,7 @@ object MessageMetaResolver {
         // account default (Sonnet on some plans) under that chip. Once the
         // CLI reports the model it runs, nothing is sent and that one stays.
         val modelMode = mirror.modelMode ?: agentOverrides.modelMode
-            ?: if (AgentDefaults.isClaude(flavor) && AgentDefaults.sendsDefaultClaudeModel(metadata?.currentModelCode)) {
+            ?: if (!resuming && AgentDefaults.isClaude(flavor) && AgentDefaults.sendsDefaultClaudeModel(metadata?.currentModelCode)) {
                 AgentDefaults.resolve(overrides, flavor, cliVersion).modelMode
             } else {
                 null

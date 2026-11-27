@@ -169,6 +169,10 @@ class MessageMetaTest {
         // Once the CLI reports the model it runs, a running session is never re-modeled.
         assertEquals(MessageModeMeta(), mode(metadata("claude", "1.2.7", currentModelCode = "claude-sonnet-5-5")))
         assertEquals(MessageModeMeta(), mode(metadata("claude", currentModelCode = "claude-opus-5[1m]")))
+        // A resume leaves the default out, so the new process can report its configured model first.
+        assertEquals(MessageModeMeta(), MessageMetaResolver.mode(metadata("claude", "1.2.7"), ComposerMirror(), null, resuming = true))
+        assertEquals(meta(model = "claude-haiku-5-5"), MessageMetaResolver.mode(metadata("claude", "1.2.7"), ComposerMirror(), overrides("""{"claude":{"modelMode":"claude-haiku-5-5"}}"""), resuming = true))
+        assertEquals(meta(model = "claude-fable-5-2"), MessageMetaResolver.mode(metadata("claude", "1.2.7"), ComposerMirror(modelMode = "claude-fable-5-2"), null, resuming = true))
         // Other harnesses that send nothing by default still send nothing.
         assertEquals(MessageModeMeta(), mode(metadata("gemini")))
         assertEquals(MessageModeMeta(), mode(metadata("openclaw")))

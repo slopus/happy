@@ -58,6 +58,18 @@ final class ClaudeSessionModelTests: XCTestCase {
         )
     }
 
+    func testAResumeLeavesTheDefaultForTheNewProcessToReport() throws {
+        let resume = { (composer: [String: JSONValue], overrides: [String: JSONValue]) in
+            try UserMessageEncoder.modeMeta(
+                metadata: self.claude(reported: nil), composer: .object(composer),
+                settings: .object(["agentDefaultOverrides": .object(overrides)]), resuming: true
+            )["model"]
+        }
+        XCTAssertNil(try resume([:], [:]))
+        XCTAssertEqual(try resume([:], ["claude": .object(["modelMode": .string("claude-haiku-5-5")])]), .string("claude-haiku-5-5"))
+        XCTAssertEqual(try resume(["modelMode": .string("claude-fable-5-2")], [:]), .string("claude-fable-5-2"))
+    }
+
     func testOtherHarnessesAreUnchanged() throws {
         let agy = JSONValue.object([
             "flavor": .string("agy"), "version": .string("1.2.7"), "currentModelCode": .string("Gemini 4 Neon"),

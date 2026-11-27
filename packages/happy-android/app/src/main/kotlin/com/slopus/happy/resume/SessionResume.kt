@@ -108,7 +108,7 @@ class SessionResumer {
     private suspend fun run(ops: ResumeOps, sessionId: String, machineId: String, metadata: SessionMetadata?, texts: ResumeTexts): ResumeOutcome {
         val mirror = ops.mirror(sessionId)
         val meta = try {
-            MessageMetaResolver.mode(metadata, mirror, ops.overrides())
+            MessageMetaResolver.mode(metadata, mirror, ops.overrides(), resuming = true)
         } catch (e: UnsupportedPermissionModeException) {
             return ResumeOutcome.Failed(e.message ?: texts.unknownError)
         }

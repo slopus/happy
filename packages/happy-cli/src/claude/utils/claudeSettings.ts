@@ -18,8 +18,8 @@ export interface ClaudeSettings {
 /**
  * Get the path to Claude's settings.json file
  */
-function getClaudeSettingsPath(): string {
-  const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+function getClaudeSettingsPath(env: Record<string, string | undefined> = process.env): string {
+  const claudeConfigDir = env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
   return join(claudeConfigDir, 'settings.json');
 }
 
@@ -54,8 +54,8 @@ function readSettingsFile(settingsPath: string): ClaudeSettings | null {
 /**
  * The model Claude Code runs when Happy passes none: `ANTHROPIC_MODEL`, else
  * `model` from the project's local settings, its shared settings, then the
- * user's. Undefined means the account's own default, which only a turn's
- * init message reveals.
+ * user's, in the config dir `env` gives Claude. Undefined means the
+ * account's own default, which only a turn's init message reveals.
  */
 export function readConfiguredClaudeModel(
   workingDirectory: string,
@@ -68,7 +68,7 @@ export function readConfiguredClaudeModel(
   const files = [
     join(workingDirectory, '.claude', 'settings.local.json'),
     join(workingDirectory, '.claude', 'settings.json'),
-    getClaudeSettingsPath(),
+    getClaudeSettingsPath(env),
   ];
   for (const file of files) {
     const model = readSettingsFile(file)?.model;

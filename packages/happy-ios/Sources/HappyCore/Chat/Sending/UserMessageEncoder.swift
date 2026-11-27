@@ -81,7 +81,10 @@ public enum UserMessageEncoder {
         SessionMetadata.isRigV1(metadata)
     }
 
-    static func modeMeta(metadata m: JSONValue, composer c: JSONValue, settings: JSONValue?) throws -> [String: JSONValue] {
+    /// `resuming` leaves Claude's code default out: the new process reports
+    /// the model its own configuration names, and a message sends the
+    /// default only if it reports none.
+    static func modeMeta(metadata m: JSONValue, composer c: JSONValue, settings: JSONValue?, resuming: Bool = false) throws -> [String: JSONValue] {
         var result: [String: JSONValue] = [:]
         func value(_ value: JSONValue?) -> JSONValue? {
             value == .null ? nil : value
@@ -156,7 +159,7 @@ public enum UserMessageEncoder {
             permission = permission ?? defaults.permissionMode
             model = model ?? defaults.modelMode
             effort = effort ?? defaults.effortLevel
-        } else if model == nil, AgentDefaults.isClaude(flavor: m["flavor"]?.stringValue),
+        } else if model == nil, !resuming, AgentDefaults.isClaude(flavor: m["flavor"]?.stringValue),
                   AgentDefaults.sendsDefaultClaudeModel(reported: m["currentModelCode"]?.stringValue) {
             // The chip shows Claude's code default while its CLI reports no
             // model; left out, Claude Code would run its own account default

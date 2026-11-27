@@ -254,6 +254,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 abort: new AbortController().signal,
                 claudeEnvVars: options.claudeEnvVars,
                 claudeArgs: options.claudeArgs,
+                model: options.model,
                 mcpServers: {},
                 allowedTools: [],
                 sandboxConfig,
