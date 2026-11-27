@@ -22,13 +22,66 @@ import UIKit
 final class LegacyCallTargets: LiveCallTargets {
     nonisolated var account: CallAccount { .happyCLI }
 
+    /// What the call's tools reach past this phone's memory: the
+    /// composer's chips and each chat as the store keeps them, the model
+    /// switch, the outbox and compose's start. The account's own, or a
+    /// test's.
+    struct Relay {
+        var picks: @Sendable (_ sessionId: String) async -> ComposerPicks
+        var chats: @Sendable (_ sessionId: String) -> AsyncStream<LegacyChatSnapshot>
+        var switchModes: @Sendable (_ sessionId: String, _ patch: SessionAgentModesPatch) async throws -> Void
+        /// Kept in the outbox, the session judged where it is kept (`refusal`).
+        var enqueue: @Sendable (_ text: String, _ sessionId: String) async -> CallSendOutcome
+        /// New work started as compose starts it, under its own spawn
+        /// requests (never compose's): the session it made.
+        var start: @MainActor (_ launch: NewSessionLaunch, _ requests: SpawnRequests) async -> Result<String, LegacyNewWork.Refusal>
+
+        static func live(_ session: AccountSession) -> Relay {
+            let store = session.store, feed = session.chatFeed, actions = session.actions, realtime = session.realtime, sender = session.sender
+            return Relay(
+                picks: { sessionId in
+                    await Task.detached { ComposerPicks(values: (try? store.composerState(sessionId: sessionId))?.values) }.value
+                },
+                chats: { feed.snapshots(sessionId: $0) },
+                switchModes: { sessionId, patch in
+                    try await Task.detached { try await actions.sessionSetAgentModes(sessionId: sessionId, patch: patch, transport: realtime) }.value
+                },
+                // Off the main thread, and not cancelled once begun: kept on the phone, it went.
+                enqueue: { text, sessionId in
+                    await Task.detached { () -> CallSendOutcome in
+                        do {
+                            _ = try await sender.send(OutgoingMessage(text: text, source: .voice), sessionId: sessionId,
+                                                      admitting: { record in
+                                                          guard let record else { return "No such conversation." }
+                                                          return LegacyCallTargets.refusal(record)
+                                                      })
+                            return .queued
+                        } catch let refused as SessionRefusedSend {
+                            return .refused(refused.reason)
+                        } catch {
+                            return .refused("It couldn't be kept on this phone.")
+                        }
+                    }.value
+                },
+                start: { launch, requests in
+                    let starter = SessionStarter.make(for: session, spawnRequests: requests)
+                    let told = StartRefusals()
+                    starter.presenter = told
+                    if let id = await starter.start(launch, isCurrentTarget: { true }) { return .success(id) }
+                    return .failure(LegacyNewWork.Refusal(reason: told.message ?? SessionStarter.Message.startFailed))
+                }
+            )
+        }
+    }
+
     private let session: AccountSession
     private let context: AppContext
+    private let relay: Relay
     private weak var shell: ShellViewController?
     /// Home as last read: sessions by ID, the directory they make, the
     /// computers and the account's settings.
     private var snapshot: LegacyHomeSnapshot?
-    private var records: [String: SessionRecord] = [:]
+    private(set) var records: [String: SessionRecord] = [:]
     private var entries: [CallTarget] = []
     private var loaded = false
     private var reading: Task<Void, Never>?
@@ -46,7 +99,7 @@ final class LegacyCallTargets: LiveCallTargets {
     private var sends: [String: Task<CallSendOutcome, Never>] = [:]
     /// New work the call started, by the call's ID for it.
     private var started: [String: Started] = [:]
-    private final class Started {
+    final class Started {
         let kind: CallTarget.Kind
         let name: String
         let machineId: String
@@ -54,6 +107,9 @@ final class LegacyCallTargets: LiveCallTargets {
         let mode: CallMode?
         /// The start, once its first message went to it: the session it made.
         var making: Task<Result<String, LegacyNewWork.Refusal>, Never>?
+        /// Its own spawn requests, so no other start, compose's or the
+        /// call's, takes its session; closed with the call.
+        var requests: SpawnRequests?
         var sessionId: String?
 
         init(kind: CallTarget.Kind, name: String, machineId: String, models: [CallModel], mode: CallMode?) {
@@ -69,9 +125,10 @@ final class LegacyCallTargets: LiveCallTargets {
     var onChange: ((CallTargetState) -> Void)?
     private var closed = false
 
-    init(session: AccountSession, context: AppContext, shell: ShellViewController?) {
+    init(session: AccountSession, context: AppContext, shell: ShellViewController?, relay: Relay? = nil) {
         self.session = session
         self.context = context
+        self.relay = relay ?? .live(session)
         self.shell = shell
         let feed = session.homeFeed
         reading = Task.detached { [weak self] in
@@ -90,6 +147,7 @@ final class LegacyCallTargets: LiveCallTargets {
         reading = nil
         for feed in feeds.values { feed.cancel() }
         feeds.removeAll()
+        for work in started.values { work.requests?.close() }
         chats.removeAll()
         watchers.removeAll()
         onChange = nil
@@ -155,11 +213,11 @@ final class LegacyCallTargets: LiveCallTargets {
         let sessionId = real(agentId)
         await readModes(sessionId)
         if let state = followedState(agentId) { return state }
-        guard var chat = await Self.chat(sessionId, from: session.chatFeed) else { return nil }
+        guard var chat = await self.chat(sessionId) else { return nil }
         // Never read on this phone: its first page, as opening it would read it, a few seconds at most.
         if !chat.isLoaded {
             await pull(sessionId, within: .seconds(3))
-            chat = await Self.chat(sessionId, from: session.chatFeed) ?? chat
+            chat = await self.chat(sessionId) ?? chat
         }
         guard let record = records[sessionId], let target = target(agentId) else { return nil }
         return .legacy(chat, session: record, target: target, modes: modes[sessionId], current: live, checkedAt: checked[sessionId])
@@ -174,7 +232,7 @@ final class LegacyCallTargets: LiveCallTargets {
         guard !closed, let target = target(agentId) else { return nil }
         let store = session.store
         let record = await Task.detached { try? store.session(id: sessionId) }.value ?? records[sessionId]
-        guard let record, let chat = await Self.chat(sessionId, from: session.chatFeed) else { return nil }
+        guard let record, let chat = await self.chat(sessionId) else { return nil }
         return .legacy(chat, session: record, target: target, modes: modes[sessionId], current: live, checkedAt: checked[sessionId])
     }
 
@@ -197,19 +255,16 @@ final class LegacyCallTargets: LiveCallTargets {
     /// The composer's chips for a session, as its screen would show them.
     private func readModes(_ sessionId: String) async {
         guard let record = records[sessionId] else { return }
-        let store = session.store
         let overrides = snapshot.map { AccountSettings($0.settings).agentDefaultOverrides } ?? [:]
-        let metadata = record.metadata
-        modes[sessionId] = await Task.detached {
-            let picks = ComposerPicks(values: (try? store.composerState(sessionId: sessionId))?.values)
-            return ComposerModes(metadata: metadata, picks: picks, agentDefaultOverrides: overrides)
-        }.value
+        let picks = await relay.picks(sessionId)
+        modes[sessionId] = ComposerModes(metadata: record.metadata, picks: picks, agentDefaultOverrides: overrides)
     }
 
     /// What the store holds of a session's chat now: its feed's first snapshot.
-    private static func chat(_ id: String, from feed: LocalChatFeed) async -> LegacyChatSnapshot? {
-        await Task.detached {
-            for await snapshot in feed.snapshots(sessionId: id) { return snapshot }
+    private func chat(_ id: String) async -> LegacyChatSnapshot? {
+        let chats = relay.chats
+        return await Task.detached {
+            for await snapshot in chats(id) { return snapshot }
             return nil
         }.value
     }
@@ -279,9 +334,8 @@ final class LegacyCallTargets: LiveCallTargets {
         guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
         if let change, let patch = patch(change, for: record) {
             // As the composer's pickers switch it: its composer state, then the session's metadata.
-            let actions = session.actions, realtime = session.realtime
             do {
-                try await Task.detached { try await actions.sessionSetAgentModes(sessionId: sessionId, patch: patch, transport: realtime) }.value
+                try await relay.switchModes(sessionId, patch)
             } catch {
                 return .refused("The model couldn't be switched; nothing was sent.")
             }
@@ -290,18 +344,13 @@ final class LegacyCallTargets: LiveCallTargets {
             guard let now = records[sessionId], target(agentId) != nil else { return .refused("No such conversation.") }
             if let refusal = Self.refusal(now) { return .refused(refusal) }
         }
-        let sender = session.sender
-        // Off the main thread, and not cancelled once begun: kept on the phone, it went.
-        let localId = await Task.detached {
-            try? await sender.send(OutgoingMessage(text: text, source: .voice), sessionId: sessionId)
-        }.value
-        return localId == nil ? .refused("It couldn't be kept on this phone.") : .queued
+        return await relay.enqueue(text, sessionId)
     }
 
     /// Why a session can't take a message now, as its record stands. Like
     /// the composer's send, the link needn't be up: the outbox keeps it and
     /// sends it once it is.
-    private static func refusal(_ record: SessionRecord) -> String? {
+    nonisolated static func refusal(_ record: SessionRecord) -> String? {
         guard record.active, record.decryptable, !record.isArchived else { return "That conversation can't take a message now." }
         guard !(record.hasPendingPermissionRequests || record.hasPendingCommunications) else {
             return "It's waiting for the person in the app; answer there first."
@@ -387,15 +436,11 @@ final class LegacyCallTargets: LiveCallTargets {
                 launch.effortLevel = effort
                 launch.signature.effort = effort
             }
-            let starter = SessionStarter.make(for: session)
-            let told = StartRefusals()
-            starter.presenter = told
-            let ready = launch
-            // Not the tool's: a deadline that passes leaves it going.
-            work.making = Task { @MainActor in
-                if let id = await starter.start(ready, isCurrentTarget: { true }) { return .success(id) }
-                return .failure(LegacyNewWork.Refusal(reason: told.message ?? SessionStarter.Message.startFailed))
-            }
+            let ready = launch, start = relay.start, requests = SpawnRequests()
+            work.requests = requests
+            // Not the tool's: a deadline that passes leaves it going. The
+            // call's end stops it, unless its first message is kept already.
+            work.making = Task { @MainActor in await start(ready, requests) }
         }
         guard let making = work.making else { return .refused(SessionStarter.Message.startFailed) }
         switch await making.value {
@@ -425,11 +470,12 @@ final class LegacyCallTargets: LiveCallTargets {
         if following {
             guard !closed, feeds[agentId] == nil, target(agentId) != nil else { return }
             let sessionId = real(agentId)
-            let feed = session.chatFeed
+            let chats = relay.chats
             // Held before anything waits: a second follow finds it, and close or unfollow cancels it.
             feeds[agentId] = Task.detached { [weak self] in
                 await self?.readModes(sessionId)
-                for await snapshot in feed.snapshots(sessionId: sessionId) {
+                guard !Task.isCancelled else { return }
+                for await snapshot in chats(sessionId) {
                     guard let self else { return }
                     await self.received(snapshot, of: agentId)
                 }

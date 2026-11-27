@@ -315,7 +315,9 @@ routes: no token from it, and no usage read from it or written to it.
   session that runs on its computer takes one. A stopped or offline session
   reads but refuses: "That conversation can't take a message now." One
   waiting for the person refuses as an agent connection's does. The checks
-  run again after a model switch, right before the message is queued. The
+  run again after a model switch, and once more on the session's stored
+  row in the transaction that keeps the message (`enqueueAcceptedSend`'s
+  `admitting`), so an archive or a question already on the phone stops it. The
   account's link needn't be up: like the composer's, the outbox sends the
   message once it is. A send is held under its message ID from the
   moment it begins, so the same words again (a retry after "uncertain")
@@ -330,8 +332,11 @@ routes: no token from it, and no usage read from it or written to it.
   compose does (`NewSessionLaunch.resolve`, `SessionStarter`). The work
   starts on the computer compose has picked if its Happy Agent makes that
   kind and answers, otherwise on the only computer that does. The new
-  work's ref stands for the session until the relay names it. A start that
-  passes the tool's 10-second deadline answers "uncertain" and goes on. The
+  work's ref stands for the session until the relay names it. Each voice
+  start has its own spawn requests, never compose's, so no start takes
+  another's session. A start that passes the tool's 10-second deadline
+  answers "uncertain" and goes on; ending the call stops it unless its
+  first message is already kept. The
   call refuses, with these reasons:
   - "A new bot needs a name here; ask what to call it." (a bot needs a name)
   - "More than one computer can start it; start it in the app."
