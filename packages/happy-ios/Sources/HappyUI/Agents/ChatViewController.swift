@@ -966,7 +966,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         let agentId = media.agentId
         let spaceId = spaceId
-        guard let row = home.allRows.first(where: { row in spaceId.map { row.spaceId == $0 } ?? (row.agentId == agentId && row.depth == 0) }),
+        let matches = { (row: Row) in spaceId.map { row.spaceId == $0 } ?? (row.agentId == agentId && row.depth == 0) }
+        // A document's or todo list's chat is named as its row would be.
+        guard let row = home.allRows.first(where: matches) ?? home.sectionedRows.first(where: matches),
               rowName.map({ $0.label != row.label || $0.titled != row.titled }) ?? true else { return }
         rowName = (row.label, row.titled)
         applyTitle()

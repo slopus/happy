@@ -353,10 +353,10 @@ final class HomeViewController: UIViewController {
         ]
     }
 
-    /// The open todos of the lists in the sidebar, which search finds by
+    /// The open todos of the lists the person is in, which search finds by
     /// what they say, as desktop's palette does (`listTodos`, active).
     private func readTodos() -> Task<Void, Never> {
-        let lists = snapshot.allRows.compactMap { $0.targetKind == "surface" && $0.surfaceType == "todo" ? $0.targetId : nil }
+        let lists = searchRows.compactMap { $0.targetKind == "surface" && $0.surfaceType == "todo" ? $0.targetId : nil }
         let client = session?.engine.client
         return Task { [weak self] in
             guard let client else { return }
@@ -464,7 +464,7 @@ final class HomeViewController: UIViewController {
     /// it. A sidebar row opens as the sidebar opens it. `best` is where the
     /// list stands among the other sections (`Search.foundBest`).
     private func foundResults(for query: String, remote answer: [HappyCore.Search.Result]?) -> (rows: [Row], runs: [String: () -> Void], best: Int) {
-        let local = Array(HappyCore.Search.local(rows: snapshot.allRows, unjoined: agentHome.unjoinedTasks, surfaces: surfaces, artifacts: artifacts, todos: todos, query: query).prefix(HappyCore.Search.foundLimit))
+        let local = Array(HappyCore.Search.local(rows: searchRows, unjoined: agentHome.unjoinedTasks, surfaces: surfaces, artifacts: artifacts, todos: todos, query: query).prefix(HappyCore.Search.foundLimit))
         let names = searchNames()
         let remote = (answer ?? []).compactMap { result in HappyCore.Search.shown(result, names: names).map { (result: result, shown: $0) } }
         let fused = HappyCore.Search.found(local: local.map(\.key), remote: remote.map { ($0.result.key, $0.result.rank) })
@@ -532,10 +532,14 @@ final class HomeViewController: UIViewController {
         return (rows, runs, best)
     }
 
+    /// What search finds among the person's own: the sidebar's rows, and
+    /// the documents and todo lists listed under its Documents and TODOs.
+    private var searchRows: [Row] { snapshot.allRows + agentHome.sectionedRows }
+
     /// What the phone holds to name what the computer found.
     private func searchNames() -> HappyCore.Search.Names {
         var named: [String: AgentWire.Surface] = [:]
-        for row in snapshot.allRows where row.targetKind == "surface" {
+        for row in searchRows where row.targetKind == "surface" {
             if let id = row.targetId { named[id] = AgentWire.Surface(id: id, type: row.surfaceType ?? "", name: row.label) }
         }
         for surface in surfaces { named[surface.id] = surface }
@@ -742,7 +746,7 @@ final class HomeViewController: UIViewController {
         if shown is ArtifactsViewController { return rows.first { $0.targetKind == "artifacts" }?.id }
         if shown is PluginsViewController { return rows.first { $0.targetKind == "plugins" }?.id }
         if shown is PipelinesViewController { return rows.first { $0.targetKind == "pipelines" }?.id }
-        if shown is TodoListsViewController { return rows.first { $0.targetKind == "todos" }?.id }
+        if let list = shown as? SurfaceListViewController { return rows.first { $0.targetKind == list.section.targetKind }?.id }
         if shown is FeedViewController { return rows.first { $0.targetKind == "feed" }?.id }
         return nil
     }
@@ -778,9 +782,12 @@ final class HomeViewController: UIViewController {
         case .space where row.targetKind == "pipelines":
             sidebar.selectedRowId = row.id
             show(PipelinesViewController(session: session), for: row, animated: animated)
+        case .space where row.targetKind == "documents":
+            sidebar.selectedRowId = row.id
+            show(SurfaceListViewController(session: session, section: .documents), for: row, animated: animated)
         case .space where row.targetKind == "todos":
             sidebar.selectedRowId = row.id
-            show(TodoListsViewController(session: session), for: row, animated: animated)
+            show(SurfaceListViewController(session: session, section: .todos), for: row, animated: animated)
         case .space where row.targetKind == "feed":
             sidebar.selectedRowId = row.id
             show(FeedViewController(session: session), for: row, animated: animated)

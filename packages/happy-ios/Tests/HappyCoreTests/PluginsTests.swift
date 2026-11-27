@@ -39,8 +39,8 @@ final class PluginsTests: XCTestCase {
     func testACloudServerListsPluginsUnderArtifacts() throws {
         let json = #"{"cursor":"c","profile":{"userId":"me"},"userSettings":[],"projects":[],"workspaces":[],"surfaces":[]}"#
         let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: Data(json.utf8))
-        let cloud = SidebarRows.make(desktop, settings: [:], plugins: true).prefix(3).map(\.id)
-        XCTAssertEqual(cloud, ["direct:artifacts", "direct:plugins", "direct:todos"])
+        let cloud = SidebarRows.make(desktop, settings: [:], plugins: true).prefix(4).map(\.id)
+        XCTAssertEqual(cloud, ["direct:artifacts", "direct:plugins", "direct:documents", "direct:todos"])
         XCTAssertFalse(SidebarRows.make(desktop, settings: [:]).contains { $0.targetKind == "plugins" }, "a computer listed plugins")
     }
 

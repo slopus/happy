@@ -168,7 +168,8 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
             follow()
         }
         homeWatch = session.watchHome { [weak self] home in
-            self?.homeRows = home.allRows
+            // A document's or todo list's chat is named and marked as its row would be.
+            self?.homeRows = home.allRows + home.sectionedRows
             self?.follow()
         }
         session.warm.watch(warm.chat, token: warm.token) { [weak self] snapshot in

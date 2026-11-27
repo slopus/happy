@@ -38,15 +38,15 @@ final class SidebarReorderTests: XCTestCase {
         let rows = try rows()
         let last = SidebarReorder.moved(rows, SidebarReorder.Move(kind: "bot", id: "happy", afterId: "release"))
         XCTAssertEqual(labels(last), [
-            "Artifacts", "Todos", "Notes", "Groceries",
+            "Artifacts", "Documents", "TODOs",
             "—", "Research", "Release", "Happy", "Sub one", "Sub two",
             "—", "Three", "One", "Two",
             "—", "App", "Root chat", "Feature", "Fix", "Docs",
         ])
         let first = SidebarReorder.moved(rows, SidebarReorder.Move(kind: "task", id: "t2", afterId: nil))
-        XCTAssertEqual(Array(labels(first)[11...13]), ["Two", "Three", "One"])
+        XCTAssertEqual(Array(labels(first)[10...12]), ["Two", "Three", "One"])
         let middle = SidebarReorder.moved(rows, SidebarReorder.Move(kind: "task", id: "t3", afterId: "t1"))
-        XCTAssertEqual(Array(labels(middle)[11...13]), ["One", "Three", "Two"])
+        XCTAssertEqual(Array(labels(middle)[10...12]), ["One", "Three", "Two"])
     }
 
     /// Where it already stands, after one of another kind, or after one
@@ -86,7 +86,7 @@ final class SidebarReorderTests: XCTestCase {
         let overlay = IntentOverlay(Array(pending.reversed()))
         XCTAssertEqual(overlay.moves.map(\.id), ["t2", "t1", "t2"])
         // Three One Two → Two Three One → Two One Three → One Three Two.
-        XCTAssertEqual(Array(labels(overlay.apply(try rows()))[11...13]), ["One", "Three", "Two"])
+        XCTAssertEqual(Array(labels(overlay.apply(try rows()))[10...12]), ["One", "Three", "Two"])
     }
 
     /// A task archived here is gone even while a move of it waits.
@@ -95,7 +95,7 @@ final class SidebarReorderTests: XCTestCase {
             Intent(kind: .archive, target: "t1", value: .object(["kind": "task"]), createdAt: 1),
             Intent(kind: .reorder, target: "t1", value: .object(["kind": "task", "afterId": .null]), createdAt: 2),
         ])
-        XCTAssertEqual(Array(labels(overlay.apply(try rows()))[11...12]), ["Three", "Two"])
+        XCTAssertEqual(Array(labels(overlay.apply(try rows()))[10...11]), ["Three", "Two"])
     }
 
     // MARK: Routes

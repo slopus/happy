@@ -4,6 +4,11 @@ import Foundation
 extension Strings {
     public enum Documents {
         public static let untitled = "Untitled"
+        // The list of documents: home's Documents row, as desktop names it.
+        public static let section = "Documents"
+        public static let none = "No documents yet. Tap + to make one."
+        public static let loadingList = "Loading documents…"
+        public static let notKept = "This Happy Agent doesn’t keep documents."
         public static let saved = "Saved"
         public static let saving = "Saving…"
         /// Kept on the phone while the computer can't be reached.

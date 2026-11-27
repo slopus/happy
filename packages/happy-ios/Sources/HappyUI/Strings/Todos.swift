@@ -7,16 +7,14 @@ import HappyCore
 // language, as the agent screens' others do.
 extension Strings {
     enum Todos {
-        // The list of todo lists.
+        // The list of todo lists: home's TODOs row, as desktop names it.
+        static let section = "TODOs"
         static let title = "Todos"
         static let newList = "New todo list"
         static let newDocument = "New document"
-        static let newListTitle = "New todo list"
-        static let newDocumentTitle = "New document"
         static let namePlaceholder = "Name"
         static let create = "Create"
         static let cancel = "Cancel"
-        static let new = "New"
         static let lists = "Todo lists"
         static let noLists = "No todo lists yet. Tap + to make one."
         static let loadingLists = "Loading todo lists…"
@@ -24,7 +22,7 @@ extension Strings {
         static func createFailed(_ reason: String) -> String { "It couldn’t be made. \(reason)" }
         static let createFailedTitle = "Not made"
         static let ok = "OK"
-        static func outstanding(_ count: Int) -> String { count == 0 ? "Nothing to do" : count == 1 ? "1 to do" : "\(count) to do" }
+        static func outstanding(_ count: Int) -> String { count == 1 ? "1 to do" : "\(count) to do" }
 
         // One list.
         static let add = "Add a todo"

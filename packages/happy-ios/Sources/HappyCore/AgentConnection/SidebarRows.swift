@@ -68,8 +68,8 @@ public enum SidebarRows {
             agentRow(agent, depth: 0, label: bot.name, owner: bot, kind: "bot", muted: attention?["muted"] == .bool(true))
         }
         // Desktop's first group: Activity, Artifacts, Plugins, Pipelines,
-        // then the person's Surfaces, and a Happy Cloud server's shared bot
-        // last (only owners are ever sent one).
+        // Documents, TODOs, then the person's other Surfaces, and a Happy
+        // Cloud server's shared bot last (only owners are ever sent one).
         if let feed {
             // Bold while something is unread, with how many beside it.
             var row = Row(id: "direct:feed", nodeId: "direct:feed", kind: .space, label: "Activity", mark: .glyph("feed"), unread: feed.unread > 0, targetKind: "feed")
@@ -83,18 +83,10 @@ public enum SidebarRows {
         if pipelines {
             rows.append(Row(id: "direct:pipelines", nodeId: "direct:pipelines", kind: .space, label: "Pipelines", mark: .glyph("pipeline"), targetKind: "pipelines"))
         }
-        rows.append(Row(id: "direct:todos", nodeId: "direct:todos", kind: .space, label: "Todos", mark: .glyph(Rows.surfaceGlyph("todo")), targetKind: "todos"))
-        let joined = (desktop.surfaces ?? []).compactMap { surface -> (DesktopSnapshot.Surface, String)? in
-            guard let member = surface.members.first(where: { $0.userId == desktop.profile?.userId }) else { return nil }
-            return (surface, member.orderKey)
-        }.sorted { ($0.1, $0.0.id) < ($1.1, $1.0.id) }
-        for (surface, _) in joined {
-            var row = Row(id: "surface:\(surface.id)", nodeId: "surface:\(surface.id)", kind: .space,
-                label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type, access: surface.access, policyVault: surface.policyVault)), agentId: surface.chatAgentId, targetKind: "surface")
-            row.targetId = surface.id
-            row.surfaceType = surface.type
-            rows.append(row)
-        }
+        rows.append(Row(id: "direct:documents", nodeId: "direct:documents", kind: .space, label: "Documents", mark: .glyph(Rows.surfaceGlyph("document")), targetKind: "documents"))
+        rows.append(Row(id: "direct:todos", nodeId: "direct:todos", kind: .space, label: "TODOs", mark: .glyph(Rows.surfaceGlyph("todo")), targetKind: "todos"))
+        // A document or todo list is listed under its row above, not here.
+        rows += joinedSurfaces(desktop).filter { !Rows.sectionedSurfaces.contains($0.surfaceType ?? "") }
         for bot in bots where bot.botKind == .shared { botRow(bot) }
         separator("direct:bots")
         for bot in bots where bot.botKind != .shared { botRow(bot) }
@@ -121,6 +113,28 @@ public enum SidebarRows {
             }
         }
         return rows
+    }
+
+    /// The documents and todo lists the person is in, as their rows would
+    /// be: home lists them under Documents and TODOs instead, and search
+    /// still finds them as the person's own.
+    public static func sectioned(_ desktop: DesktopSnapshot) -> [Row] {
+        joinedSurfaces(desktop).filter { Rows.sectionedSurfaces.contains($0.surfaceType ?? "") }
+    }
+
+    /// The Surfaces the person is in, in their own order.
+    private static func joinedSurfaces(_ desktop: DesktopSnapshot) -> [Row] {
+        let joined = (desktop.surfaces ?? []).compactMap { surface -> (DesktopSnapshot.Surface, String)? in
+            guard let member = surface.members.first(where: { $0.userId == desktop.profile?.userId }) else { return nil }
+            return (surface, member.orderKey)
+        }.sorted { ($0.1, $0.0.id) < ($1.1, $1.0.id) }
+        return joined.map { surface, _ in
+            var row = Row(id: "surface:\(surface.id)", nodeId: "surface:\(surface.id)", kind: .space,
+                label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type, access: surface.access, policyVault: surface.policyVault)), agentId: surface.chatAgentId, targetKind: "surface")
+            row.targetId = surface.id
+            row.surfaceType = surface.type
+            return row
+        }
     }
 
     /// What of an agent's row its agent draws (`make`): its status, its

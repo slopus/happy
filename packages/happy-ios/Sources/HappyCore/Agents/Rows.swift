@@ -253,6 +253,11 @@ public enum Rows {
     }
 
     private static func spaceRows(_ node: SpaceSidebarNode, _ space: AgentWire.Space, depth: Int, spaces: [String: AgentWire.Space], places: Places, agentIcons: [String: AgentWire.LibraryIcon], labels: Labels, held: Set<String>) -> [Row] {
+        // A document or todo list is listed under Documents or TODOs, not
+        // here; what was put under it stays, in its place.
+        if space.target.kind == "surface", sectionedSurfaces.contains(places.surface(space.target.id)?.type ?? "") {
+            return nested(node.children, depth: depth, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels, held: held)
+        }
         let children = nested(node.children, depth: depth + 1, spaces: spaces, places: places, agentIcons: agentIcons, labels: labels, held: held)
         let conversation = places.conversation(space)
         var row = Row(
@@ -381,6 +386,10 @@ public enum Rows {
     }
 
     public static let lockGlyph = "lock-closed-outline"
+
+    /// The Surface kinds home gathers under its Documents and TODOs rows,
+    /// as desktop's sections do, never as rows of their own.
+    public static let sectionedSurfaces: Set<String> = ["document", "todo"]
 
     /// A row's conversation is live: its agent's own events end its work the
     /// moment a turn settles. The space's `working` is the daemon's reading

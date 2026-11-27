@@ -300,6 +300,25 @@ public actor TodoLibrary {
         return counts
     }
 
+    /// `outstanding`, with each list not open here read from the computer,
+    /// as desktop counts every list it lists; one the computer doesn't
+    /// answer for keeps what the phone counted, or none.
+    public func outstandingRead(_ surfaceIds: [String]) async -> [String: Int] {
+        var counts = await outstanding(surfaceIds)
+        let unopened = Set(surfaceIds.filter { lists[$0]?.opened != true })
+        let routes = routes
+        let read = await withTaskGroup(of: (String, Int?).self) { group in
+            for id in unopened {
+                group.addTask { (id, (try? await routes.todos(id, scope: .active))?.filter { $0.status == .active && $0.heading == nil }.count) }
+            }
+            var read: [String: Int] = [:]
+            for await (id, count) in group { read[id] = count }
+            return read
+        }
+        for (id, count) in read { counts[id] = count }
+        return counts
+    }
+
     // MARK: State
 
     private func shown(_ surfaceId: String) -> [String: TodoItem] {

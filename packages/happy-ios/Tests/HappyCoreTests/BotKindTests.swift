@@ -89,11 +89,11 @@ final class BotKindTests: XCTestCase {
     }
 
     /// An owner: the shared bot (and its subtask) closes the first group,
-    /// after Activity, Artifacts and Todos; the personal bots are the bots.
+    /// after Activity, Artifacts, Documents and TODOs; the personal bots are the bots.
     func testAnOwnerSeesTheSharedBotInTheMainGroup() throws {
         let rows = try rows([Self.chief, Self.helper, Self.notes].joined(separator: ","))
         XCTAssertEqual(rows.map(\.id), [
-            "direct:feed", "direct:artifacts", "direct:todos", "bot:cos", "session:cos-sub",
+            "direct:feed", "direct:artifacts", "direct:documents", "direct:todos", "bot:cos", "session:cos-sub",
             "direct:bots", "bot:helper", "bot:notes",
             "direct:tasks", "task:t1",
             "direct:projects",
@@ -119,7 +119,7 @@ final class BotKindTests: XCTestCase {
     /// Artifacts and Todos, and the personal bots open their own conversations.
     func testAMemberSeesOnlyPersonalBots() throws {
         let rows = try rows([Self.helper, Self.notes].joined(separator: ","))
-        XCTAssertEqual(Array(rows.map(\.id).prefix(4)), ["direct:feed", "direct:artifacts", "direct:todos", "direct:bots"])
+        XCTAssertEqual(Array(rows.map(\.id).prefix(5)), ["direct:feed", "direct:artifacts", "direct:documents", "direct:todos", "direct:bots"])
         XCTAssertEqual(rows.filter { $0.targetKind == "bot" }.map(\.agentId), ["helper-mine", "notes-mine"])
         XCTAssertFalse(rows.contains { $0.sharedBot })
     }
@@ -155,7 +155,7 @@ final class BotKindTests: XCTestCase {
         let legacyChief = #"{"id":"cos","name":"Happy","systemKey":"chief_of_staff","status":"active","agent":{"id":"cos-agent","workspaceId":"cw","status":"idle"}}"#
         let legacy = #"{"id":"research","name":"Research","status":"active","agent":{"id":"research-agent","workspaceId":"r","status":"idle"}}"#
         let rows = try rows([legacyChief, legacy].joined(separator: ","))
-        XCTAssertEqual(Array(rows.map(\.id).prefix(6)), ["direct:feed", "direct:artifacts", "direct:todos", "direct:bots", "bot:cos", "bot:research"])
+        XCTAssertEqual(Array(rows.map(\.id).prefix(7)), ["direct:feed", "direct:artifacts", "direct:documents", "direct:todos", "direct:bots", "bot:cos", "bot:research"])
         XCTAssertFalse(rows.contains { $0.sharedBot || $0.editable })
         XCTAssertTrue(try XCTUnwrap(rows.first { $0.id == "bot:cos" }).isHappy)
     }

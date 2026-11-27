@@ -732,14 +732,14 @@ final class SyncEngineTests: XCTestCase {
     func testCanonicalDesktopOrderMembershipHierarchyAndVisibility() throws {
         let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: Data(SyncFixture.fixture.utf8))
         let all = SidebarRows.make(desktop, settings: [:])
-        XCTAssertEqual(all.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Todos", "Notes", "Groceries", "—", "Happy", "Delegated task", "—", "Last created", "First created", "—", "App", "Root chat", "Feature"])
+        XCTAssertEqual(all.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Documents", "TODOs", "—", "Happy", "Delegated task", "—", "Last created", "First created", "—", "App", "Root chat", "Feature"])
         XCTAssertEqual(all.map(\.id).count, Set(all.map(\.id)).count)
         XCTAssertEqual(all.first { $0.label == "Delegated task" }?.depth, 1)
         // The task the person isn't in isn't listed, but search finds it, and it opens its conversation.
         XCTAssertEqual(SidebarRows.unjoinedTasks(desktop).map { [$0.label, $0.agentId ?? "", $0.targetKind ?? ""] }, [["Not joined", "unjoined-agent", "task"]])
         let settings: [String: JSONValue] = [DesktopSettingKeys.projectsVisibility: .object(["projectsHidden": .bool(true)]), "happy-desktop.bot.happy": .object(["hidden": .bool(true)])]
         let hidden = SidebarRows.make(desktop, settings: settings)
-        XCTAssertEqual(hidden.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Todos", "Notes", "Groceries", "—", "—", "Last created", "First created"])
+        XCTAssertEqual(hidden.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Documents", "TODOs", "—", "—", "Last created", "First created"])
     }
 
     func testOfflineCacheAndSettingsSurviveAccountRelaunchThenReplay() async throws {
@@ -899,11 +899,13 @@ final class SyncEngineTests: XCTestCase {
         let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         let before = try await wait(engine) { $0.live && $0.loaded }
-        XCTAssertFalse(before.rows.contains { $0.label == "Other person's document" })
+        XCTAssertFalse(before.sectionedRows.contains { $0.label == "Other person's document" })
         await engine.join(surfaceId: "doc")
         await engine.join(surfaceId: "missing")
         await engine.join(surfaceId: "other")
-        _ = try await wait(engine) { $0.rows.contains { $0.label == "Other person's document" } }
+        // A document is the person's under Documents, never a row of its own.
+        let joined = try await wait(engine) { $0.sectionedRows.contains { $0.label == "Other person's document" } }
+        XCTAssertFalse(joined.allRows.contains { $0.targetKind == "surface" })
         let heard = await transport.heardActs()
         XCTAssertEqual(heard, ["join:other"])
         await engine.stop()

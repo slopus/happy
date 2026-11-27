@@ -246,6 +246,8 @@ class HostedTodoCase: XCTestCase {
         let session: Session
         let window: UIWindow
         let navigation: UINavigationController
+        let context: AppContext
+        let id: String
     }
 
     static let evidence: URL? = {
@@ -330,7 +332,7 @@ class HostedTodoCase: XCTestCase {
             await session.engine.stop()
             Session.forget(pairing.id)
         }
-        return Opened(session: session, window: window, navigation: navigation)
+        return Opened(session: session, window: window, navigation: navigation, context: context, id: pairing.id)
     }
 }
 
@@ -595,11 +597,16 @@ final class HostedTodoListTests: HostedTodoCase {
     }
 }
 
-/// Home's Todos row: the todo lists, a new one made from the bar's +, and
-/// a new document opened in the editor from the same menu.
+/// Home's Documents and TODOs rows: every document or todo list, none of
+/// them a home row of its own; a new one of the section's kind made from
+/// the bar's +, and each opened on its own screen.
 final class HostedTodoListsTests: HostedTodoCase {
-    private func rows(_ screen: TodoListsViewController) -> [String] {
+    private func rows(_ screen: SurfaceListViewController) -> [String] {
         screen.list.items.filter { $0.kind == .row }.map(\.accessibilityLabel)
+    }
+
+    private func count(_ screen: SurfaceListViewController, _ id: String) -> String? {
+        screen.list.items.first { $0.id == id }?.accessibilityValue
     }
 
     func testTheListsWithWhatsLeftAndNewOnes() async throws {
@@ -610,27 +617,37 @@ final class HostedTodoListsTests: HostedTodoCase {
         await computer.seed("Post office", in: TodoComputer.errands)
         let opened = try await open(computer)
 
-        // Home lists it, after Artifacts.
+        // Home lists Documents, then TODOs, after Artifacts, and none of
+        // the documents or lists the person is in.
         try await wait("home's row") { opened.session.home.rows.contains { $0.id == "direct:todos" } }
         let ids = opened.session.home.rows.map(\.id)
-        XCTAssertEqual(ids.firstIndex(of: "direct:todos"), (ids.firstIndex(of: "direct:artifacts") ?? -2) + 1)
+        let artifacts = try XCTUnwrap(ids.firstIndex(of: "direct:artifacts"))
+        XCTAssertEqual(Array(ids[artifacts...].prefix(3)), ["direct:artifacts", "direct:documents", "direct:todos"])
+        XCTAssertEqual(opened.session.home.rows.first { $0.id == "direct:todos" }?.label, "TODOs")
+        XCTAssertFalse(opened.session.home.allRows.contains { $0.targetKind == "surface" }, "a document or todo list is a home row")
+        XCTAssertEqual(Set(opened.session.home.sectionedRows.compactMap(\.targetId)), [TodoComputer.groceries, TodoComputer.errands, "notes0000000000000000001"])
 
-        let screen = TodoListsViewController(session: opened.session)
+        let screen = SurfaceListViewController(session: opened.session, section: .todos)
         opened.navigation.pushViewController(screen, animated: false)
         try await wait("the lists") { self.rows(screen) == ["Errands", "Groceries"] }
-        XCTAssertEqual(screen.newItem.accessibilityLabel, "New")
-        XCTAssertEqual(screen.newItem.menu?.children.map(\.title), ["New todo list", "New document"])
+        XCTAssertEqual(screen.title, "TODOs")
+        XCTAssertEqual(screen.newItem.accessibilityLabel, "New todo list")
+        XCTAssertNil(screen.newItem.menu, "+ makes a todo list only")
+        // Every list counts what's left, opened here or not (headings aren't todos).
+        try await wait("the counts") { self.count(screen, TodoComputer.groceries) == "2 to do" && self.count(screen, TodoComputer.errands) == "1 to do" }
+        try await captureBoth(opened.window, "todo-lists", list: screen.list)
 
-        // A list opened here counts what's left (headings aren't todos).
+        // A list opens on its todos; back is the lists again.
         screen.list.onSelect?(TodoComputer.groceries)
         let groceries = try XCTUnwrap(opened.navigation.topViewController as? TodoListViewController)
         try await wait("its todos") { groceries.list.items.contains { $0.accessibilityLabel == "Bread" } }
+        try await Task.sleep(for: .milliseconds(300))
+        capture(opened.window, "todo-lists-opened")
         opened.navigation.popViewController(animated: false)
-        try await wait("the count") { screen.list.items.first { $0.id == TodoComputer.groceries }?.accessibilityValue == "2 to do" }
-        try await captureBoth(opened.window, "todo-lists", list: screen.list)
+        XCTAssertTrue(opened.navigation.topViewController === screen)
 
         // A new todo list opens on its (empty) todos.
-        screen.create(type: "todo", name: "Packing")
+        screen.create(name: "Packing")
         let top = await waitForTop(opened.navigation) { $0 is TodoListViewController && $0 !== groceries }
         let packing = try XCTUnwrap(top as? TodoListViewController)
         XCTAssertEqual(packing.title, "Packing")
@@ -639,22 +656,78 @@ final class HostedTodoListsTests: HostedTodoCase {
         XCTAssertEqual(packing.surfaceId, made?.id)
         opened.navigation.popViewController(animated: false)
         try await wait("listed") { self.rows(screen) == ["Errands", "Groceries", "Packing"] }
+        // A list with nothing left shows no count, as desktop's.
+        XCTAssertNil(count(screen, try XCTUnwrap(made?.id)))
+    }
 
-        // A new document opens in the editor.
-        screen.create(type: "document", name: "Trip plan")
+    func testTheDocumentsAndANewOne() async throws {
+        let computer = TodoComputer()
+        let opened = try await open(computer)
+        let screen = SurfaceListViewController(session: opened.session, section: .documents)
+        opened.navigation.pushViewController(screen, animated: false)
+        try await wait("the documents") { self.rows(screen) == ["Notes"] }
+        XCTAssertEqual(screen.title, "Documents")
+        XCTAssertEqual(screen.newItem.accessibilityLabel, "New document")
+        XCTAssertNil(count(screen, "notes0000000000000000001"), "a document has no count")
+        try await captureBoth(opened.window, "document-list", list: screen.list)
+
+        // A new document opens in the editor, and is listed here, not under TODOs.
+        screen.create(name: "Trip plan")
         let document = await waitForTop(opened.navigation) { $0 is DocumentViewController }
         XCTAssertNotNil(document)
         let doc = await computer.surfaces.first { $0.name == "Trip plan" }
         XCTAssertEqual(doc?.type, "document")
-        XCTAssertEqual(rows(screen), ["Errands", "Groceries", "Packing"], "a document isn't a todo list")
+        opened.navigation.popViewController(animated: false)
+        try await wait("listed") { self.rows(screen) == ["Notes", "Trip plan"] }
+    }
+
+    /// Home's two rows open their lists, and no document or list of the
+    /// person's is a row of its own.
+    func testHomeOpensEachSection() async throws {
+        let computer = TodoComputer()
+        await computer.seed("Milk")
+        let opened = try await open(computer)
+        let home = AgentHomeViewController(context: opened.context, id: opened.id)
+        opened.navigation.setViewControllers([home], animated: false)
+        opened.window.overrideUserInterfaceStyle = .light
+        let sidebar = try XCTUnwrap(Self.subview(SidebarList.self, in: home.view))
+        try await wait("the rows") { sidebar.view(for: "direct:documents") != nil && sidebar.view(for: "direct:todos") != nil }
+        XCTAssertEqual(sidebar.view(for: "direct:documents")?.row.label, "Documents")
+        XCTAssertEqual(sidebar.view(for: "direct:todos")?.row.label, "TODOs")
+        XCTAssertNil(sidebar.view(for: "surface:\(TodoComputer.groceries)"))
+        XCTAssertNil(sidebar.view(for: "surface:notes0000000000000000001"))
+        try await Task.sleep(for: .milliseconds(400))
+        capture(opened.window, "home-sections")
+        for (id, section) in [("direct:documents", SurfaceSection.documents), ("direct:todos", .todos)] {
+            let row = try XCTUnwrap(sidebar.view(for: id))
+            sidebar.tap(row, at: CGPoint(x: row.box.midX, y: row.box.midY))
+            let top = await waitForTop(opened.navigation) { $0 is SurfaceListViewController }
+            let list = try XCTUnwrap(top as? SurfaceListViewController, "\(opened.navigation.viewControllers)")
+            XCTAssertEqual(list.section, section)
+            try await wait("its rows") { list.list.items.contains { $0.kind == .row } }
+            if section == .todos {
+                try await Task.sleep(for: .milliseconds(300))
+                capture(opened.window, "home-todos-pushed")
+            }
+            opened.navigation.popViewController(animated: false)
+            XCTAssertTrue(opened.navigation.topViewController === home)
+        }
+    }
+
+    private static func subview<T: UIView>(_ type: T.Type, in view: UIView) -> T? {
+        if let match = view as? T { return match }
+        for child in view.subviews {
+            if let match = subview(type, in: child) { return match }
+        }
+        return nil
     }
 
     func testTheNameAlertKeepsCreateOffWhileBlank() async throws {
         let opened = try await open(TodoComputer())
-        let screen = TodoListsViewController(session: opened.session)
+        let screen = SurfaceListViewController(session: opened.session, section: .todos)
         opened.navigation.pushViewController(screen, animated: false)
         try await wait("the lists") { self.rows(screen).count == 2 }
-        screen.askName(type: "todo")
+        screen.askName()
         let presented = await waitForPresented(screen)
         let alert = try XCTUnwrap(presented as? UIAlertController)
         XCTAssertEqual(alert.title, "New todo list")

@@ -11,6 +11,10 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var allRows: [Row] = []
     /// The active tasks the person isn't in, which search finds too.
     public var unjoinedTasks: [Row] = []
+    /// The documents and todo lists the person is in, listed under the
+    /// Documents and TODOs rows rather than as rows of their own: what
+    /// search finds and counts as theirs (`SidebarRows.sectioned`).
+    public var sectionedRows: [Row] = []
     public var settings: [String: JSONValue] = [:]
     /// The person signed in as a team user; nil outside a team.
     public var userId: String?
@@ -1162,6 +1166,7 @@ public actor SyncEngine {
             }
             snapshot.rows = Rows.visible(snapshot.allRows)
             snapshot.unjoinedTasks = SidebarRows.unjoinedTasks(desktop)
+            snapshot.sectionedRows = overlay.apply(SidebarRows.sectioned(desktop))
             snapshot.botKinds = desktop.bots?.contains { $0.kind != nil } == true
             shownRows = Dictionary(snapshot.rows.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
             snapshot.userId = desktop.profile?.userId
