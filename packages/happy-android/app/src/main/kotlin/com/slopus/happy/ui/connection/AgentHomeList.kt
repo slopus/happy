@@ -808,8 +808,6 @@ fun AgentHomeList(
      * Null offers neither.
      */
     onReorder: ((AgentFeedRow.Conversation, afterId: String?) -> Unit)? = null,
-    /** A held row lifting to be carried: whatever its hold opened (its preview) closes. */
-    onLift: () -> Unit = {},
 ) {
     val reduceMotion = rememberReduceMotion()
     // The call brings a conversation's row on screen here before it presses it ([VoiceTouch.rows]).
@@ -823,11 +821,15 @@ fun AgentHomeList(
         VoiceTouch.rows = reveal
         onDispose { if (VoiceTouch.rows === reveal) VoiceTouch.rows = null }
     }
-    val drag = rememberHomeChatDrag(state, items, reduceMotion, onReorder, onLift)
-    // A chat's long press opens its preview and holds its row to be carried ([HomeChatDrag.hold]).
+    val drag = rememberHomeChatDrag(state, items, reduceMotion, onReorder)
+    // A chat's long press holds its row to be carried, and its preview opens when the finger lets
+    // go without moving; at once where the row cannot be carried ([HomeChatDrag.hold]).
     val preview by rememberUpdatedState(onHold)
     val hold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = if (onHold == null || onReorder == null) onHold else remember(drag) {
-        { row: AgentFeedRow.Conversation, source: Rect -> drag.hold(row.agentId); preview?.invoke(row, source) }
+        { row: AgentFeedRow.Conversation, source: Rect ->
+            val open = { preview?.invoke(row, source); Unit }
+            if (!drag.hold(row.agentId, open)) open()
+        }
     }
     // The list as it stands while a chat is carried, and until the feed lists the move.
     val shown = drag.arrange(items)

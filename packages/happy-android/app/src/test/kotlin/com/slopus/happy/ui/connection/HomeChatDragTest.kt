@@ -10,6 +10,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -30,10 +31,11 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Home's project chats are carried to another place in their list, as the
  * desktop's tab strip carries its tabs and iOS's sidebar its bots and tasks
- * (8386b4dd5c): a hold opens the chat's preview; the finger moving on lifts
- * the row and puts the preview away, and letting go asks for the move after
- * the chat now before it. A chat's own list is its only place, its subtasks
- * go with it, and a screen reader moves it a place at a time.
+ * (8386b4dd5c): a hold readies the row, the finger moving on lifts it, and
+ * letting go asks for the move after the chat now above it; a hold let go
+ * without moving opens the chat's preview instead. A chat's own list is its
+ * only place, its subtasks go with it, and a screen reader moves it a place at
+ * a time.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -72,54 +74,72 @@ class HomeChatDragTest {
         assertEquals(HomeRowMoves(up = true, upAfter = null, down = false, downAfter = null), moves["x"])
     }
 
-    @Test fun `a held chat lifts as the finger moves on, puts its preview away and goes after the chat now before it`() {
+    @Test fun `a held chat is carried as the finger moves, with no preview, and goes after the chat now above it`() {
         val moves = mutableListOf<Pair<String, String?>>()
         val holds = mutableListOf<String>()
-        var lifts = 0
         rule.setHappyContent {
             AgentHomeList(
                 // Under a bar, as home's list starts under its glass bar.
                 card(folder("p1"), chat("a"), chat("b"), chat("c")), rememberLazyListState(), onOpen = {}, contentPadding = PaddingValues(top = 56.dp),
                 onHold = { row, _ -> holds += row.agentId },
                 onReorder = { row, afterId -> moves += row.agentId to afterId },
-                onLift = { lifts++ },
             )
         }
         val c = rule.node(AgentHomeTags.row("agent-c"))
         c.performTouchInput { down(center) }
         rule.mainClock.advanceTimeBy(700)
-        // The hold opens the preview, and nothing is carried yet.
-        rule.runOnIdle {
-            assertEquals(listOf("c"), holds)
-            assertEquals(0, lifts)
-        }
+        // Held, with the finger still down: no preview.
+        rule.runOnIdle { assertEquals(emptyList<String>(), holds) }
         c.performTouchInput {
             moveBy(Offset(0f, -height * 2.2f))
             up()
         }
         rule.waitUntil(5_000) { moves.isNotEmpty() }
         rule.runOnIdle {
-            assertEquals(1, lifts)
             assertEquals(listOf("c" to null), moves)
+            // Carried, the chat never showed its preview.
+            assertEquals(emptyList<String>(), holds)
         }
     }
 
-    @Test fun `a hold that never moves carries nothing`() {
+    @Test fun `a hold let go without moving opens the preview and carries nothing`() {
         val moves = mutableListOf<Pair<String, String?>>()
-        var lifts = 0
+        val holds = mutableListOf<String>()
         rule.setHappyContent {
             AgentHomeList(
                 card(folder("p1"), chat("a"), chat("b")), rememberLazyListState(), onOpen = {}, contentPadding = PaddingValues(),
-                onHold = { _, _ -> }, onReorder = { row, afterId -> moves += row.agentId to afterId }, onLift = { lifts++ },
+                onHold = { row, _ -> holds += row.agentId }, onReorder = { row, afterId -> moves += row.agentId to afterId },
             )
         }
         val b = rule.node(AgentHomeTags.row("agent-b"))
         b.performTouchInput { down(center) }
         rule.mainClock.advanceTimeBy(700)
+        rule.runOnIdle { assertEquals(emptyList<String>(), holds) }
         b.performTouchInput { up() }
         rule.waitForIdle()
-        assertEquals(0, lifts)
+        assertEquals(listOf("b"), holds)
         assertEquals(emptyList<Pair<String, String?>>(), moves)
+    }
+
+    @Test fun `a chat that cannot be carried, or a screen reader's long press, opens the preview at once`() {
+        val holds = mutableListOf<String>()
+        rule.setHappyContent {
+            AgentHomeList(
+                // a is alone in its list; b and c share theirs.
+                card(folder("p1"), chat("a"), folder("p2"), chat("b", owner = "p2"), chat("c", owner = "p2")), rememberLazyListState(), onOpen = {},
+                contentPadding = PaddingValues(), onHold = { row, _ -> holds += row.agentId }, onReorder = { _, _ -> },
+            )
+        }
+        val a = rule.node(AgentHomeTags.row("agent-a"))
+        a.performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(700)
+        // Nothing to carry it among: the preview shows while the finger is down.
+        rule.runOnIdle { assertEquals(listOf("a"), holds) }
+        a.performTouchInput { up() }
+        rule.waitForIdle()
+        // A screen reader's long press has no finger on the list.
+        rule.onNodeWithText("B").performSemanticsAction(SemanticsActions.OnLongClick)
+        rule.runOnIdle { assertEquals(listOf("a", "b"), holds) }
     }
 
     @Test fun `at the bar the list scrolls only toward a place in the chat's own list`() {

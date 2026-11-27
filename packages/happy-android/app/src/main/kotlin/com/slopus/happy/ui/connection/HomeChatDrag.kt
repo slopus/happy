@@ -109,11 +109,11 @@ internal fun arrangedHomeItems(items: List<AgentHomeItem>, owner: String?, order
 /**
  * A project's chat carried to another place in its list on home, as the
  * desktop's tab strip carries its tabs and iOS's sidebar its bots and tasks
- * (8386b4dd5c). A hold opens the chat's preview as before, and the same
- * long press holds the row ([hold]); the finger
- * moving [LIFT] from there closes the preview ([onLift]) and lifts the row
- * (1.03, a shadow), which then follows the finger past its peers, the
- * chats of the same project or worktree, the list scrolling at its edges.
+ * (8386b4dd5c). A long press holds the row ([hold]). The finger moving
+ * [LIFT] from there lifts the row (1.03, a shadow), which then follows the
+ * finger past its peers, the chats of the same project or worktree, the
+ * list scrolling at its edges; letting go without moving opens the chat's
+ * preview instead, so carrying a chat never shows it (@user 2026-11-27).
  * Its subtasks fold away while it is carried. Letting go asks for the move
  * ([onReorder]: after the chat now before it, or first), and the list keeps
  * the new order until the feed lists it so.
@@ -136,6 +136,9 @@ class HomeChatDrag internal constructor(
     /** Held, but not yet carried: the finger has not moved [LIFT] since the hold. */
     private var armed by mutableStateOf<Held?>(null)
     private var moved = Offset.Zero
+
+    /** What letting go of the [armed] row where it was opens: the chat's preview ([hold]). */
+    private var preview: (() -> Unit)? = null
     private var held by mutableStateOf<Held?>(null)
 
     /**
@@ -159,7 +162,6 @@ class HomeChatDrag internal constructor(
         private set
     var items: List<AgentHomeItem> = emptyList()
     var onReorder: ((AgentFeedRow.Conversation, String?) -> Unit)? = null
-    var onLift: () -> Unit = {}
     var reduced = false
     var dragging by mutableStateOf(false)
         private set
@@ -182,21 +184,25 @@ class HomeChatDrag internal constructor(
     private fun peers(owner: String): List<String> = homePeers(items, owner).map { it.agentId }
 
     /**
-     * [agentId]'s row is held: its own long press, the one that opens its preview
-     * ([AgentHomeList]'s onHold), readies it to be carried. One hold for both, so
-     * a preview never opens on a row the finger then cannot carry. A long press
-     * with no finger on the list (a screen reader's) holds nothing; a reader
-     * moves a chat with its Move up and Move down. The chat is looked up in
-     * [items]: a row draws a copy without its list ([AgentFeedRow.Conversation.drawn]).
+     * [agentId]'s row is held by its own long press ([AgentHomeList]'s onHold)
+     * and readied to be carried; its [preview] opens only if the finger lets go
+     * without moving, so carrying a chat never shows it. True when the preview
+     * waits so. A row that cannot be carried, or a long press with no finger on
+     * the list (a screen reader's, whose Move up and Move down move a chat),
+     * holds nothing, and its caller opens the preview at once. The chat is
+     * looked up in [items]: a row draws a copy without its list
+     * ([AgentFeedRow.Conversation.drawn]).
      */
-    fun hold(agentId: String) {
-        if (!pressed || onReorder == null) return
-        val chat = items.firstNotNullOfOrNull { item -> movableChat(item)?.takeIf { it.agentId == agentId } } ?: return
-        val owner = chat.workspaceId ?: return
-        if (peers(owner).size < 2) return
-        val item = list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == chat.key } ?: return
+    fun hold(agentId: String, preview: () -> Unit): Boolean {
+        if (!pressed || onReorder == null) return false
+        val chat = items.firstNotNullOfOrNull { item -> movableChat(item)?.takeIf { it.agentId == agentId } } ?: return false
+        val owner = chat.workspaceId ?: return false
+        if (peers(owner).size < 2) return false
+        val item = list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == chat.key } ?: return false
         armed = Held(chat.key, chat.agentId, owner, item.offset.toFloat(), item.size)
         moved = Offset.Zero
+        this.preview = preview
+        return true
     }
 
     private fun drag(amount: Offset) {
@@ -213,7 +219,8 @@ class HomeChatDrag internal constructor(
     }
 
     private fun carry(start: Held) {
-        onLift()
+        // Carried, the chat shows no preview.
+        preview = null
         dropJob?.cancel()
         settleJob?.cancel()
         before = peers(start.owner)
@@ -271,8 +278,12 @@ class HomeChatDrag internal constructor(
     }
 
     private fun stop(cancelled: Boolean) {
+        val waiting = armed
         armed = null
-        val held = held ?: return
+        val open = preview
+        preview = null
+        // Held and let go where it was: the long press asked for the chat's preview.
+        val held = held ?: run { if (waiting != null && !cancelled) open?.invoke(); return }
         val offset = held.top + held.offset - (list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == held.key }?.offset ?: held.top.toInt())
         // A chat that left the list while this one was carried (archived on another
         // device) is no place to go after, and the feed will never list it again.
@@ -374,7 +385,7 @@ class HomeChatDrag internal constructor(
     }
 
     companion object {
-        /** How far the finger moves from a hold before the row lifts and the preview closes (iOS's 10 pt). */
+        /** How far the finger moves from a hold before the row lifts (iOS's 10 pt); let go short of it, the hold opens the chat's preview. */
         val LIFT = 10.dp
 
         /** How long a dropped order stands without the feed listing it so. */
@@ -388,7 +399,6 @@ internal fun rememberHomeChatDrag(
     items: List<AgentHomeItem>,
     reduced: Boolean,
     onReorder: ((AgentFeedRow.Conversation, String?) -> Unit)?,
-    onLift: () -> Unit,
 ): HomeChatDrag {
     val scope = rememberCoroutineScope()
     val view = LocalView.current
@@ -396,7 +406,6 @@ internal fun rememberHomeChatDrag(
     val drag = remember(list, scope, view, density) { HomeChatDrag(list, scope, view, density) }
     drag.items = items
     drag.onReorder = onReorder
-    drag.onLift = onLift
     drag.reduced = reduced
     LaunchedEffect(items) { drag.acknowledge() }
     LaunchedEffect(drag.scrolling) {
