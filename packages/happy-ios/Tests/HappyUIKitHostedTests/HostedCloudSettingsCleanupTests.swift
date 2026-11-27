@@ -163,9 +163,55 @@ final class HostedCloudSettingsCleanupTests: XCTestCase {
             XCTAssertEqual(cards[first + 2].first, SettingsIndex.agents.id)
             XCTAssertEqual(cards[first + 2].contains(SettingsIndex.providers.id), agentsGroup, "\(cards)")
             XCTAssertEqual(settings.shownHeaders, ["AGENTS"])
-            XCTAssertEqual(cards[first + 3], [SettingsIndex.privacySettings.id])
+            XCTAssertEqual(cards[first + 3], [SettingsIndex.happyCloud.id])
+            XCTAssertEqual(cards[first + 4], [SettingsIndex.privacySettings.id])
             XCTAssertEqual(cards.last, ["disconnect"])
         }
+    }
+
+    /// Settings' Happy Cloud switch, a card above Privacy: off in the App
+    /// Store app until turned on, on in the preview app; turned, it is
+    /// what every build offers from then on.
+    func testHappyCloudSwitchIsThePhonesOwn() async throws {
+        let defaults = UserDefaults.standard
+        let kept = defaults.object(forKey: "happy-cloud")
+        defer { defaults.set(kept, forKey: "happy-cloud") }
+        for variant in [AppVariant.production, .preview] {
+            defaults.removeObject(forKey: "happy-cloud")
+            let (rigged, id) = try await rig(server: nil)
+            let context = AppContext(account: rigged.account, variant: variant, version: "test")
+            let settings = SettingsViewController(context: context, computer: id)
+            let navigation = try await host(settings)
+            XCTAssertEqual(settings.shownRow(SettingsIndex.happyCloud.id)?.isOn, variant == .preview, "\(variant)")
+            capture(settings, navigation, "settings-happy-cloud-\(variant)-default")
+            settings.shownRow(SettingsIndex.happyCloud.id)?.toggled?(variant != .preview)
+            XCTAssertEqual(HappyCloud.isOffered(in: variant), variant != .preview)
+            XCTAssertEqual(settings.shownRow(SettingsIndex.happyCloud.id)?.isOn, variant != .preview)
+            capture(settings, navigation, "settings-happy-cloud-\(variant)-turned")
+        }
+    }
+
+    /// The page scrolled to the Happy Cloud card, for a person to look at.
+    private func capture(_ settings: SettingsViewController, _ navigation: UINavigationController, _ name: String) {
+        guard let window = navigation.view.window, let scroll = settings.view.subviews.compactMap({ $0 as? UIScrollView }).first,
+              let toggle = Self.subview(UISwitch.self, in: scroll, where: { $0.accessibilityIdentifier == "settings-toggle:\(SettingsIndex.happyCloud.id)" })
+        else { return XCTFail("no Happy Cloud switch on the page") }
+        let at = toggle.convert(toggle.bounds, to: scroll)
+        scroll.setContentOffset(CGPoint(x: 0, y: max(-scroll.adjustedContentInset.top, at.midY - scroll.bounds.height / 2)), animated: false)
+        window.layoutIfNeeded()
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let shot = XCTAttachment(image: image)
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private static func subview<View: UIView>(_ type: View.Type, in view: UIView, where match: (View) -> Bool) -> View? {
+        for child in view.subviews {
+            if let found = child as? View, match(found) { return found }
+            if let found = subview(type, in: child, where: match) { return found }
+        }
+        return nil
     }
 
     func testLocalSearchKeepsThePolicyVaultLock() async throws {

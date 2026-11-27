@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.start
 
 import com.slopus.happy.ui.connection.LocalCloudConnect
+import com.slopus.happy.ui.connection.rememberHappyCloudSwitch
 import androidx.activity.compose.ReportDrawn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -20,11 +21,11 @@ import kotlinx.serialization.Serializable
 
 /**
  * The first screen: Start opens [InstallDesktopRoute], and Use Happy Cloud
- * opens Happy Cloud's welcome where the build offers it. The other ways in
- * are the next screen's ⋮.
+ * opens Happy Cloud's welcome while Settings' Happy Cloud switch is on,
+ * which Get help turns on and off here. The other ways in are the next
+ * screen's ⋮.
  */
 @Composable
-@Suppress("UNUSED_PARAMETER")
 fun Start(graph: AppGraph, nav: NavHostController, add: ConnectFlow) {
     // Nothing to read from disk: the first frame is the whole screen.
     ReportDrawn()
@@ -33,6 +34,8 @@ fun Start(graph: AppGraph, nav: NavHostController, add: ConnectFlow) {
         connecting = add.isLoading,
         onStart = { nav.navigate(InstallDesktopRoute) },
         onCloud = LocalCloudConnect.current,
+        cloudOffered = rememberHappyCloudSwitch(graph),
+        onCloudOffered = graph.happyCloud::set,
     )
 }
 

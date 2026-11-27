@@ -255,6 +255,9 @@ fun AgentConnectionSettingsScreen(
     daemonVersion: String? = null,
     /** This phone's free voice time, for the Voice row ([rememberAgentVoiceSummary]). */
     voice: AgentVoiceSummary = AgentVoiceSummary(CallAllowance.FREE_MILLIS),
+    /** Settings' Happy Cloud switch ([rememberHappyCloudSwitch]); null, no card. */
+    happyCloud: Boolean? = null,
+    onHappyCloud: (Boolean) -> Unit = {},
 ) {
     val namePrefix = stringResource(R.string.agent_settings_edit_name_prefix)
     val avatarPrefix = stringResource(R.string.agent_settings_edit_avatar_prefix)
@@ -380,6 +383,7 @@ fun AgentConnectionSettingsScreen(
             ),
             title = stringResource(R.string.settings_group_team),
         ),
+        happyCloudSection(happyCloud, onHappyCloud),
         privacySection(actions.onPrivacy),
         SettingsSection(
             listOfNotNull(
@@ -607,5 +611,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
         scroll = scroll,
         voice = rememberAgentVoiceSummary(graph.offers, graph.subscription),
         daemonVersion = agent.daemonVersion,
+        happyCloud = rememberHappyCloudSwitch(graph),
+        onHappyCloud = graph.happyCloud::set,
     )
 }

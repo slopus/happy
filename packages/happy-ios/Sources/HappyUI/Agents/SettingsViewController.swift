@@ -547,6 +547,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             return ([
                 accountRows(),
             ] + serverRows + groups + [
+                [happyCloudRow()],
                 [Row(Index.privacySettings, action: { [weak self] in self?.open(.privacy) })],
                 aboutRows(),
             ] + removal).filter { !$0.isEmpty }
@@ -569,6 +570,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 Row(Index.enterTerminal, accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: false) }),
             ],
             [Row(Index.supportUs, action: { [weak self] in self?.open(.supportUs) })],
+            [happyCloudRow()],
             [Row(Index.privacySettings, action: { [weak self] in self?.open(.privacy) })],
             aboutRows(),
             [Row(id: "sign-out", title: Strings.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: false) })],
@@ -777,6 +779,17 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private func updateModelPreferences(_ change: @escaping @Sendable (inout ModelPreferences) -> Void) {
         guard let id = shown?.id, let engine = context.account.agentConnections.syncEngine(for: id) else { return }
         Task { try? await engine.updateModelPreferences(change) }
+    }
+
+    /// This phone's Happy Cloud switch, whatever is signed in, a card of
+    /// its own above Privacy: whether the app offers Happy Cloud's ways in.
+    private func happyCloudRow() -> SettingsRow {
+        let entry = SettingsIndex.happyCloud
+        return SettingsRow(id: entry.id, title: entry.title, icon: (entry.glyph, entry.tile), accessory: .toggle,
+                           isOn: HappyCloud.isOffered(in: context.variant), toggled: { [weak self] on in
+            HappyCloud.setOffered(on)
+            self?.rebuild()
+        }, footer: Strings.HappyCloud.switchFooter)
     }
 
     /// This phone's own analytics switch, whatever is signed in, on the

@@ -54,6 +54,7 @@ import com.slopus.happy.ui.connection.AgentVoiceRoute
 import com.slopus.happy.ui.connection.rememberAgentVoiceSummary
 import com.slopus.happy.ui.connection.LegacyDataStorageRoute
 import com.slopus.happy.ui.connection.PrivacyRoute
+import com.slopus.happy.ui.connection.rememberHappyCloudSwitch
 import com.slopus.happy.ui.connection.SupportRoute
 import com.slopus.happy.ui.connection.dataStorageRoutes
 import androidx.compose.foundation.ScrollState
@@ -354,6 +355,8 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController, scroll: Scrol
         pages = rememberPageEntries(graph, nav, signedIn, profile ?: Profile.Defaults),
         voice = rememberAgentVoiceSummary(graph.offers, graph.subscription),
         scroll = scroll,
+        happyCloud = rememberHappyCloudSwitch(graph),
+        onHappyCloud = graph.happyCloud::set,
     )
     if (enteringUrl) EnterTerminalUrlPrompt(connect, onDismiss = { enteringUrl = false })
 }

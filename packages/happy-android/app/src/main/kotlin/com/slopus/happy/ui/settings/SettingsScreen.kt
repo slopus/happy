@@ -13,6 +13,7 @@ import com.slopus.happy.call.CallAllowance
 import com.slopus.happy.ui.connection.AgentVoiceSummary
 import com.slopus.happy.ui.connection.DataStorageTags
 import com.slopus.happy.ui.connection.agentVoiceEntry
+import com.slopus.happy.ui.connection.happyCloudSection
 import com.slopus.happy.ui.connection.privacySection
 import com.slopus.happy.model.Profile
 import com.slopus.happy.ui.components.Avatar
@@ -221,12 +222,18 @@ fun SettingsScreen(
     voice: AgentVoiceSummary = AgentVoiceSummary(CallAllowance.FREE_MILLIS),
     /** Where the page is scrolled; shared with the other kind's page, so a switch keeps it ([AccountSettings]). */
     scroll: ScrollState = rememberScrollState(),
+    /** Settings' Happy Cloud switch ([rememberHappyCloudSwitch]); null, no card. */
+    happyCloud: Boolean? = null,
+    onHappyCloud: (Boolean) -> Unit = {},
 ) {
     val search = rememberSettingsSearch()
-    val sections = happySettingsSections(actions, connectingTerminal, voice) +
-        supportSection(about, aboutActions) +
-        privacySection(actions.onPrivacy) +
-        aboutSection(about, aboutActions)
+    val sections = (
+        happySettingsSections(actions, connectingTerminal, voice) +
+            supportSection(about, aboutActions) +
+            happyCloudSection(happyCloud, onHappyCloud) +
+            privacySection(actions.onPrivacy) +
+            aboutSection(about, aboutActions)
+        ).filter { it.rows.isNotEmpty() }
     Screen(
         header = {
             if (search.searching) {

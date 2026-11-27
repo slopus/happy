@@ -116,13 +116,15 @@ object StartSpec {
  * the other ways in are the self-hosted flow's, in the ⋮ of the next
  * screen ([InstallDesktopScreen]) and the scanner.
  *
- *   ? (top right)  Get help ([GetHelpAlert]), a 48 target 4 in
+ *   ? (top right)  Get help ([GetHelpAlert]), a 48 target 4 in; with
+ *                  Settings' Happy Cloud switch ([cloudOffered]), as
+ *                  Settings can't be reached from here
  *   logo           88 wide, centred on the ?'s row
  *   slides         [StartGallery], centred between that row and Start
  *   Start          centred across, as wide as its label (at least 280),
  *                  48 above the bottom inset: the next screen
  *                  ([InstallDesktopScreen]), which scans
- *   Use Happy Cloud where the build offers it ([onCloud]): the quiet
+ *   Use Happy Cloud while Happy Cloud is offered ([onCloud]): the quiet
  *                  text action 12 under Start, as wide as it, 24 kept
  *                  under it; Start rises to make room (iOS StartLayout)
  *
@@ -134,6 +136,9 @@ fun StartScreen(
     connecting: Boolean,
     onStart: () -> Unit,
     onCloud: (() -> Unit)? = null,
+    /** Settings' Happy Cloud switch, in Get help; null where the build has no Happy Cloud. */
+    cloudOffered: Boolean? = null,
+    onCloudOffered: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val dark = HappyTheme.colors.dark
@@ -188,7 +193,7 @@ fun StartScreen(
                 Spacer(Modifier.weight(1f))
                 var help by remember { mutableStateOf(false) }
                 StartControl(Ionicon.HelpCircleOutline, stringResource(R.string.onboarding_get_help), tint, { help = true }, Modifier.testTag(StartTags.HELP))
-                if (help) GetHelpAlert(onDismiss = { help = false })
+                if (help) GetHelpAlert(onDismiss = { help = false }, cloud = cloudOffered, onCloud = onCloudOffered)
             }
         }
     }
@@ -213,7 +218,7 @@ internal fun StartControl(icon: Ionicon, description: String, tint: Color, onCli
 }
 
 /**
- * Start, and Use Happy Cloud under it where the build offers it, both as
+ * Start, and Use Happy Cloud under it while Happy Cloud is offered, both as
  * wide as the wider (at least 280), so neither reads as the lesser. Under
  * Start is its 48 above the bottom; Happy Cloud, 12 under Start with 24
  * kept under it, takes more, and Start rises by the difference.

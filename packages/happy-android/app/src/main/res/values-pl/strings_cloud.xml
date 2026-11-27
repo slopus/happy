@@ -89,4 +89,7 @@
     <string name="cloud_invite_other_account">Zaloguj się na inne konto</string>
     <string name="cloud_invite_not_now">Nie teraz</string>
     <string name="cloud_invite_inviter">%1$s zaprasza cię</string>
+    <string name="cloud_turn_on">Włącz Happy Cloud</string>
+    <string name="cloud_turn_off">Wyłącz Happy Cloud</string>
+    <string name="cloud_switch_footer">Pokazuje Happy Cloud na pierwszym ekranie i w menu kont oraz otwiera jego zaproszenia w aplikacji. Serwery dodane już na tym telefonie działają niezależnie od tego.</string>
 </resources>

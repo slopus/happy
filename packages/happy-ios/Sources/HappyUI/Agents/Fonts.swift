@@ -112,6 +112,10 @@ enum Glyphs {
         let icon = icon(name)
         // Centred on its square, not on the pencil sticking out of it.
         if icon == .ionicons("create-outline") { return .composeIcon(size: size) }
+        // Not among the generated outlines: SF Symbols' cloud, as wide as the glyph.
+        if icon == .ionicons("cloud-outline"), let cloud = UIImage(systemName: "cloud", withConfiguration: UIImage.SymbolConfiguration(pointSize: size * 0.75)) {
+            return cloud.withRenderingMode(.alwaysTemplate)
+        }
         return UIImage.icon(icon, size: size)
     }
 }

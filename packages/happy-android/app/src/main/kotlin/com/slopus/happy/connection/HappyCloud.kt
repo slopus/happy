@@ -15,8 +15,12 @@ import com.slopus.happy.BuildConfig
  * no code and no `instanceId` check them.
  */
 object HappyCloud {
-    /** BASE; null in release builds (`release`, and `bench`, which is release) and when the build's isn't a host. Null leaves out every way in. */
-    val base: String? = BuildConfig.HAPPY_CLOUD_BASE.takeIf { offeredIn(BuildConfig.BUILD_TYPE) && serverOf(it, "x") != null }
+    /**
+     * BASE; null when the build's isn't a host, which leaves out every way
+     * in. Every build has it; Settings' Happy Cloud switch
+     * ([com.slopus.happy.config.HappyCloudSetting]) is what offers the ways in.
+     */
+    val base: String? = BuildConfig.HAPPY_CLOUD_BASE.takeIf { serverOf(it, "x") != null }
 
     /** The accounts service, where the account signs in for an identity token; null wherever [base] is. */
     val accounts: AgentOrigin? = base?.let { originOf(BuildConfig.HAPPY_CLOUD_ACCOUNTS) }
@@ -47,9 +51,6 @@ object HappyCloud {
     /** [server] in the web app; null for a server that isn't Happy Cloud's. */
     fun webApp(server: String?, base: String? = this.base, web: String = this.web): String? =
         handle(server, base)?.let { "https://${it.removePrefix("@")}.$web/" }
-
-    /** Only the dev (`debug`) and `preview` builds offer Happy Cloud. */
-    internal fun offeredIn(buildType: String): Boolean = buildType == "debug" || buildType == "preview"
 
     internal fun originOf(url: String): AgentOrigin? = try {
         ServerAuthClient.parseAddress(url)

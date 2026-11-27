@@ -172,6 +172,9 @@ class AppGraph(
     /** Animated Avatars, kept on this phone for every account (not cleared with local settings). */
     val liveAvatars = LiveAvatarsSetting(context.getSharedPreferences(LiveAvatarsSetting.PREFS_NAME, Context.MODE_PRIVATE))
 
+    /** Settings' Happy Cloud switch, kept on this phone for every account (not cleared with local settings); off unless turned on. */
+    val happyCloud = com.slopus.happy.config.HappyCloudSetting(context.getSharedPreferences(com.slopus.happy.config.HappyCloudSetting.PREFS_NAME, Context.MODE_PRIVATE))
+
     /** Where each agent connection's home list was left, kept on this phone for an hour. */
     val agentHomePlaces = com.slopus.happy.ui.connection.AgentHomePlaces(context.getSharedPreferences(com.slopus.happy.ui.connection.AgentHomePlaces.PREFS_NAME, Context.MODE_PRIVATE))
 
@@ -487,6 +490,11 @@ class AppGraph(
     }?.also { account ->
         // Cloud servers signed in by an earlier build refresh at the accounts service, which no longer does: ended now, signed in again from their home.
         scope.launch { agentConnections.endSessions { connection, credential -> HappyCloud.isServer(connection.server) && credential.refreshToken != null && !account.issued(credential) } }
+    }
+
+    init {
+        // Happy Cloud's invite links open the app only while Settings' switch is on.
+        if (cloudAccount != null) scope.launch(Dispatchers.IO) { happyCloud.enabled.collect { com.slopus.happy.config.HappyCloudSetting.applyLinks(appContext, it) } }
     }
 
     /**

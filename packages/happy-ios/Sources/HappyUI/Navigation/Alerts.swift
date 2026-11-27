@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyCore
 import UIKit
 
 /// happy-app's Modal.alert / confirm / prompt, as UIAlertController.
@@ -55,13 +56,23 @@ public enum Alerts {
         }
     }
 
-    /// The Get help sheet: where to turn when stuck.
-    public static func help(on controller: UIViewController) {
+    /// The Get help sheet: where to turn when stuck. On the first screen,
+    /// where Settings can't be reached yet, `cloud` adds Settings' Happy
+    /// Cloud switch above Cancel: Turn On while off, Turn Off while on.
+    public static func help(on controller: UIViewController, cloud variant: AppVariant? = nil) {
         let sheet = UIAlertController(title: Strings.Onboarding.getHelp, message: Strings.Onboarding.helpMessage, preferredStyle: .alert)
         for link in Strings.helpLinks {
             sheet.addAction(UIAlertAction(title: link.title, style: .default) { _ in
                 controller.openBrowser(link.url)
             })
+        }
+        if let variant {
+            let on = HappyCloud.isOffered(in: variant)
+            let toggle = UIAlertAction(title: on ? Strings.HappyCloud.turnOff : Strings.HappyCloud.turnOn, style: .default) { _ in
+                HappyCloud.setOffered(!on)
+            }
+            toggle.accessibilityIdentifier = "help-happy-cloud"
+            sheet.addAction(toggle)
         }
         sheet.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
         controller.present(sheet, animated: true)

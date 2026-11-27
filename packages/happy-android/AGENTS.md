@@ -272,8 +272,8 @@ win:
   `GrainGradient.kt`) behind everything, edge to edge; the logotype
   centred on the top row, Get help (a ? opening `GetHelpAlert`, iOS's four
   links) where a ⋮ would be, and no ⋮ (Steve); one centred "Start" that opens
-  the next screen, which scans, 48 above the bottom inset; where the build
-  offers Happy Cloud, "Use Happy Cloud" under it, the quiet text action, as
+  the next screen, which scans, 48 above the bottom inset; while Happy Cloud
+  is offered (Settings' switch), "Use Happy Cloud" under it, the quiet text action, as
   wide, 12 under Start with 24 kept above the bottom inset, Start rising to
   make room (iOS StartLayout). The code is routed
   (`ConnectKind.Add`): `happy://terminal?` creates a Happy account and
@@ -1361,8 +1361,15 @@ change its wire behaviour on Android alone.
   Servers live under
   one domain, `BuildConfig.HAPPY_CLOUD_BASE` (`happy-clusters.com`; `HAPPY_CLOUD_BASE` or
   `-Phappy.cloudBase`): the server named `acme` is `https://acme.BASE`.
-  Only `debug` and `preview` builds offer it (`HappyCloud.offeredIn`, by
-  `BuildConfig.BUILD_TYPE`); `release` and `bench` have no way in at all.
+  Every build has it, and offers its ways in (Use Happy Cloud, the account
+  menu's +, invite links) only while Settings' Happy Cloud switch is on
+  (`config/HappyCloudSetting`, prefs `happy-cloud`, kept for every account,
+  off on every build until turned on). The switch is a card above Privacy
+  on both kinds of Settings, and in the first screen's Get help (Turn on /
+  Turn off Happy Cloud), as Settings can't be reached before an account.
+  Its invite links' intent filters sit on the main manifest's disabled
+  `HappyCloudLinks` alias, which the switch enables; servers already added
+  keep working either way.
   The account menu's last row, a + reading "Connect to Happy Cloud" (with no
   account yet, the first screen's "Use Happy Cloud"), opens a full-screen
   welcome (no dialog), desktop's (CloudConnectScreen.tsx at dca9b205): its

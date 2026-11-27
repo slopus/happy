@@ -63,6 +63,7 @@ enum class Ionicon(val codepoint: Int) {
     Close(0xf24a), // close
     CloseCircle(0xf24b), // close-circle
     CloudOfflineOutline(0xf25b), // cloud-offline-outline
+    CloudOutline(0xf25d), // cloud-outline
     CodeOutline(0xf26c), // code-outline
     CodeSlash(0xf26e), // code-slash
     CodeSlashOutline(0xf26f), // code-slash-outline
