@@ -179,7 +179,11 @@ final class LegacyComposeStart: NSObject {
     /// first send, as home's dock took them: a bot or a task is Happy
     /// Agent's, a session the harness picked.
     var takesAttachments: Bool {
-        SessionComposerRules.canUseAttachments(starting: kind == .session ? composer.choices.resolvedAgent : .rig)
+        let choices = composer.choices
+        return SessionComposerRules.canUseAttachments(
+            starting: kind == .session ? choices.resolvedAgent : .rig,
+            cliVersion: choices.cliVersion
+        )
     }
 
     /// The machine the first send goes to, as its picker names it; while

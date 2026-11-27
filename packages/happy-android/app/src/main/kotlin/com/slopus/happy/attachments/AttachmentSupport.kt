@@ -2,14 +2,18 @@ package com.slopus.happy.attachments
 
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.isRigV1
+import com.slopus.happy.model.settings.AgentDefaults
 import com.slopus.happy.sync.rigCanUseAttachments
 
 // attachmentSupport.ts: which agents take images, and what a send does with
 // attachments an agent can't take.
 
-/** supportsImageAttachmentsForFlavor: sessions without a flavor, Claude, Codex, and Antigravity CLI. */
-fun supportsImageAttachmentsForFlavor(flavor: String?): Boolean =
-    flavor.isNullOrEmpty() || flavor == "claude" || flavor == "codex" || flavor == "agy"
+/** supportsImageAttachmentsForFlavor: sessions without a flavor, Claude, Codex, and Antigravity CLI >= 1.2.8-beta.0. */
+fun supportsImageAttachmentsForFlavor(flavor: String?, cliVersion: String? = null): Boolean = when {
+    flavor.isNullOrEmpty() || flavor == "claude" || flavor == "codex" -> true
+    flavor == "agy" -> AgentDefaults.agyAttachmentsSupportedByCli(cliVersion)
+    else -> false
+}
 
 data class ImageAttachmentSendPlan(
     val supportsAttachments: Boolean,
@@ -24,9 +28,10 @@ fun imageAttachmentSendPlan(
     text: String,
     attachmentCount: Int,
     supportsAttachments: Boolean? = null,
+    cliVersion: String? = null,
 ): ImageAttachmentSendPlan {
     val hasAttachments = attachmentCount > 0
-    val supports = supportsAttachments ?: supportsImageAttachmentsForFlavor(flavor)
+    val supports = supportsAttachments ?: supportsImageAttachmentsForFlavor(flavor, cliVersion)
     val unsupportedAlert = hasAttachments && !supports
     return ImageAttachmentSendPlan(
         supportsAttachments = supports,
@@ -54,6 +59,7 @@ fun imageAttachmentSendPlan(metadata: SessionMetadata?, text: String, attachment
     text = text,
     attachmentCount = attachmentCount,
     supportsAttachments = if (metadata.isRigV1()) metadata.rigCanUseAttachments() else null,
+    cliVersion = metadata?.version,
 )
 
 /** The rig's policy, for rig v1 sessions only. */

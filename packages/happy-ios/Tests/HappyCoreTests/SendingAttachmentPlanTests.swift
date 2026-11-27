@@ -32,7 +32,7 @@ final class SendingAttachmentPlanTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(rigPlan.rejected, [oversized, document])
         XCTAssertTrue(rigPlan.shouldShowUnsupportedAlert)
         XCTAssertTrue(rigPlan.shouldSendText)
-        session.metadata = .object(["flavor": .string("agy")])
+        session.metadata = .object(["flavor": .string("agy"), "version": .string("1.2.8-beta.0")])
         let agyPlan = OutboxSender.attachmentPlan(
             OutgoingMessage(text: "", attachments: [image]), session: session
         )
@@ -40,6 +40,22 @@ final class SendingAttachmentPlanTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(agyPlan.rejected.isEmpty)
         XCTAssertFalse(agyPlan.shouldShowUnsupportedAlert)
         XCTAssertTrue(agyPlan.shouldSendText)
+        session.metadata = .object(["flavor": .string("agy"), "version": .string("1.2.7")])
+        let legacyAgyPlan = OutboxSender.attachmentPlan(
+            OutgoingMessage(text: " ", attachments: [image]), session: session
+        )
+        XCTAssertTrue(legacyAgyPlan.accepted.isEmpty)
+        XCTAssertEqual(legacyAgyPlan.rejected, [image])
+        XCTAssertTrue(legacyAgyPlan.shouldShowUnsupportedAlert)
+        XCTAssertFalse(legacyAgyPlan.shouldSendText)
+        session.metadata = .object(["flavor": .string("agy")])
+        let unknownVersionAgyPlan = OutboxSender.attachmentPlan(
+            OutgoingMessage(text: " ", attachments: [image]), session: session
+        )
+        XCTAssertTrue(unknownVersionAgyPlan.accepted.isEmpty)
+        XCTAssertEqual(unknownVersionAgyPlan.rejected, [image])
+        XCTAssertTrue(unknownVersionAgyPlan.shouldShowUnsupportedAlert)
+        XCTAssertFalse(unknownVersionAgyPlan.shouldSendText)
         session.metadata = .object(["flavor": .string("gemini")])
         let unsupportedPlan = OutboxSender.attachmentPlan(
             OutgoingMessage(text: " ", attachments: [image]), session: session

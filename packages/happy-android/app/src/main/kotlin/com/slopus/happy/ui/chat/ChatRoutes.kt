@@ -232,7 +232,7 @@ private fun ChatRoute(
     val images = key(routeId) {
         rememberComposerImages(
             enabled = when {
-                drafting -> composeOptions?.let { canUseAttachments(starting = it.startAgent) } ?: true
+                drafting -> composeOptions?.let { canUseAttachments(starting = it.startAgent, cliVersion = it.cliVersion) } ?: true
                 composing -> true
                 else -> canUseAttachments(state.session?.metadata)
             },

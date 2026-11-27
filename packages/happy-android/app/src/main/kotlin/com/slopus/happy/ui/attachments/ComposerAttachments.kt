@@ -40,6 +40,7 @@ import com.slopus.happy.attachments.supportsImageAttachmentsForFlavor
 import com.slopus.happy.model.AgentType
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.isRigV1
+import com.slopus.happy.model.settings.AgentDefaults
 import com.slopus.happy.sync.rigCanUseAttachments
 import com.slopus.happy.text.plural
 import com.slopus.happy.ui.components.Alert
@@ -55,15 +56,16 @@ val LocalComposerImages = compositionLocalOf<ImagePicker?> { null }
 
 /** SessionView.tsx `canUseAttachments`: the rig's capability for rig v1 sessions, else the flavor. */
 fun canUseAttachments(metadata: SessionMetadata?): Boolean =
-    if (metadata.isRigV1()) metadata.rigCanUseAttachments() else supportsImageAttachmentsForFlavor(metadata?.flavor)
+    if (metadata.isRigV1()) metadata.rigCanUseAttachments() else supportsImageAttachmentsForFlavor(metadata?.flavor, metadata?.version)
 
 /**
  * happy-ios `canUseAttachments(starting:)`: before the session exists, the
  * harness its first send starts. Happy Agent's session sets its own policy
  * once made, so pictures are offered and the start names any it refuses.
  */
-fun canUseAttachments(starting: AgentType): Boolean = when (starting) {
-    AgentType.Claude, AgentType.Codex, AgentType.Agy, AgentType.Rig -> true
+fun canUseAttachments(starting: AgentType, cliVersion: String? = null): Boolean = when (starting) {
+    AgentType.Claude, AgentType.Codex, AgentType.Rig -> true
+    AgentType.Agy -> AgentDefaults.agyAttachmentsSupportedByCli(cliVersion)
     AgentType.Gemini, AgentType.OpenClaw -> false
 }
 

@@ -54,8 +54,16 @@ class AttachSelectionTest {
 
     @Test fun `the empty chat takes pictures by the harness its first send starts`() {
         assertEquals(
-            listOf(AgentType.Claude, AgentType.Codex, AgentType.Agy, AgentType.Rig),
+            listOf(AgentType.Claude, AgentType.Codex, AgentType.Rig),
             AgentType.entries.filter { canUseAttachments(starting = it) },
+        )
+        assertEquals(
+            listOf(AgentType.Claude, AgentType.Codex, AgentType.Rig),
+            AgentType.entries.filter { canUseAttachments(starting = it, cliVersion = "1.2.7") },
+        )
+        assertEquals(
+            listOf(AgentType.Claude, AgentType.Codex, AgentType.Agy, AgentType.Rig),
+            AgentType.entries.filter { canUseAttachments(starting = it, cliVersion = "1.2.8-beta.0") },
         )
     }
 
