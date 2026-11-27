@@ -61,6 +61,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
         sessionId: null,
         claudeEnvVars: opts.claudeEnvVars,
         claudeArgs: opts.claudeArgs,
+        model: opts.model,
         mcpServers: opts.mcpServers,
         logPath: logPath,
         messageQueue: opts.messageQueue,

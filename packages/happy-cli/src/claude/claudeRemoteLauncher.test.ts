@@ -146,3 +146,24 @@ describe('claudeRemoteLauncher model switches', () => {
         expect(queries).toEqual([['opus'], ['fable'], ['sonnet']]);
     });
 });
+describe('claudeRemoteLauncher model metadata', () => {
+    beforeEach(() => { vi.mocked(claudeRemote).mockReset(); });
+
+    it('publishes the model each turn runs as currentModelCode, for the app\'s model chip', async () => {
+        const { session, stop } = fixture();
+        let metadata: Record<string, unknown> = { currentModelCode: 'claude-opus-5' };
+        (session.client as any).updateMetadata = vi.fn((update: (current: Record<string, unknown>) => Record<string, unknown>) => {
+            metadata = update(metadata);
+        });
+        vi.mocked(claudeRemote)
+            .mockImplementationOnce(async opts => {
+                // An init without a model (an older SDK) leaves what was published.
+                opts.onSDKMetadata?.({ tools: ['Bash'] });
+                expect(metadata).toEqual({ currentModelCode: 'claude-opus-5', tools: ['Bash'] });
+                opts.onSDKMetadata?.({ tools: ['Bash'], model: 'claude-sonnet-5-5' });
+                stop();
+            });
+        await claudeRemoteLauncher(session as any);
+        expect(metadata).toMatchObject({ currentModelCode: 'claude-sonnet-5-5', tools: ['Bash'] });
+    });
+});

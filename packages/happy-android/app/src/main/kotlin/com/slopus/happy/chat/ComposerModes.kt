@@ -52,8 +52,10 @@ object ComposerModeResolver {
      * useComposerModes: each chip's value is the session's own pick
      * ([mirror]) when the list has it, then, for a Happy Agent session,
      * what the agent reports; for any other, the user's agent default and
-     * then what the agent reports. A pick on a retired Claude row shows the
-     * row that runs the same model.
+     * then what the agent reports, except that Claude's code default comes
+     * after what its CLI reports ([AgentDefaults.unpickedClaudeModel], the
+     * model its messages send). A pick on a retired Claude row shows the row
+     * that runs the same model.
      */
     fun resolve(
         metadata: SessionMetadata?,
@@ -65,7 +67,13 @@ object ComposerModeResolver {
         val rig = metadata.isRig()
         val defaults = AgentDefaults.resolve(overrides, flavor, metadata?.version)
         val sessionModel = if (rig) mirror.modelMode else AgentDefaults.retireModelMode(flavor, mirror.modelMode)
-        val models = ModeOptions.availableModels(flavor, metadata, translate, sessionModel ?: if (rig) null else defaults.modelMode)
+        // A Claude session with no pick shows the model its messages send.
+        val unpickedModel = if (!rig && AgentDefaults.isClaude(flavor)) {
+            AgentDefaults.retireModelMode(flavor, AgentDefaults.unpickedClaudeModel(overrides, flavor, metadata?.version, metadata?.currentModelCode))
+        } else {
+            defaults.modelMode
+        }
+        val models = ModeOptions.availableModels(flavor, metadata, translate, sessionModel ?: if (rig) null else unpickedModel)
         val modes = ModeOptions.availablePermissionModes(flavor, metadata, translate, mirror.permissionMode)
         val permission = ModeOptions.resolveCurrentOption(
             modes,
@@ -78,7 +86,7 @@ object ComposerModeResolver {
         val rigModelKey = metadata.rigSelectedModel()?.let { (provider, id) -> qualifyRigModelKey(provider, id) }
         val model = ModeOptions.resolveCurrentOption(
             models,
-            listOf(sessionModel, if (rig) rigModelKey else defaults.modelMode, if (rig) null else metadata?.currentModelCode),
+            listOf(sessionModel, if (rig) rigModelKey else unpickedModel, if (rig) null else metadata?.currentModelCode),
         )
         val modelKey = model?.key ?: "default"
         val efforts = ModeOptions.effortLevelsForModel(flavor, modelKey, metadata)

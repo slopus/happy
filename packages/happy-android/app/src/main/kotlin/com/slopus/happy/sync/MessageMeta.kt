@@ -62,7 +62,8 @@ object MessageMetaResolver {
 
     /**
      * messageMeta.ts `resolveMessageModeMeta`: the composer's picks ([mirror]),
-     * falling back to the agent defaults the composer displays.
+     * falling back to the agent defaults the composer displays; for Claude,
+     * always the model its chip shows ([AgentDefaults.unpickedClaudeModel]).
      *
      * @throws UnsupportedPermissionModeException
      */
@@ -96,11 +97,21 @@ object MessageMetaResolver {
             agentOverrides.permissionMode != null -> supported(agentOverrides.permissionMode)
             else -> null
         }
-        val modelMode = mirror.modelMode ?: agentOverrides.modelMode
+        // A picked `default` is the app's reset: null hands the model back to the agent.
+        val pickedModel = mirror.modelMode ?: agentOverrides.modelMode
+        val model = when {
+            pickedModel != null -> Present(pickedModel.takeUnless { it == "default" })
+            // Claude always gets the model its chip shows: left out, Claude Code
+            // would run its own account default (Sonnet on some plans) under it.
+            // A reported `default` is Claude's own alias and goes out as itself.
+            AgentDefaults.isClaude(flavor) ->
+                Present(AgentDefaults.unpickedClaudeModel(overrides, flavor, cliVersion, metadata?.currentModelCode))
+            else -> null
+        }
         val effort = mirror.effortLevel ?: agentOverrides.effortLevel
         return MessageModeMeta(
             permissionMode = permissionMode,
-            model = modelMode?.let { Present(it.takeUnless { mode -> mode == "default" }) },
+            model = model,
             effort = effort?.let { Present(it) },
         )
     }

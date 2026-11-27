@@ -18,8 +18,8 @@ export interface ClaudeSettings {
 /**
  * Get the path to Claude's settings.json file
  */
-function getClaudeSettingsPath(): string {
-  const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+function getClaudeSettingsPath(env: Record<string, string | undefined> = process.env): string {
+  const claudeConfigDir = env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
   return join(claudeConfigDir, 'settings.json');
 }
 
@@ -29,9 +29,11 @@ function getClaudeSettingsPath(): string {
  * @returns Claude settings object or null if file doesn't exist or can't be read
  */
 export function readClaudeSettings(): ClaudeSettings | null {
+  return readSettingsFile(getClaudeSettingsPath());
+}
+
+function readSettingsFile(settingsPath: string): ClaudeSettings | null {
   try {
-    const settingsPath = getClaudeSettingsPath();
-    
     if (!existsSync(settingsPath)) {
       logger.debug(`[ClaudeSettings] No Claude settings file found at ${settingsPath}`);
       return null;
@@ -41,13 +43,40 @@ export function readClaudeSettings(): ClaudeSettings | null {
     const settings = JSON.parse(settingsContent) as ClaudeSettings;
     
     logger.debug(`[ClaudeSettings] Successfully read Claude settings from ${settingsPath}`);
-    logger.debug(`[ClaudeSettings] includeCoAuthoredBy: ${settings.includeCoAuthoredBy}`);
     
     return settings;
   } catch (error) {
     logger.debug(`[ClaudeSettings] Error reading Claude settings: ${error}`);
     return null;
   }
+}
+
+/**
+ * The model Claude Code runs when Happy passes none: `ANTHROPIC_MODEL`, else
+ * `model` from the project's local settings, its shared settings, then the
+ * user's, in the config dir `env` gives Claude. Undefined means the
+ * account's own default, which only a turn's init message reveals.
+ */
+export function readConfiguredClaudeModel(
+  workingDirectory: string,
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  const fromEnv = env.ANTHROPIC_MODEL?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+  const files = [
+    join(workingDirectory, '.claude', 'settings.local.json'),
+    join(workingDirectory, '.claude', 'settings.json'),
+    getClaudeSettingsPath(env),
+  ];
+  for (const file of files) {
+    const model = readSettingsFile(file)?.model;
+    if (typeof model === 'string' && model.trim()) {
+      return model.trim();
+    }
+  }
+  return undefined;
 }
 
 /**

@@ -36,6 +36,7 @@ import { applySandboxPermissionPolicy, normalizeRemotePermissionMode, resolveIni
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { getProjectPath } from './utils/path';
+import { readConfiguredClaudeModel } from './utils/claudeSettings';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
@@ -129,6 +130,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
     const isSideChat = process.env.HAPPY_SIDE_CHAT === '1';
 
+    // What the session's next turn runs while the app has picked nothing, so
+    // the app's model chip can show it instead of a default it never sends.
+    // A turn's init message replaces it with the model Claude actually ran.
+    const configuredModel = options.model
+        ?? readConfiguredClaudeModel(workingDirectory, { ...process.env, ...options.claudeEnvVars });
+
     let metadata: Metadata = {
         path: workingDirectory,
         host: os.hostname(),
@@ -146,6 +153,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
         flavor: 'claude',
+        ...(configuredModel ? { currentModelCode: configuredModel } : {}),
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
@@ -246,6 +254,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 abort: new AbortController().signal,
                 claudeEnvVars: options.claudeEnvVars,
                 claudeArgs: options.claudeArgs,
+                model: options.model,
                 mcpServers: {},
                 allowedTools: [],
                 sandboxConfig,
@@ -291,6 +300,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             ...meta,
             lifecycleState: 'running',
             archivedBy: undefined,
+            // This process starts over on the configured model, whatever the last one ran.
+            currentModelCode: configuredModel,
         }));
     }
 

@@ -149,6 +149,7 @@ public enum UserMessageEncoder {
             ?? AgentDefaults.override(overrides, agent, .permissionMode)
         var model = c["modelMode"]?.stringValue
             ?? AgentDefaults.override(overrides, agent, .modelMode)
+        var picked = true
         var effort = c["effortLevel"]?.stringValue
             ?? AgentDefaults.override(overrides, agent, .effortLevel)
         if concrete {
@@ -156,6 +157,12 @@ public enum UserMessageEncoder {
             permission = permission ?? defaults.permissionMode
             model = model ?? defaults.modelMode
             effort = effort ?? defaults.effortLevel
+        } else if model == nil, AgentDefaults.isClaude(flavor: m["flavor"]?.stringValue) {
+            // Claude always gets the model its chip shows: left out, Claude Code
+            // would run its own account default (Sonnet on some plans) under it.
+            // A reported `default` is Claude's own alias and goes out as itself.
+            model = AgentDefaults.unpickedClaudeModel(overrides, cliVersion: version, reported: m["currentModelCode"]?.stringValue)
+            picked = false
         }
         if let selected = permission {
             let retired = AgentDefaults.retirePermissionMode(selected)
@@ -164,8 +171,9 @@ public enum UserMessageEncoder {
             }
             result["permissionMode"] = .string(retired)
         }
+        // A picked `default` is the app's reset: null hands the model back to the agent.
         if let model {
-            result["model"] = model == "default" ? .null : .string(model)
+            result["model"] = picked && model == "default" ? .null : .string(model)
         }
         if let effort {
             result["effort"] = .string(effort)

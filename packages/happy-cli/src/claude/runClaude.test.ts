@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const {
     mockApiClientCreate,
@@ -88,7 +91,7 @@ vi.mock('@/claude/claudeLocal', () => ({
     claudeLocal: vi.fn(),
 }));
 
-import { runClaude } from './runClaude';
+import { runClaude, type StartOptions } from './runClaude';
 
 function createDeferred<T>() {
     let resolve!: (value: T | PromiseLike<T>) => void;
@@ -111,6 +114,7 @@ async function expectPromptRejectsFast(promise: Promise<unknown>, pattern: RegEx
 
 async function startRemoteRunClaudeHarness(opts: {
     metadata?: Record<string, unknown>;
+    startOptions?: Partial<StartOptions>;
     updateAgentState?: ReturnType<typeof vi.fn>;
     registerHandler?: ReturnType<typeof vi.fn>;
 } = {}) {
@@ -170,6 +174,7 @@ async function startRemoteRunClaudeHarness(opts: {
     } as any, {
         startingMode: 'remote',
         shouldStartDaemon: false,
+        ...opts.startOptions,
     });
 
     await vi.waitFor(() => {
@@ -842,6 +847,49 @@ describe('runClaude remote JSONL scanner', () => {
         });
 
         await harness.finish();
+    });
+
+    describe('currentModelCode', () => {
+        let configDir: string;
+        const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
+        const originalModel = process.env.ANTHROPIC_MODEL;
+
+        beforeEach(() => {
+            // No settings.json and no ANTHROPIC_MODEL: Claude's account default.
+            configDir = mkdtempSync(join(tmpdir(), 'happy-claude-config-'));
+            process.env.CLAUDE_CONFIG_DIR = configDir;
+            delete process.env.ANTHROPIC_MODEL;
+        });
+
+        afterEach(() => {
+            rmSync(configDir, { recursive: true, force: true });
+            if (originalConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+            else process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+            if (originalModel === undefined) delete process.env.ANTHROPIC_MODEL;
+            else process.env.ANTHROPIC_MODEL = originalModel;
+        });
+
+        const createdMetadata = (harness: Awaited<ReturnType<typeof startRemoteRunClaudeHarness>>) =>
+            (harness.api.getOrCreateSession.mock.calls[0] as unknown as [{ metadata: Record<string, unknown> }])[0].metadata;
+
+        it('publishes no model when Claude will pick its own default', async () => {
+            const harness = await startRemoteRunClaudeHarness();
+            expect(createdMetadata(harness)).not.toHaveProperty('currentModelCode');
+            await harness.finish();
+        });
+
+        it('publishes the --model the session was started with', async () => {
+            process.env.ANTHROPIC_MODEL = 'claude-haiku-5-5';
+            const harness = await startRemoteRunClaudeHarness({ startOptions: { model: 'claude-sonnet-5-5' } });
+            expect(createdMetadata(harness).currentModelCode).toBe('claude-sonnet-5-5');
+            await harness.finish();
+        });
+
+        it('publishes the model Claude is configured with', async () => {
+            const harness = await startRemoteRunClaudeHarness({ startOptions: { claudeEnvVars: { ANTHROPIC_MODEL: 'claude-opus-5' } } });
+            expect(createdMetadata(harness).currentModelCode).toBe('claude-opus-5');
+            await harness.finish();
+        });
     });
 
     it('rejects Claude goal-action while Claude is still thinking', async () => {

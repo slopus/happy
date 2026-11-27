@@ -154,9 +154,11 @@ object ModeOptions {
     fun includeConfiguredModel(flavor: String?, models: List<ModeOption>, configuredModelKey: String?): List<ModeOption> {
         val isClaude = flavor != "rig" && AgentKey.normalize(flavor) == AgentKey.Claude
         val key = AgentDefaults.retireModelMode(flavor, configuredModelKey)
-        if ((flavor != "codex" && flavor != "agy" && !isClaude) || key.isNullOrEmpty() || key == "default" || models.any { it.key == key }) {
+        if ((flavor != "codex" && flavor != "agy" && !isClaude) || key.isNullOrEmpty() || models.any { it.key == key }) {
             return models
         }
+        // Claude takes `--model default` (its account default) and its CLI reports it as such.
+        if (key == "default") return if (isClaude) models + ModeOption(key, "Default", "Claude's default") else models
         val name = (if (isClaude) unlistedClaudeModelNames[key] else null) ?: key
         return models + ModeOption(key, name, if (flavor == "codex") "custom model" else "saved model")
     }
