@@ -165,15 +165,22 @@ private fun ShaderGrainGradient(palette: GrainPalette, modifier: Modifier) {
     Box(
         modifier.testTag(GrainGradientTags.SHADER).onSizeChanged { size = it }.drawBehind {
             val sized = field?.takeIf { it.size.width.toFloat() == this.size.width && it.size.height.toFloat() == this.size.height }
-            val shader = programs?.let { if (sized != null) it.corners.also { c -> c.setInputBuffer("u_field", sized.shader) } else whole }
-            val alpha = if (shader == null) 0f else shown.value
+            val shader = programs?.let { if (sized != null) it.corners else whole }
+            val alpha = if (shader == null || !GrainCache.available) 0f else shown.value
             if (alpha < 1f) drawFallback(palette)
             if (shader != null && alpha > 0f) {
-                shader.setFloatUniform("u_resolution", this.size.width, this.size.height)
-                shader.setFloatUniform("u_time", (elapsed.longValue / 1_000_000_000.0).toFloat())
-                shader.setColorUniform("u_colorBack", palette.back.toArgb())
-                palette.colors.forEachIndexed { i, color -> shader.setColorUniform("u_color$i", color.toArgb()) }
-                drawRect(ShaderBrush(shader), alpha = alpha)
+                try {
+                    if (sized != null) shader.setInputBuffer("u_field", sized.shader)
+                    shader.setFloatUniform("u_resolution", this.size.width, this.size.height)
+                    shader.setFloatUniform("u_time", (elapsed.longValue / 1_000_000_000.0).toFloat())
+                    shader.setColorUniform("u_colorBack", palette.back.toArgb())
+                    palette.colors.forEachIndexed { i, color -> shader.setColorUniform("u_color$i", color.toArgb()) }
+                    drawRect(ShaderBrush(shader), alpha = alpha)
+                } catch (e: RuntimeException) {
+                    // A program that won't take its uniforms here: this frame and every later one are still.
+                    GrainCache.drawFailed(e)
+                    drawFallback(palette)
+                }
             }
         },
     )
@@ -232,6 +239,12 @@ internal object GrainCache {
             compile()
             if (size != null && size.width > 0 && size.height > 0) field(size)
         }
+    }
+
+    /** A gradient's draw threw ([ShaderGrainGradient]): the still gradient from then on, as when the programs don't compile. */
+    fun drawFailed(e: RuntimeException) {
+        Log.w("GrainGradient", "Grain Gradient draw failed", e)
+        failed = true
     }
 
     fun hold() {

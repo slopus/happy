@@ -145,7 +145,8 @@ class LinkOpener internal constructor(
             proxied = false,
             computer = null,
             // The app's own links are an agent connection's; the system has nothing to open them with.
-            tap = { url -> if (!app(url) && !com.slopus.happy.agent.HappyUrls.owns(url)) system.openUri(url) },
+            // A phone with no browser has nothing for the rest either: the tap does nothing, as Settings' links.
+            tap = { url -> if (!app(url) && !com.slopus.happy.agent.HappyUrls.owns(url)) com.slopus.happy.ui.settings.openExternalUrl(system, url) },
             inApp = { url -> if (BrowserPolicy.route(url) == BrowserPolicy.Route.Web) openCustomTab(context, url, dark) else openOutside(context, url) },
             external = { openOutside(context, it) },
             opensUrl = { url -> !com.slopus.happy.agent.HappyUrls.owns(url) },
