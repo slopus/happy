@@ -251,6 +251,67 @@ final class SyncPathTests: XCTestCase {
         await engine.stop()
     }
 
+    /// A failed read is posted as an error seen only from an empty chat on
+    /// screen: not over the rows it keeps, and not off screen, as on
+    /// Android. Each is still asked again until it lands.
+    func testOnlyAnEmptyChatOnScreenPostsItsFailedRead() async throws {
+        let posted = Posted()
+        Happenings.observe { if case .errorShown(.conversationLoad, let problem) = $0 { posted.add(problem) } }
+        defer { Happenings.observe(nil) }
+
+        let server = PathServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await engine.start()
+        try await eventually("live") { let home = await Self.home(engine); return home.live && !home.syncing }
+        // Off screen, with nothing to show.
+        await server.failNextMessageReads(1)
+        let away = Conversation(client: client, store: engine.spaces, agentId: "s", persistence: engine)
+        let awayShown = Shown()
+        let awayUpdates = away.updates
+        Task { for await snapshot in awayUpdates { awayShown.set(snapshot) } }
+        await away.start()
+        try await eventually("the failure said") { awayShown.snapshot.error != nil }
+        try await eventually("read again") { awayShown.snapshot.synced && awayShown.texts.contains("text of a2") }
+        await away.stop()
+        XCTAssertEqual(posted.problems, [], "off screen")
+
+        // On screen, with nothing to show: the one a person sees.
+        await engine.stop()
+        let again = AgentClient(transport: server, token: "t")
+        let fresh = SyncEngine(client: again, directory: folder())
+        await fresh.start()
+        try await eventually("live") { let home = await Self.home(fresh); return home.live && !home.syncing }
+        await server.failNextMessageReads(1)
+        let conversation = Conversation(client: again, store: fresh.spaces, agentId: "s", persistence: fresh)
+        let shown = Shown()
+        let updates = conversation.updates
+        Task { for await snapshot in updates { shown.set(snapshot) } }
+        await conversation.setVisible(true)
+        await conversation.start()
+        try await eventually("the failure said") { shown.snapshot.error != nil }
+        try await eventually("read again") { shown.snapshot.synced && shown.texts.contains("text of a2") }
+        XCTAssertEqual(posted.problems, [.timeout])
+
+        // On screen over the rows it keeps.
+        await fresh.pause()
+        await server.failNextMessageReads(1)
+        await fresh.start()
+        try await eventually("the failure said") { shown.snapshot.error != nil }
+        try await eventually("read again") { shown.snapshot.synced && shown.snapshot.error == nil }
+        XCTAssertTrue(shown.texts.contains("text of a2"))
+        XCTAssertEqual(posted.problems, [.timeout], "over kept rows")
+        await conversation.stop()
+        await fresh.stop()
+    }
+
+    private final class Posted: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: [Problem] = []
+        var problems: [Problem] { lock.withLock { value } }
+        func add(_ problem: Problem) { lock.withLock { value.append(problem) } }
+    }
+
     /// Away briefly, the stream picks up where it left off, home isn't read
     /// again, and the chat reads only the runs after the newest it holds;
     /// away longer, it opens from now, home is read, and the chat reads its
