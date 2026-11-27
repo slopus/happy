@@ -333,10 +333,13 @@ routes: no token from it, and no usage read from it or written to it.
   starts on the computer compose has picked if its Happy Agent makes that
   kind and answers, otherwise on the only computer that does. The new
   work's ref stands for the session until the relay names it. Each voice
-  start has its own spawn requests, never compose's, so no start takes
-  another's session. A start that passes the tool's 10-second deadline
-  answers "uncertain" and goes on; ending the call stops it unless its
-  first message is already kept. The
+  start has its own spawn-request slot under the account's (never
+  compose's), so no start takes another's session, and opening the new
+  chat adopts it as it would any start. A start that passes the tool's
+  10-second deadline answers "uncertain" and goes on. End and the first
+  message's keeping race through one gate (`VoiceStartGate`), decided in
+  the outbox's transaction: ended first, the message is refused and the
+  start put down; kept first, the session stays. The
   call refuses, with these reasons:
   - "A new bot needs a name here; ask what to call it." (a bot needs a name)
   - "More than one computer can start it; start it in the app."

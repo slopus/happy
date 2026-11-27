@@ -95,7 +95,7 @@ private final class FakeRelay: @unchecked Sendable {
                 lock.withLock { _enqueued.append("\(sessionId): \(text)") }
                 return .queued
             },
-            start: { [self] _, requests in
+            start: { [self] _, requests, _ in
                 lock.withLock {
                     _starts += 1
                     _requests.append(ObjectIdentifier(requests))

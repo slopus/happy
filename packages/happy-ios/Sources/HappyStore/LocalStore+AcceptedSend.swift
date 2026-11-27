@@ -28,6 +28,10 @@ extension LocalStore {
 /// kept, can't take it, and why.
 public struct SessionRefusedSend: Error, Equatable, Sendable {
     public let reason: String
+
+    public init(reason: String) {
+        self.reason = reason
+    }
 }
 
 extension LocalStore {

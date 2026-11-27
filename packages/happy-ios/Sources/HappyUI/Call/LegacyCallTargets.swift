@@ -33,8 +33,9 @@ final class LegacyCallTargets: LiveCallTargets {
         /// Kept in the outbox, the session judged where it is kept (`refusal`).
         var enqueue: @Sendable (_ text: String, _ sessionId: String) async -> CallSendOutcome
         /// New work started as compose starts it, under its own spawn
-        /// requests (never compose's): the session it made.
-        var start: @MainActor (_ launch: NewSessionLaunch, _ requests: SpawnRequests) async -> Result<String, LegacyNewWork.Refusal>
+        /// requests (never compose's), its first message kept through
+        /// `gate`: the session it made.
+        var start: @MainActor (_ launch: NewSessionLaunch, _ requests: SpawnRequests, _ gate: VoiceStartGate) async -> Result<String, LegacyNewWork.Refusal>
 
         static func live(_ session: AccountSession) -> Relay {
             let store = session.store, feed = session.chatFeed, actions = session.actions, realtime = session.realtime, sender = session.sender
@@ -63,8 +64,11 @@ final class LegacyCallTargets: LiveCallTargets {
                         }
                     }.value
                 },
-                start: { launch, requests in
-                    let starter = SessionStarter.make(for: session, spawnRequests: requests)
+                start: { launch, requests, gate in
+                    let first = VoiceStartSender(gate: gate, base: sender) { message, sessionId, admitting in
+                        try await sender.send(message, sessionId: sessionId, admitting: admitting)
+                    }
+                    let starter = SessionStarter.make(for: session, spawnRequests: requests, sender: first)
                     let told = StartRefusals()
                     starter.presenter = told
                     if let id = await starter.start(launch, isCurrentTarget: { true }) { return .success(id) }
@@ -107,9 +111,11 @@ final class LegacyCallTargets: LiveCallTargets {
         let mode: CallMode?
         /// The start, once its first message went to it: the session it made.
         var making: Task<Result<String, LegacyNewWork.Refusal>, Never>?
-        /// Its own spawn requests, so no other start, compose's or the
-        /// call's, takes its session; closed with the call.
+        /// Its own spawn requests under the account's, so no other start
+        /// takes its session and opening that session adopts it.
         var requests: SpawnRequests?
+        /// Its first message against the call's End.
+        let gate = VoiceStartGate()
         var sessionId: String?
 
         init(kind: CallTarget.Kind, name: String, machineId: String, models: [CallModel], mode: CallMode?) {
@@ -147,7 +153,7 @@ final class LegacyCallTargets: LiveCallTargets {
         reading = nil
         for feed in feeds.values { feed.cancel() }
         feeds.removeAll()
-        for work in started.values { work.requests?.close() }
+        for work in started.values { if let requests = work.requests { work.gate.end(closing: requests) } }
         chats.removeAll()
         watchers.removeAll()
         onChange = nil
@@ -436,11 +442,12 @@ final class LegacyCallTargets: LiveCallTargets {
                 launch.effortLevel = effort
                 launch.signature.effort = effort
             }
-            let ready = launch, start = relay.start, requests = SpawnRequests()
+            let ready = launch, start = relay.start, gate = work.gate
+            let requests = session.spawnRequests.child(.voiceStart(UUID().uuidString))
             work.requests = requests
             // Not the tool's: a deadline that passes leaves it going. The
             // call's end stops it, unless its first message is kept already.
-            work.making = Task { @MainActor in await start(ready, requests) }
+            work.making = Task { @MainActor in await start(ready, requests, gate) }
         }
         guard let making = work.making else { return .refused(SessionStarter.Message.startFailed) }
         switch await making.value {
