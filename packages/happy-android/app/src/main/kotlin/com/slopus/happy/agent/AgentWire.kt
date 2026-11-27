@@ -63,14 +63,24 @@ data class WireBot(
     val id: String,
     val name: String,
     val username: String? = null,
+    val isAdmin: Boolean? = null,
     val systemKey: String? = null,
     val workspaceId: String? = null,
     val status: String = "active",
     val avatar: WireAvatar? = null,
+    /** On Happy Cloud, the caller's own conversation with it, a personal bot's included. */
     val agent: WireAgent? = null,
     val orderKey: String? = null,
     val version: String,
     val archivedAt: Long? = null,
+    /** Happy Cloud's `shared` or `personal` ([BotKind]), apart from [isAdmin]; absent from a Happy Agent daemon. */
+    val kind: String? = null,
+    /** The caller may change its name, picture and [instructions]; absent is false. */
+    val editable: Boolean? = null,
+    /** What it is told to be, outside any file; only where [editable]. */
+    val instructions: String? = null,
+    /** The definition its conversations run on, counted up with each change. */
+    val revision: Int? = null,
 )
 
 @Serializable

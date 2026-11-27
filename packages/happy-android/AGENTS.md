@@ -2819,6 +2819,33 @@ words are `strings_plugins.xml` in every locale.
   real pages over an in-memory server (`--ez plugins.member true` for a
   member).
 
+### Bots on Happy Cloud
+
+A Happy Cloud bot carries `kind` (happy-cluster's bot object; a Happy Agent
+daemon sends none, and its bots stay as they were). `agent/Bots.kt` reads it
+(`BotKind`, `botEditable`) and edits one (`BotEditForm`, `BotEditor`).
+
+- **Where:** a `shared` bot (only owners are sent it) is the first row of
+  home's places card, above Artifacts, opening its conversation; `personal`
+  bots are the Bots section, each `agent` the caller's own conversation.
+  Placement follows `kind` alone and editing `editable` alone, never
+  `isAdmin` or `systemKey` (any pair of kind and admin reads). An unknown
+  kind is listed as a bot.
+- **No making bots:** on Happy Cloud, or wherever a bot carries a kind
+  (`AgentSession.makesBots`), new work is a task: no Task | Bot choice, and a
+  kept or asked-for Bot choice becomes a task (`NewWork.bots`).
+- **Settings:** an `editable` bot's agent page has a Bot Settings row
+  (`ui/bots/BotSettingsRoute`): its picture (`PUT`/`DELETE
+  /v0/bots/:id/avatar`, at once), name and multiline instructions, Save in
+  the bar (`PATCH /v0/bots/:id` with only what changed, `If-Match`, once
+  more over a `409`'s newer version). The page waits for `GET /v0/bots/:id`,
+  whose instructions the catalog's copy may lack; a field not touched
+  follows `bot.updated`, one being typed keeps what was typed. Back with
+  unsaved changes asks first. A bot that isn't editable (the shared one)
+  has no row and no edit affordances.
+- **Fixture:** debug builds have `ui.bots.BotsFixturesActivity`
+  (`--es bots.scene owner|member|page|edit`).
+
 ### Pipelines
 
 A Happy Cloud server's pipelines, read only (happy-cluster API.md,

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bot_settings_title">Настройки бота</string>
+    <string name="bot_settings_instructions">Инструкции</string>
+    <string name="bot_settings_instructions_placeholder">Для чего этот бот и как ему работать</string>
+    <string name="bot_settings_instructions_footer">Сохранённые изменения дойдут до бесед всех с этим ботом на следующем его ходе.</string>
+    <string name="bot_settings_name_blank">Боту нужно имя.</string>
+    <string name="bot_settings_name_too_long">Имя может быть не длиннее %1$d символов.</string>
+    <string name="bot_settings_name_control">В имени не может быть управляющих символов.</string>
+    <string name="bot_settings_could_not_save">Не удалось сохранить бота</string>
+</resources>

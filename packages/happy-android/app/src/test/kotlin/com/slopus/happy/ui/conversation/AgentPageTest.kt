@@ -119,6 +119,22 @@ class AgentPageTest {
         assertEquals(link, clipboard.primaryClip?.getItemAt(0)?.text?.toString())
     }
 
+    @Test fun `only an editable bot has a settings row`() {
+        show()
+        rule.node(AgentPageTags.BOT_SETTINGS).assertDoesNotExist()
+    }
+
+    @Test fun `an editable bots settings row stands under the tiles`() {
+        var opened = 0
+        show(AgentPageFixtures.page.copy(kind = AgentKind.Bot, botSettings = true), AgentPageActions(onOpenBotSettings = { opened++ }))
+        val tiles = rule.node(AgentPageTags.TILES).bounds
+        val row = rule.node(AgentPageTags.BOT_SETTINGS).bounds
+        assertDp("24 under the tiles", tiles.bottom + 24.dp, row.top)
+        assertDp("the card's width", card, row.width)
+        rule.onNodeWithText("Bot Settings").performClick()
+        assertEquals(1, opened)
+    }
+
     @Test fun `the copy links label says what the agent is`() {
         for (kind in AgentKind.entries) {
             assertEquals(com.slopus.happy.agent.HappyShareRole.valueOf(kind.name.replace("Conversation", "Session")), kind.shareRole())

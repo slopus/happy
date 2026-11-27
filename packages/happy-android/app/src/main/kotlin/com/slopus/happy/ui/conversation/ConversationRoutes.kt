@@ -146,6 +146,9 @@ fun NavGraphBuilder.conversationRoutes(graph: AppGraph, nav: NavHostController) 
         val route = entry.toRoute<WorkspaceChangesRoute>()
         WorkspaceChangesEntry(graph, nav, route)
     }
+    page<com.slopus.happy.ui.bots.BotSettingsRoute> { entry ->
+        com.slopus.happy.ui.bots.BotSettingsEntry(graph, nav, entry.toRoute())
+    }
 }
 
 /** Opens a conversation over whatever is up, with [prefill] waiting unsent in its composer. */
@@ -285,6 +288,7 @@ internal fun AgentSession.makeConversation(
     // The row that was tapped already had a name: the bar has it from the first frame.
     knownTitle = feed.value.title(agentId),
     initialChoice = initialChoice,
+    makesBots = makesBots,
     onTaskCreated = { answer ->
         created()
         answer["task"].obj?.let { upsertTask(it, answer["membership"].obj) }

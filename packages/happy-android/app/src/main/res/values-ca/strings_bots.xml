@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bot_settings_title">Configuració del bot</string>
+    <string name="bot_settings_instructions">Instruccions</string>
+    <string name="bot_settings_instructions_placeholder">Per a què serveix aquest bot i com ha de treballar</string>
+    <string name="bot_settings_instructions_footer">Els canvis desats arriben a la conversa de tothom amb aquest bot al seu torn següent.</string>
+    <string name="bot_settings_name_blank">El bot necessita un nom.</string>
+    <string name="bot_settings_name_too_long">El nom pot tenir com a màxim %1$d caràcters.</string>
+    <string name="bot_settings_name_control">El nom no pot contenir caràcters de control.</string>
+    <string name="bot_settings_could_not_save">No s’ha pogut desar el bot</string>
+</resources>

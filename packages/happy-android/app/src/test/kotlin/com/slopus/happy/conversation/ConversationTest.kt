@@ -192,6 +192,7 @@ class ConversationTest {
         route: AttachmentRoute = AttachmentRoute().apply { markMissing() },
         kept: MutableMap<String, java.io.File> = HashMap(),
         grouped: MutableStateFlow<Boolean>? = null,
+        makesBots: Boolean = true,
         created: (JsonObject) -> Unit = {},
     ) = Conversation(
         api = ConversationApi(null, agent.request, fileRequest = agent.fileRequest),
@@ -201,6 +202,7 @@ class ConversationTest {
         agentId = newTask?.agentId ?: "a1",
         newTask = newTask,
         initialChoice = choice,
+        makesBots = makesBots,
         onTaskCreated = created,
         lane = StandardTestDispatcher(testScheduler),
         io = StandardTestDispatcher(testScheduler),
@@ -800,6 +802,20 @@ class ConversationTest {
         advanceUntilIdle()
         assertNull(chat.state.value.newWork)
         assertEquals(listOf("Ship it"), chat.state.value.rows.map { (it as ConversationRow.User).text })
+    }
+
+    @Test fun `where people make no bots new work is a task whatever was picked or kept`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"), WorkChoice(WorkKind.Bot, "Kept"), makesBots = false)
+        assertEquals(NewWork(WorkChoice(), bots = false), chat.state.value.newWork)
+        advanceUntilIdle()
+        chat.setChoice(WorkChoice(WorkKind.Bot, "Asked"))
+        advanceUntilIdle()
+        assertEquals(NewWork(WorkChoice(), bots = false), chat.state.value.newWork)
+        chat.send("Ship it")
+        advanceUntilIdle()
+        assertTrue(agent.paths("POST").none { it.startsWith("/v0/bots") })
+        assertTrue(agent.paths("POST").contains("/v0/tasks"))
     }
 
     @Test fun `a refused new work leaves its first message failed and Retry asks again under the same ids`() = runTest {

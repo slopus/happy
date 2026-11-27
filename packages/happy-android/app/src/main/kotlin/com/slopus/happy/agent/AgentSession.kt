@@ -831,7 +831,13 @@ class AgentSession internal constructor(
         return true
     }
 
-    /** A bot as `POST /v0/bots` answered: home lists it before `bot.created` comes. */
+    /**
+     * Whether people make bots here: not on Happy Cloud, where bots come
+     * from its admin bot, nor anywhere a bot carries a kind ([BotKind]).
+     */
+    val makesBots: Boolean get() = !client.cloud && catalog.value.bots.values.none(BotKind::carried)
+
+    /** A bot as `POST /v0/bots` or a change to it answered: home lists it before `bot.created` or `bot.updated` comes. */
     fun upsertBot(bot: JsonObject) {
         catalogState.update { it.withResource("bot", bot) }
     }
