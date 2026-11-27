@@ -4,6 +4,10 @@
   packages/happy-i18n/translations/pt.json (pt). Do not edit.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation,UnusedQuantity,UnusedResources,Typos,PluralsCandidate,StringFormatCount,ImpliedQuantity">
+    <string name="scan_download_link">Este é um link de download, não um código de pareamento. Se você estiver configurando o Happy Desktop, clique em “Downloaded and opened” no computador e escaneie o código de pareamento exibido.</string>
+    <string name="scan_restore_device_link">Este código restaura uma conta do Happy CLI no dispositivo que o exibe. Em um dispositivo que já esteja conectado a essa conta, abra Configurações → Backup e restauração → Vincular novo dispositivo e escaneie este código.</string>
+    <string name="scan_not_pairing">Isto não é um código nem um link de pareamento. Use o código ou o link de pareamento exibido no dispositivo que você quer conectar.</string>
+
     <string name="voice_status_bar_tap_to_end">toque para encerrar</string>
     <string name="voice_status_bar_connecting">Conectando…</string>
     <string name="voice_status_bar_error">Erro de conexão</string>

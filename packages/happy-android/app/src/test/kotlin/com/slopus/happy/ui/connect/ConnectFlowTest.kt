@@ -13,6 +13,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.components.PromptTags
 import com.slopus.happy.ui.setHappyContent
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.PairingError
+import com.slopus.happy.analytics.PairingMethod
+import com.slopus.happy.analytics.PairingStart
+import com.slopus.happy.auth.InvalidPairingKeyException
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,7 +40,8 @@ class ConnectFlowTest {
     val rule = createComposeRule()
 
     private val terminalUrl = "happy://terminal?abc"
-    private val accountUrl = "happy:///account?abc"
+    private val accountUrl = "happy:///account?CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk"
+    private val recovery = "This code restores a Happy CLI account on the device showing it. On a device already signed in to that account, open Settings → Backup & Restore → Link New Device and scan this code."
 
     private class FakeScanner : QrScanner {
         val results = ArrayDeque<ScanResult>()
@@ -49,6 +55,7 @@ class ConnectFlowTest {
     }
 
     private val scanner = FakeScanner()
+    private val notPairing = "This isn’t a pairing code or link. Use the pairing code or link shown on the device you want to connect."
     private val approved = CopyOnWriteArrayList<String>()
     private var failWith: Exception? = null
     private var successes = 0
@@ -116,8 +123,8 @@ class ConnectFlowTest {
     fun theTerminalScannerSaysWhatEveryOtherCodeIs() {
         setTerminal()
         assertScanSays(ScanResult.Scanned(accountUrl), "This code links a new device. Scan it from Settings › Backup & Restore › Link New Device.")
-        assertScanSays(ScanResult.Scanned("https://example.com"), "This QR code isn't a Happy code.")
-        assertScanSays(ScanResult.Scanned("happy://something?else"), "This QR code isn't a Happy code.")
+        assertScanSays(ScanResult.Scanned("https://example.com"), notPairing)
+        assertScanSays(ScanResult.Scanned("happy://something?else"), notPairing)
         assertScanSays(ScanResult.Scanned("happy://direct?abc"), "This code connects Happy Agent. Use Add in the account menu on Home.")
         assertScanSays(ScanResult.Failed(ScanFailure.Unavailable), "The QR scanner isn't available on this device. Paste the link instead.")
         assertScanSays(ScanResult.Failed(ScanFailure.NoCamera), "This device has no camera. Paste the link instead.")
@@ -145,10 +152,10 @@ class ConnectFlowTest {
     }
 
     @Test
-    fun aPastedLinkWithoutThePrefixIsInvalid() {
+    fun aPastedLinkWithoutThePrefixGivesPairingGuidance() {
         setTerminal()
         // A Happy code of another kind names the screen it belongs to, as the
-        // camera does; only a link of no known kind is simply invalid.
+        // camera does; a link of no known kind tells the user what to use.
         val elsewhere = "This code links a new device. Scan it from Settings › Backup & Restore › Link New Device."
         rule.runOnIdle { flow.connectWithUrl(accountUrl) }
         rule.onNodeWithText(elsewhere).assertExists()
@@ -156,10 +163,10 @@ class ConnectFlowTest {
         rule.onNodeWithText(elsewhere).assertDoesNotExist()
 
         rule.runOnIdle { flow.connectWithUrl("https://example.com/not-happy") }
-        rule.onNodeWithText("Invalid authentication URL").assertExists()
+        rule.onNodeWithText(notPairing).assertExists()
         assertTrue(approved.isEmpty())
         rule.onNodeWithText("OK").performClick()
-        rule.onNodeWithText("Invalid authentication URL").assertDoesNotExist()
+        rule.onNodeWithText(notPairing).assertDoesNotExist()
     }
 
     @Test
@@ -169,6 +176,27 @@ class ConnectFlowTest {
         rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
         rule.onNodeWithText("Failed to connect terminal").assertExists()
         assertEquals(0, successes)
+    }
+
+    @Test
+    fun aLocalPairingParseFailureRecordsOnceButANetworkErrorDoesNot() {
+        setTerminal()
+        val events = CopyOnWriteArrayList<AnalyticsEvent>()
+        rule.runOnIdle {
+            flow.record = { events += it }
+            failWith = InvalidPairingKeyException(IllegalArgumentException())
+            flow.connectWithUrl("happy://terminal?bad")
+        }
+        rule.onNodeWithText("Failed to connect terminal").assertExists()
+        assertEquals(listOf(AnalyticsEvent.MobilePairingFailed(PairingMethod.Relay, PairingStart.PasteLink, PairingError.InvalidCode)), events.toList())
+        rule.onNodeWithText("OK").performClick()
+        rule.runOnIdle {
+            failWith = IOException("offline")
+            scanner.results += ScanResult.Scanned(terminalUrl)
+            flow.scan()
+        }
+        rule.onNodeWithText("Failed to connect terminal").assertExists()
+        assertEquals(1, events.size)
     }
 
     @Test
@@ -302,9 +330,9 @@ class ConnectFlowTest {
         assertEquals(listOf("happy://direct?abc"), paired)
 
         approved.clear()
-        assertScanSays(ScanResult.Scanned(accountUrl), "This code asks for a Happy CLI account. Add one on this phone first.")
-        assertScanSays(ScanResult.Scanned("happy://something?else"), "This QR code isn't a Happy code.")
-        assertScanSays(ScanResult.Scanned("https://example.com"), "This QR code isn't a Happy code.")
+        assertScanSays(ScanResult.Scanned(accountUrl), recovery)
+        assertScanSays(ScanResult.Scanned("happy://something?else"), notPairing)
+        assertScanSays(ScanResult.Scanned("https://example.com"), notPairing)
     }
 
     /** "Enter link manually" routes a pasted link as Connect routes a scanned code. */
@@ -317,12 +345,12 @@ class ConnectFlowTest {
         rule.runOnIdle { flow.connectWithUrl("happy://direct?xyz") }
         rule.waitUntil { paired.isNotEmpty() }
         rule.runOnIdle { flow.connectWithUrl(accountUrl) }
-        rule.onNodeWithText("This code asks for a Happy CLI account. Add one on this phone first.").assertExists()
+        rule.onNodeWithText(recovery).assertExists()
         // iOS's title, not "Error" (Strings.Scan.deviceNeedsAccountTitle).
         rule.onNodeWithText("No account to share").assertExists()
         rule.onNodeWithText("OK").performClick()
         rule.runOnIdle { flow.connectWithUrl("hello") }
-        rule.onNodeWithText("Invalid authentication URL").assertExists()
+        rule.onNodeWithText(notPairing).assertExists()
         rule.onNodeWithText("OK").performClick()
         assertEquals(listOf(terminalUrl), approved)
     }

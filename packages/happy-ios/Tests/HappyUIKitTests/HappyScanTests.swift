@@ -27,8 +27,8 @@ private struct NoSockets: WebSocketConnector {
 final class HappyScanTests: XCTestCase {
     private let key = Data(repeating: 9, count: 32)
 
-    private func signedIn() async throws -> AccountController {
-        let controller = AccountController(
+    private func signedOut() -> AccountController {
+        AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()),
             clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(),
@@ -37,6 +37,10 @@ final class HappyScanTests: XCTestCase {
             transport: NoNetwork(),
             connector: NoSockets()
         )
+    }
+
+    private func signedIn() async throws -> AccountController {
+        let controller = signedOut()
         try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 1, count: 32)))
         return controller
     }
@@ -64,11 +68,11 @@ final class HappyScanTests: XCTestCase {
 
     /// What the screen shows after `text` was opened: an alert's title and
     /// message, or the screen pushed.
-    private func shown(_ text: String, _ intent: ScanIntent, context: AppContext) async throws -> String {
+    private func shown(_ text: String, _ intent: ScanIntent, context: AppContext, start: PairingStart = .scan) async throws -> String {
         let (window, navigation) = screens()
         defer { window.isHidden = true }
         let host = try XCTUnwrap(navigation.topViewController)
-        let task = Task { await HappyScan.open(text, intent: intent, context: context, on: host, start: .scan) }
+        let task = Task { await HappyScan.open(text, intent: intent, context: context, on: host, start: start) }
         let visible = try await until { navigation.presentedViewController is UIAlertController || navigation.viewControllers.count > 1 }
         task.cancel()
         guard visible else { return "nothing" }
@@ -76,6 +80,54 @@ final class HappyScanTests: XCTestCase {
             return "\(alert.title ?? "") | \(alert.message ?? "")"
         }
         return String(describing: type(of: navigation.topViewController!))
+    }
+
+    func testRejectedScanAndPasteGiveTheSameGuidance() async throws {
+        let controller = try await signedIn()
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let cases = [
+            ("https://link.happy.engineering/download", Strings.Scan.downloadLink),
+            ("https://link.happy.engineering/download/", Strings.Scan.notHappy),
+            ("https://link.happy.engineering/download?source=example", Strings.Scan.notHappy),
+            ("https://happy.engineering/#download", Strings.Scan.notHappy),
+            ("https://apps.apple.com/us/app/happy/id6748571505", Strings.Scan.notHappy),
+            ("https://testflight.apple.com/join/Example1", Strings.Scan.notHappy),
+            ("https://play.google.com/store/apps/details?id=com.ex3ndr.happy", Strings.Scan.notHappy),
+            ("https://happy.engineering/docs/", Strings.Scan.notHappy),
+            ("https://app.happy.engineering/", Strings.Scan.notHappy),
+            ("https://link.happy.engineering.example.com/download", Strings.Scan.notHappy),
+            ("https://happy.engineering@not-happy.example/download", Strings.Scan.notHappy),
+            ("https://apps.apple.com/account/subscriptions", Strings.Scan.notHappy),
+            ("plain text", Strings.Scan.notHappy),
+        ]
+        for (text, message) in cases {
+            for start: PairingStart in [.scan, .pasteLink] {
+                let actual = try await shown(text, .addAccount, context: context, start: start)
+                XCTAssertEqual(actual, "\(Strings.Scan.notHappyTitle) | \(message)", text)
+            }
+        }
+        await controller.signOut()
+    }
+
+    func testRestoreDeviceLinkWithoutAnAccountNamesTheExistingDevice() async throws {
+        let context = AppContext(account: signedOut(), variant: .development, version: "test")
+        let publicLink = "happy:///account?" + CanonicalBase64URL.encode(key)
+        for start: PairingStart in [.scan, .pasteLink] {
+            let actual = try await shown(publicLink, .addAccount, context: context, start: start)
+            XCTAssertEqual(actual, "\(Strings.Scan.deviceNeedsAccountTitle) | \(Strings.Scan.deviceNeedsAccount)")
+            let malformed = try await shown("happy:///account?bad", .addAccount, context: context, start: start)
+            XCTAssertEqual(malformed, "\(Strings.Common.error) | \(Strings.Modals.invalidAuthUrl)")
+        }
+    }
+
+    func testOldCLIBrowserLinkKeepsItsPairingRoute() async throws {
+        let controller = try await signedIn()
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let url = "https://app.happy.engineering/terminal/connect#key="
+        XCTAssertEqual(HappyScan.route(url + CanonicalBase64URL.encode(key), intent: .connect, context: context), .connectComputer(publicKey: key))
+        let invalid = try await shown(url + "bad", .addAccount, context: context, start: .pasteLink)
+        XCTAssertEqual(invalid, "\(Strings.Common.error) | \(Strings.Modals.invalidAuthUrl)")
+        await controller.signOut()
     }
 
     func testEveryCodeFromEitherScanShowsSomething() async throws {

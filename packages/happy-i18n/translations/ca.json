@@ -2,6 +2,9 @@
   "code": "ca",
   "rule": "one-other",
   "entries": {
+    "scan.downloadLink": "Aquest és un enllaç de baixada, no un codi d’aparellament. Si estàs configurant Happy Desktop, fes clic a «Downloaded and opened» a l’ordinador i escaneja el codi d’aparellament que s’hi mostra.",
+    "scan.restoreDeviceLink": "Aquest codi restaura un compte de Happy CLI al dispositiu que el mostra. En un dispositiu on ja tinguis la sessió iniciada amb aquest compte, obre Configuració → Còpia i restauració → Enllaça un dispositiu nou i escaneja el codi.",
+    "scan.notPairing": "Això no és un codi ni un enllaç d’aparellament. Fes servir el codi o l’enllaç d’aparellament que es mostra al dispositiu que vols connectar.",
     "voiceStatusBar.tapToEnd": "toca per finalitzar",
     "voiceStatusBar.connecting": "Connectant…",
     "voiceStatusBar.error": "Error de connexió",
