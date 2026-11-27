@@ -4,8 +4,14 @@ extension LocalStore {
     /// Accepts files and text with the local activity stamp in one commit.
     /// A replayed localId, including one already echoed into the log, is not
     /// a new send and must not move the timestamp or resurrect its outbox row.
-    public func enqueueAcceptedSend(_ items: [OutboxRecord], attachments: [AttachmentRecord]) throws {
+    public func enqueueAcceptedSend(_ items: [OutboxRecord], attachments: [AttachmentRecord],
+                                    admitting: (@Sendable (SessionRecord?) -> String?)? = nil) throws {
         try performWrite { db in
+            // The session as it stands in this transaction, not as a cache last saw it.
+            if let admitting, let sessionId = items.last?.sessionId,
+               let reason = admitting(try SessionRecord.fetchOne(db, key: sessionId)) {
+                throw SessionRefusedSend(reason: reason)
+            }
             for attachment in attachments { try attachment.insert(db, onConflict: .ignore) }
             for item in items {
                 if try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM message WHERE sessionId = ? AND localId = ?)",
@@ -18,6 +24,16 @@ extension LocalStore {
         }
     }
 }
+/// `enqueueAcceptedSend`'s refusal: the session, read where the send is
+/// kept, can't take it, and why.
+public struct SessionRefusedSend: Error, Equatable, Sendable {
+    public let reason: String
+
+    public init(reason: String) {
+        self.reason = reason
+    }
+}
+
 extension LocalStore {
     /// The records in the chat's window (the ones its reducer folds) that
     /// can leave a user message waiting for the daemon: user text asking

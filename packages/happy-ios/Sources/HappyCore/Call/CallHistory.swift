@@ -180,5 +180,33 @@ public struct OfflineCallHistoryStore: CallHistoryStore {
     }
 
     /// Every history's writes, one after another, off the caller's thread.
-    private static let queue = DispatchQueue(label: "call-history", qos: .utility)
+    static let queue = DispatchQueue(label: "call-history", qos: .utility)
+}
+
+/// A Happy account's history, a file in its own folder
+/// (`AccountSession.callHistoryFile`): readable only while the phone is
+/// unlocked, never backed up, and gone with the account's data.
+public struct FileCallHistoryStore: CallHistoryStore {
+    private let url: URL
+
+    public init(url: URL) {
+        self.url = url
+    }
+
+    /// After the writes already asked for.
+    public func read() -> Data? { OfflineCallHistoryStore.queue.sync { try? Data(contentsOf: url) } }
+
+    public func write(_ data: Data) {
+        OfflineCallHistoryStore.queue.async { [url] in
+            #if canImport(Darwin)
+            try? data.write(to: url, options: [.atomic, .completeFileProtection])
+            var excluded = url
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? excluded.setResourceValues(values)
+            #else
+            try? data.write(to: url, options: .atomic)
+            #endif
+        }
+    }
 }

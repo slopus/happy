@@ -495,6 +495,113 @@ final class PendingChatLaunchTests: XCTestCase {
         root.close()
     }
 
+    // MARK: Voice starts
+
+    /// A voice start's starter: its own scope under the account's, its
+    /// first message kept through the call's gate, held at `hold` once it
+    /// is on its way, before (`admitFirst` false) or after it is admitted.
+    @MainActor
+    private func voiceStarter(_ machine: Machine, sessions: Sessions, scope: SpawnRequests, gate: VoiceStartGate,
+                              admitFirst: Bool, hold: Hold) -> SessionStarter {
+        let storage = RealStorage(sessions: sessions)
+        let first = VoiceStartSender(gate: gate, base: storage) { message, sessionId, admitting in
+            if admitFirst, let reason = admitting(nil) { throw SessionRefusedSend(reason: reason) }
+            await hold.arrive()
+            if !admitFirst, let reason = admitting(nil) { throw SessionRefusedSend(reason: reason) }
+            return try await storage.send(message, sessionId: sessionId)
+        }
+        return SessionStarter(environment: .init(
+            ops: machine, sessionOps: machine, sender: first, metadataTransport: NoTransport(), saveInitialModes: { _, _ in },
+            refreshSessions: { await machine.refreshed() },
+            attachmentPlan: { message, _ in AttachmentSendPlan(accepted: message.attachments, rejected: [], shouldShowUnsupportedAlert: false, shouldSendText: true) },
+            spawnRequests: scope, sleep: { _ in }
+        ))
+    }
+
+    private actor Hold {
+        private var gate: CheckedContinuation<Void, Never>?
+        private(set) var arrived = false
+        func arrive() async {
+            arrived = true
+            await withCheckedContinuation { gate = $0 }
+        }
+        func release() {
+            gate?.resume()
+            gate = nil
+        }
+    }
+
+    /// End before the first message is kept: it is refused where it would
+    /// be kept, and the session the start made is put down.
+    @MainActor
+    func testAVoiceStartEndedBeforeItsFirstMessageIsKeptKeepsNothing() async {
+        let sessions = Sessions(drafts: [:])
+        let root = SpawnRequests()
+        let machine = Machine(spawns: [.success(sessionId: "voice")])
+        let gate = VoiceStartGate(), hold = Hold()
+        let scope = root.child(.voiceStart("v1"))
+        let starter = voiceStarter(machine, sessions: sessions, scope: scope, gate: gate, admitFirst: false, hold: hold)
+        let starting = Task { await starter.start(Self.launch(place: "/src/happy", prompt: "hello"), isCurrentTarget: { true }) }
+        await waitFor { await hold.arrived }
+        gate.end(closing: scope)
+        await hold.release()
+        let made = await starting.value
+        XCTAssertNil(made)
+        await waitFor { await machine.stops == ["voice"] }
+        let sent = await sessions.sentTexts()
+        XCTAssertEqual(sent, [], "refused where it would be kept")
+        root.close()
+    }
+
+    /// End after the first message is kept: the session is the person's
+    /// and stays.
+    @MainActor
+    func testAVoiceStartWhoseFirstMessageIsKeptOutlivesEnd() async {
+        let sessions = Sessions(drafts: [:])
+        let root = SpawnRequests()
+        let machine = Machine(spawns: [.success(sessionId: "voice")])
+        let gate = VoiceStartGate(), hold = Hold()
+        let scope = root.child(.voiceStart("v1"))
+        let starter = voiceStarter(machine, sessions: sessions, scope: scope, gate: gate, admitFirst: true, hold: hold)
+        let starting = Task { await starter.start(Self.launch(place: "/src/happy", prompt: "hello"), isCurrentTarget: { true }) }
+        await waitFor { await hold.arrived }
+        gate.end(closing: scope)
+        XCTAssertFalse(scope.isClosed)
+        await hold.release()
+        let made = await starting.value
+        XCTAssertEqual(made, "voice")
+        let sent = await sessions.sentTexts()
+        XCTAssertEqual(sent, ["hello"])
+        let stops = await machine.stops
+        XCTAssertEqual(stops, [])
+        root.close()
+    }
+
+    /// The person opens the new chat while it syncs: the account's release
+    /// reaches the voice start's own scope, so End leaves that chat running.
+    @MainActor
+    func testOpeningAVoiceStartsChatAdoptsItBeforeEnd() async {
+        let sessions = Sessions(drafts: [:])
+        let root = SpawnRequests()
+        let machine = Machine(spawns: [.success(sessionId: "voice")])
+        await machine.holdReady("voice")
+        let gate = VoiceStartGate(), hold = Hold()
+        let scope = root.child(.voiceStart("v1"))
+        let starter = voiceStarter(machine, sessions: sessions, scope: scope, gate: gate, admitFirst: false, hold: hold)
+        let starting = Task { await starter.start(Self.launch(place: "/src/happy", prompt: "hello"), isCurrentTarget: { true }) }
+        await waitFor { await machine.isHoldingReady }
+        root.release(sessionId: "voice")
+        gate.end(closing: scope)
+        await machine.releaseReady()
+        _ = await starting.value
+        try? await Task.sleep(for: .milliseconds(50))
+        let stops = await machine.stops
+        let kills = await machine.kills
+        XCTAssertEqual(stops, [], "the chat the person opened keeps running")
+        XCTAssertEqual(kills, [])
+        root.close()
+    }
+
     // MARK: Real starters
 
     private static func launch(place: String, prompt: String = "") -> NewSessionLaunch {

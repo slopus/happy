@@ -103,8 +103,14 @@ public struct OutboxSender: ChatSending {
 
     /// Atomically accepts supported files and encoded text into the local outbox.
     public func send(_ message: OutgoingMessage, sessionId: String) async throws -> String {
+        try await send(message, sessionId: sessionId, admitting: nil)
+    }
+
+    /// As `send`, kept only if `admitting` finds the session's row, read
+    /// in the same transaction, able to take it (`SessionRefusedSend`).
+    public func send(_ message: OutgoingMessage, sessionId: String, admitting: (@Sendable (SessionRecord?) -> String?)?) async throws -> String {
         let draftStamp = try store.composerState(sessionId: sessionId).values["draftUpdatedAt"]
-        let id = try await sync.accept(message, sessionId: sessionId, filesDirectory: filesDirectory)
+        let id = try await sync.accept(message, sessionId: sessionId, filesDirectory: filesDirectory, admitting: admitting)
         // sync.ts `releaseSpawnedSession`: a session written to is no longer
         // an abandoned start.
         await spawnRequests.release(sessionId: sessionId)
