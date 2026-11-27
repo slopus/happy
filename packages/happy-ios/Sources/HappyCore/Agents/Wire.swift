@@ -258,6 +258,18 @@ extension AgentWire {
         public var avatar: Avatar?
         public var version: String?
         public var agent: Agent?
+        /// A Happy Cloud bot's: `shared` or `personal` (`BotKind`), nil
+        /// from a daemon. Independent of `isAdmin`: any kind may be admin.
+        public var kind: String?
+        public var isAdmin: Bool?
+        /// The reader may change its name, picture and instructions.
+        public var editable: Bool?
+        /// A personal bot's own instructions, sent only to those who may edit them.
+        public var instructions: String?
+        /// A personal bot's deployed definition, counting from 1.
+        public var revision: Int?
+
+        enum CodingKeys: String, CodingKey { case id, name, systemKey, status, avatar, version, agent, kind, isAdmin, editable, instructions, revision }
     }
 
     public struct Task: Equatable, Sendable, Codable {

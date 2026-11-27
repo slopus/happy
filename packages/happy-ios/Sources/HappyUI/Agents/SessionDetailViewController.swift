@@ -434,6 +434,9 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         var shownSections = permissionChoice?().map { [ProfileSection(id: "controls", rows: [Self.permissionRow($0) { [weak self] in self?.permissionChoice?() } relaid: { [weak self] in self?.view.setNeedsLayout() }])] } ?? []
         if let workspaceId = row?.workspaceId { shownSections.append(ProfileSection(id: "workspace", rows: [changesRow(workspaceId)])) }
         if row?.isHappy == true, session.isCloud { shownSections.append(ProfileSection(id: "providers", rows: [providersRow()])) }
+        if let row, row.targetKind == "bot", row.editable, let botId = row.targetId {
+            shownSections.append(ProfileSection(id: "bot", rows: [editBotRow(botId, mark: row.mark)]))
+        }
         sections.show(shownSections)
         let layout = SessionDetailLayout(
             width: width, nameHeight: header.nameHeight, nameWidth: header.nameWidth,
@@ -494,6 +497,16 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         return SettingsRow(id: "workspace-changes", title: Strings.WorkspaceChanges.changes, icon: ("git-compare-outline", .orange), value: value, accessory: .chevron, action: { [weak self] in
             guard let self else { return }
             navigationController?.pushViewController(WorkspaceChangesViewController(session: session, workspaceId: workspaceId), animated: true)
+        })
+    }
+
+    /// A bot whose `editable` says the person may change it: its name,
+    /// picture and instructions (`BotSettingsViewController`). A shared
+    /// bot, and one they may not change, has none.
+    private func editBotRow(_ botId: String, mark: Row.Mark) -> SettingsRow {
+        SettingsRow(id: "bot-edit", title: Strings.Bots.editRow, icon: ("create-outline", .blue), accessory: .chevron, action: { [weak self] in
+            guard let self else { return }
+            navigationController?.pushViewController(BotSettingsViewController(session: session, botId: botId, mark: mark), animated: true)
         })
     }
 

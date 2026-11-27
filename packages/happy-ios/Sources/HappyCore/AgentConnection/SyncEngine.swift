@@ -31,6 +31,9 @@ public struct HomeSnapshot: Equatable, Sendable {
     /// What is available to the person's account (cloud only): a feature
     /// whose plugin they uninstalled is listed nowhere, and its screens close.
     public var features = AccountFeatures()
+    /// The bots carry a `kind` (`BotKind`): a Happy Cloud server's, whose
+    /// bots its admin bot makes, so none is made here.
+    public var botKinds = false
     public init() {}
 }
 
@@ -1159,6 +1162,7 @@ public actor SyncEngine {
             }
             snapshot.rows = Rows.visible(snapshot.allRows)
             snapshot.unjoinedTasks = SidebarRows.unjoinedTasks(desktop)
+            snapshot.botKinds = desktop.bots?.contains { $0.kind != nil } == true
             shownRows = Dictionary(snapshot.rows.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
             snapshot.userId = desktop.profile?.userId
             snapshot.profilePhoto = desktop.profile?.photo?.thumbhash

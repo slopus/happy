@@ -21,9 +21,10 @@ public enum SidebarReorder {
         }
     }
 
-    /// Whether a finger may carry `row`: a bot's or task's own row.
+    /// Whether a finger may carry `row`: a bot's or task's own row, but
+    /// not a shared bot's, which stands in the first group.
     public static func movable(_ row: Row) -> Bool {
-        row.kind == .space && row.depth == 0 && row.targetId != nil && (row.targetKind == "bot" || row.targetKind == "task")
+        row.kind == .space && row.depth == 0 && row.targetId != nil && !row.sharedBot && (row.targetKind == "bot" || row.targetKind == "task")
     }
 
     /// The rows of the family `rows[index]` is one of: each peer's row with

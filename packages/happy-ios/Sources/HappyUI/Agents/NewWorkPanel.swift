@@ -12,7 +12,9 @@ import UIKit
 ///   optional name and a line saying what it is, as desktop asks it
 ///   ("generated if left blank"); a task asks nothing and names itself
 ///   from its first message, as one sent with a blank name always has.
-///   It keeps the bot's room empty, so Task | Bot moves nothing.
+///   It keeps the bot's room empty, so Task | Bot moves nothing. On a
+///   Happy Cloud server, whose bots its admin bot makes (`offersBot`
+///   false), there is no choice: a task, and no Task | Bot.
 /// - `.session` (a legacy account): the computer, the project on it, and
 ///   the harness, each row two columns lined up across the rows, what it
 ///   picks and the pick (`NewWorkRowColumns`). Where a computer's Happy
@@ -35,6 +37,8 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     }
 
     let mode: Mode
+    /// `.work`: Bot is offered beside Task.
+    let offersBot: Bool
     let kind = UISegmentedControl(items: [Strings.newWorkTask, Strings.newWorkBot])
     let name = UITextField()
     private let field = UIView()
@@ -82,15 +86,16 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
 
     var choice: NewTask.Choice {
         get {
-            let bot = kind.selectedSegmentIndex == 1
+            let bot = offersBot && kind.selectedSegmentIndex == 1
             // A task is never named here: it goes as a blank name does.
             return NewTask.Choice(kind: bot ? .bot : .task, name: bot ? name.text ?? "" : "")
         }
         set {
-            kind.selectedSegmentIndex = newValue.kind == .bot ? 1 : 0
-            if newValue.kind == .bot, name.text != newValue.name { name.text = newValue.name }
+            let bot = offersBot && newValue.kind == .bot
+            kind.selectedSegmentIndex = bot ? 1 : 0
+            if bot, name.text != newValue.name { name.text = newValue.name }
             showNote()
-            showArt(newValue.kind == .bot ? .robot : .magicWand)
+            showArt(bot ? .robot : .magicWand)
         }
     }
 
@@ -140,8 +145,9 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         superview?.setNeedsLayout()
     }
 
-    init(mode: Mode) {
+    init(mode: Mode, offersBot: Bool = true) {
         self.mode = mode
+        self.offersBot = offersBot
         super.init(frame: .zero)
         accessibilityIdentifier = "new-work"
         kind.accessibilityIdentifier = "new-work-kind"
@@ -172,6 +178,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         switch mode {
         case .work:
             kind.selectedSegmentIndex = 0
+            kind.isHidden = !offersBot
             name.attributedPlaceholder = Self.placeholder(Strings.newWorkName)
             name.autocapitalizationType = .sentences
             for view in [kind, field, note] { addSubview(view) }
@@ -250,7 +257,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             return NewWorkLayout(
                 width: width, sides: sides, top: top, bottom: bottom,
                 // A task lays out a bot's name and note's room too.
-                kindHeight: kind.intrinsicContentSize.height, rows: 1,
+                kindHeight: offersBot ? kind.intrinsicContentSize.height : nil, rows: 1,
                 note: measuredRoom, art: artScene != nil
             )
         case .session:
