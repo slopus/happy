@@ -581,7 +581,11 @@ export async function runAcp(opts: {
     machineId: settings.machineId,
     startedBy: opts.startedBy,
     sandbox: settings.sandboxConfig,
+    parentSessionId: process.env.HAPPY_FORKED_FROM_SESSION_ID,
+    forkedFromMessageId: process.env.HAPPY_FORKED_FROM_MESSAGE_ID,
+    crossAgentRequestId: process.env.HAPPY_CROSS_AGENT_REQUEST_ID,
   });
+  delete process.env.HAPPY_CROSS_AGENT_REQUEST_ID;
   const delegatedLaunch = delegationLaunchContext();
   if (delegatedLaunch) {
     metadata.parentSessionId = delegatedLaunch.parentSessionId;

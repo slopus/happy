@@ -301,6 +301,23 @@ describe('runAcp', () => {
     });
   });
 
+  it.each(['antigravity', 'opencode'])('retains daemon conversation lineage before creating/reporting the %s session', async agentName => {
+    vi.stubEnv('HAPPY_FORKED_FROM_SESSION_ID', 'original-source');
+    vi.stubEnv('HAPPY_FORKED_FROM_MESSAGE_ID', 'rewind-point');
+    vi.stubEnv('HAPPY_CROSS_AGENT_REQUEST_ID', 'immutable-switch-request');
+    const response = { id: 'session-1', encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy', seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+    mocks.mockGetOrCreateSession.mockResolvedValueOnce(response);
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName, command: '/fixture/agent', args: ['--acp'], startedBy: 'daemon' });
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+      const lineage = { parentSessionId: 'original-source', forkedFromMessageId: 'rewind-point', crossAgentRequestId: 'immutable-switch-request' };
+      expect(mocks.mockGetOrCreateSession).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining(lineage) }));
+      expect(mocks.mockNotifyDaemonSessionStarted).toHaveBeenCalledWith('session-1', expect.objectContaining(lineage), expect.any(Object));
+      expect(process.env.HAPPY_CROSS_AGENT_REQUEST_ID).toBeUndefined();
+    } finally { await mocks.getKillHandler()!(); await run; vi.unstubAllEnvs(); }
+  });
+
   it('emits processor readiness only after the user handler is installed and ACP startSession succeeds', async () => {
     const startupLifecycle = {} as any;
     const runPromise = runAcp({

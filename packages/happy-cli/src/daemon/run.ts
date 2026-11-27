@@ -2,6 +2,7 @@ import { createCrossAgentContinuation } from '@/continuation/coordinator';
 import { createConversationSessionLauncher, assertConversationLaunchIdle, type ConversationNativeCandidate, type ConversationLaunchSnapshot } from './conversationSessionLaunch';
 import { readNativeConversationCoverage } from './nativeConversationCoverage';
 import { verifyNativeProcessGroup, awaitNativeProcessGroupExit } from './nativeProcessGroup';
+import { cancelPersistedConversationCandidate } from './cancelPersistedConversationCandidate';
 import { readNativeToolResult } from '@/continuation/recoverToolResult';
 import { PortableContextStore, PORTABLE_CONTEXT_DIRECTORY_NAME } from '@/continuation/portableContextStore';
 import { getProjectPath } from '@/claude/utils/path';
@@ -1494,13 +1495,20 @@ export async function startDaemon(): Promise<void> {
         if (!snapshot) throw new Error('Cannot read the current encrypted conversation state.');
         return { id, ...snapshot };
     };
-    const stopConversationWriter = async (owner: ConversationLaunchSnapshot): Promise<void> => {
+    const stopConversationWriter = async (owner: ConversationLaunchSnapshot, persistedCancellation?: () => Promise<ConversationLaunchSnapshot>): Promise<void> => {
       const entry = [...pidToTrackedSession.entries()].find(([, candidate]) => candidate.happySessionId === owner.id);
       if (!entry) {
         if (!owner.metadata.hostPid) throw new Error('The previous native worker process cannot be identified.');
+        let stillPresent = false;
         for (const pid of [owner.metadata.hostPid, -owner.metadata.hostPid]) {
-          try { process.kill(pid, 0); throw new Error('The previous native writer is still present.'); }
+          try { process.kill(pid, 0); stillPresent = true; }
           catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+        }
+        if (stillPresent) {
+          if (!persistedCancellation) throw new Error('The previous native writer is still present.');
+          await cancelPersistedConversationCandidate({ owner, machineId, retained: () => findTrackedSessionById(owner.id),
+            verify: persistedCancellation, callSessionRpc: (id, encryption, method, body) => apiMachine.callSessionRpc(id, encryption, method, body),
+            verifyProcessGroup: verifyNativeProcessGroup, awaitProcessGroupExit: awaitNativeProcessGroupExit });
         }
         return;
       }
@@ -1620,14 +1628,19 @@ export async function startDaemon(): Promise<void> {
         if (matches.size > 1) throw new Error('The conversation launch registered more than one worker.');
         return [...matches][0];
       },
-      cancelTarget: async (request, targetId, assertReservation) => {
+      cancelTarget: async (request, targetId, assertReservation, readyBinding) => {
         const verify = async () => {
           await assertReservation();
           const root = await readConversationSnapshot(request.rootSessionId);
           const target = await readConversationSnapshot(targetId);
           const m = target.metadata;
+          const legacyReady = readyBinding?.phase === 'ready' && readyBinding.rootSessionId === request.rootSessionId
+            && readyBinding.sourceSessionId === request.sourceSessionId && readyBinding.requestId === request.requestId
+            && readyBinding.targetSessionId === targetId && readyBinding.targetAgent === m.flavor;
+          const requestMatches = m.crossAgentRequestId === request.requestId || (legacyReady && m.crossAgentRequestId == null);
+          const parentMatches = m.parentSessionId === request.sourceSessionId || (legacyReady && m.parentSessionId == null);
           if (targetId === request.sourceSessionId || targetId === request.rootSessionId || m.machineId !== machineId || m.path !== root.metadata.path
-              || m.crossAgentRequestId !== request.requestId || m.parentSessionId !== request.sourceSessionId
+              || (readyBinding && !legacyReady) || !requestMatches || !parentMatches
               || (m.conversationRootSessionId && m.conversationRootSessionId !== request.rootSessionId)
               || (m.continuationOfSessionId && m.continuationOfSessionId !== request.sourceSessionId)) throw new Error('The conversation candidate identity cannot be verified.');
           assertConversationLaunchIdle(target, { allowArchived: true });
@@ -1635,7 +1648,7 @@ export async function startDaemon(): Promise<void> {
           return target;
         };
         const target = await verify();
-        await stopConversationWriter(target);
+        await stopConversationWriter(target, verify);
         // An old client might have delivered while shutdown was in flight.
         // A second immutable history traversal must still prove no user input.
         await verify();

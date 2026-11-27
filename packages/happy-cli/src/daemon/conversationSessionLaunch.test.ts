@@ -179,6 +179,20 @@ describe('reserved conversation native restoration', () => {
         expect(await f.launch.cancel(request)).toMatchObject({ success: false, error: expect.stringContaining('unknown') });
         expect(f.deps.cancelTarget).not.toHaveBeenCalled(); expect(f.deps.spawn).toHaveBeenCalledOnce();
     });
+    it('supplies missing-lineage authority only from an exact durable ready receipt', async () => {
+        const f = fixture(); await f.launch(request);
+        expect(await f.launch.cancel(request)).toMatchObject({ success: true });
+        expect(f.deps.cancelTarget).toHaveBeenCalledWith(request, 'new-segment', expect.any(Function), {
+            rootSessionId: request.rootSessionId, sourceSessionId: request.sourceSessionId, requestId: request.requestId,
+            phase: 'ready', targetSessionId: 'new-segment', targetAgent: 'codex',
+        });
+    });
+    it('never grants legacy missing-lineage authority from a starting receipt', async () => {
+        const f = fixture(); f.deps.spawn.mockResolvedValueOnce({ type: 'error', errorMessage: 'lost startup ACK' });
+        await f.launch(request); f.deps.findCreated.mockResolvedValue('registered-worker');
+        expect(await f.launch.cancel(request)).toMatchObject({ success: true });
+        expect(f.deps.cancelTarget).toHaveBeenCalledWith(request, 'registered-worker', expect.any(Function), undefined);
+    });
     it('retains the receipt when a user-delivery or process-exit proof rejects cancellation', async () => {
         const f = fixture(); await f.launch(request); f.deps.cancelTarget.mockRejectedValueOnce(new Error('user input already delivered'));
         expect(await f.launch.cancel(request)).toMatchObject({ success: false, error: expect.stringContaining('delivered') });

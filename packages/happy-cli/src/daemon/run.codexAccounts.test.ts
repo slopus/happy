@@ -645,6 +645,51 @@ it.each([false, true, 'partial-history'])('cancels only an unsent, fully stopped
  expect(state.spawned).toHaveLength(2);
 });
 
+it.each([
+ ['antigravity', true, 'missing-ready', true], ['codex', true, 'full-ready', true], ['antigravity', false, 'missing-ready', true],
+ ['antigravity', true, 'parent-conflict', false], ['antigravity', true, 'request-conflict', false],
+ ['antigravity', true, 'agent-conflict', false], ['antigravity', true, 'missing-starting', false], ['antigravity', true, 'missing-receipt', false],
+] as const)('proves persisted %s cancellation after daemon restart (live=%s, lineage=%s)', async (agent, alive, scenario, success) => {
+ const f = await nativeConversationFixture();
+ const targetId = 'persisted-cancel-target'; const targetPid = 987605;
+ const metadata: Record<string, unknown> = { machineId: 'machine-1', path: sourceHome, hostPid: targetPid, flavor: agent, startedBy: 'daemon' };
+ if (scenario === 'full-ready') Object.assign(metadata, { parentSessionId: 'current-claude', crossAgentRequestId: f.requestId });
+ if (scenario === 'parent-conflict') metadata.parentSessionId = 'other-source';
+ if (scenario === 'request-conflict') metadata.crossAgentRequestId = 'other-request';
+ state.control.onHappySessionWebhook(targetId, metadata, f.encryption);
+ Object.assign(f.rootMetadata.conversationSwitch, { targetSessionId: targetId });
+ f.rows[0].metadata = f.encrypted(f.rootMetadata);
+ f.rows.push({ id: targetId, active: true, seq: 1, metadataVersion: 1, metadata: f.encrypted(metadata),
+  agentState: f.encrypted({ turnStatus: { status: 'completed' }, claudeThinking: false }) });
+ f.messageRows[targetId] = [{ seq: 1, localId: 'session-envelope:ready',
+  content: { t: 'encrypted', c: f.encrypted({ role: 'agent', content: { type: 'event', data: { type: 'ready' } } }) } }];
+ const receiptDir = join(sourceHome, 'conversation-session-launches', 'machine-1'); await mkdir(receiptDir, { recursive: true });
+ if (scenario !== 'missing-receipt') await writeFile(join(receiptDir, `${f.requestId}.json`), JSON.stringify({
+  phase: scenario === 'missing-starting' ? 'starting' : 'ready',
+  identity: JSON.stringify(['conversation-root', 'current-claude', scenario === 'agent-conflict' ? 'codex' : agent, null, null]),
+  ...(scenario === 'missing-starting' ? {} : { result: { type: 'success', sessionId: targetId } }) }));
+ state.control.requestShutdown();
+ let stopped = false; void daemon.then(() => { stopped = true; });
+ await vi.waitFor(async () => { await vi.advanceTimersByTimeAsync(150); expect(stopped).toBe(true); });
+ const callSessionRpc = vi.fn(async (_id, _encryption, method) => method === 'delegation-context'
+  ? { agent, hostPid: targetPid } : { success: true });
+ const originalMachineClient = state.api.machineSyncClient;
+ state.api.machineSyncClient = () => ({ ...originalMachineClient(), callSessionRpc });
+ state.handlers = null; daemon = startDaemon(); await vi.waitFor(() => expect(state.handlers).toBeTruthy());
+ if (!alive) vi.mocked(process.kill).mockImplementation((pid: number) => {
+  if (Math.abs(pid) === targetPid) throw Object.assign(new Error('already exited'), { code: 'ESRCH' });
+  return true;
+ });
+ const before = vi.mocked(process.kill).mock.calls.length;
+ const result = await state.handlers.cancelConversationLaunch(f.request);
+ expect(result.success).toBe(success);
+ if (success) expect(result).toEqual({ success: true, cancelled: true, targetSessionId: targetId });
+ expect(callSessionRpc.mock.calls.map(([, , method]) => method)).toEqual(success && alive ? ['delegation-context', 'killSession'] : []);
+ expect(vi.mocked(process.kill).mock.calls.slice(before).every(([, signal]) => signal === 0)).toBe(true);
+ expect(state.children[0].kill).not.toHaveBeenCalled();
+ expect(state.spawned).toHaveLength(1);
+});
+
 it('launches a fresh managed Codex child without inheriting a parent native account audit', async () => {
  await rememberCodexAccountSession(join(sourceHome, 'codex-session-cache'), 'claude-parent', 'old-parent-profile');
  const launching = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'g'.repeat(43), parentSessionId: 'claude-parent' });

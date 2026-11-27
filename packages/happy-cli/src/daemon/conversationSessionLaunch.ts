@@ -14,6 +14,10 @@ export type ConversationSessionLaunchRequest = {
     magpieModel?: string; traceId?: string;
 };
 export type ConversationSessionCancelRequest = Pick<ConversationSessionLaunchRequest, 'rootSessionId' | 'sourceSessionId' | 'requestId'>;
+/** Daemon-only proof from a completed durable launch receipt, never client input. */
+export type ConversationReadyCandidateBinding = ConversationSessionCancelRequest & {
+    phase: 'ready'; targetSessionId: string; targetAgent: ConversationSessionLaunchRequest['targetAgent'];
+};
 export type ConversationSessionCancelResult = { success: true; cancelled: true; targetSessionId?: string } | { success: false; error: string };
 type ConversationMetadata = Metadata & {
     conversationRootSessionId?: string; conversationActiveSessionId?: string;
@@ -45,7 +49,7 @@ type Dependencies = {
     findCreated: (request: ConversationSessionLaunchRequest) => Promise<string | undefined>;
     spawn: (request: ConversationSessionLaunchRequest, source: ConversationLaunchSnapshot,
         native: ConversationNativeCandidate | undefined, validate: Validator) => Promise<SpawnSessionResult>;
-    cancelTarget: (request: ConversationSessionCancelRequest, targetId: string, assertReservation: () => Promise<void>) => Promise<void>;
+    cancelTarget: (request: ConversationSessionCancelRequest, targetId: string, assertReservation: () => Promise<void>, readyBinding?: ConversationReadyCandidateBinding) => Promise<void>;
 };
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const nativeId = (session: ConversationLaunchSnapshot) => session.metadata.flavor === 'claude'
@@ -269,6 +273,10 @@ export function createConversationSessionLauncher(deps: Dependencies) {
             const saved = receipt ? JSON.parse(receipt.identity) as unknown[] : undefined;
             if (saved && (saved[0] !== request.rootSessionId || saved[1] !== request.sourceSessionId)) throw new Error('Conversation cancellation identity mismatch.');
             if (receipt?.phase === 'cancelled') return { success: true, cancelled: true, ...(receipt.result?.sessionId ? { targetSessionId: receipt.result.sessionId } : {}) };
+            if (receipt && (!Array.isArray(saved) || saved.length !== 5
+                || !['claude', 'codex', 'opencode', 'antigravity'].includes(saved[2] as string))) {
+                throw new Error('The original conversation launch receipt is invalid.');
+            }
             let reservedTarget: string | undefined;
             const assertReservation = async () => {
                 const root = await deps.read(request.rootSessionId);
@@ -297,7 +305,11 @@ export function createConversationSessionLauncher(deps: Dependencies) {
             const targetId = receipt.result?.sessionId ?? created;
             if (!targetId || (created && created !== targetId) || (reservedTarget && reservedTarget !== targetId)) throw new Error('The original conversation worker has not registered uniquely; its outcome remains unknown.');
             reservedTarget = targetId;
-            await deps.cancelTarget(request, targetId, assertReservation);
+            const readyBinding: ConversationReadyCandidateBinding | undefined = receipt.phase === 'ready'
+                && receipt.result?.type === 'success' && receipt.result.sessionId === targetId
+                ? { rootSessionId: request.rootSessionId, sourceSessionId: request.sourceSessionId, requestId: request.requestId,
+                    phase: 'ready', targetSessionId: targetId, targetAgent: original.targetAgent } : undefined;
+            await deps.cancelTarget(request, targetId, assertReservation, readyBinding);
             await assertReservation();
             const temp = `${path}.cancelled`;
             await writeFile(temp, JSON.stringify({ ...receipt, phase: 'cancelled', result: { type: 'success', sessionId: targetId } }), { mode: 0o600 });
