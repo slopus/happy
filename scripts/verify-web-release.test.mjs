@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { copyFile, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
@@ -11,6 +11,7 @@ const verifierPath = fileURLToPath(new URL('./verify-web-release.mjs', import.me
 const assetManifest = JSON.parse(await readFile(fileURLToPath(new URL('./desktop-skin-assets.json', import.meta.url)), 'utf8'));
 const sourceSkins = fileURLToPath(new URL('../packages/happy-app/public/desktop-skins/', import.meta.url));
 const revision = '1234567890abcdef1234567890abcdef12345678';
+const secondaryOrigin = 'https://121.43.32.242:8443';
 const canvasPath = `/dsh-image-canvas/${revision}/index.html`;
 const canvasFiles = new Map([
     ['index.html', 'text/html'],
@@ -105,13 +106,40 @@ async function runVerifier({
     botsAssetFailure = null,
     includeCanvas = false,
     canvasFailure = null,
+    unownedSecondaryRoutes = false,
+    unownedShareRoute = false,
+    omitUnrelatedLocalAssets = false,
+    includeAppCss = false,
+    styleContentType = 'text/css',
+    entryContentType = 'text/html; charset=utf-8',
+    includeEntryScript = true,
+    includeAppModule = false,
+    moduleContentType = 'application/javascript',
+    includeWebFont = false,
+    webFontContentType = 'font/woff',
+    webFontCors = true,
 } = {}) {
     const directory = await createDist(includeSkin, includeWarmSkin);
+    if (omitUnrelatedLocalAssets) await Promise.all(['desktop-skins', 'assets/sounds', '.well-known', 'metadata.json', 'canvaskit.wasm']
+        .map(path => rm(join(directory, path), { recursive: true, force: true })));
     const botsJs = '/assets/bots/bots-' + 'b'.repeat(20) + '.js';
     const botsCss = '/assets/bots/bots-' + 'c'.repeat(20) + '.css';
-    const html = await readFile(join(directory, 'index.html'), 'utf8');
+    let html = await readFile(join(directory, 'index.html'), 'utf8');
+    if (!includeEntryScript) html = html.replace('<script src="/_expo/app.js"></script>', '');
+    if (includeAppCss) {
+        html = html.replace('</head>', '<link rel="stylesheet" href="/_expo/app.css"></head>');
+        await writeFile(join(directory, '_expo', 'app.css'), '.app { display: block; }');
+    }
+    if (includeAppModule) {
+        html = html.replace('</head>', '<script type="module" src="/_expo/app.mjs"></script></head>');
+        await writeFile(join(directory, '_expo', 'app.mjs'), 'export const app = true;');
+    }
+    if (includeWebFont) {
+        html = html.replace('</head>', '<link rel="preload" as="font" href="/assets/fixture.woff"></head>');
+        await writeFile(join(directory, 'assets', 'fixture.woff'), 'font');
+    }
     const canvasMeta = includeCanvas && canvasFailure !== 'unconfigured'
-        ? `<meta name="paws-project-canvas-entry" content="${canvasPath}">` : '';
+        ? `<meta name="paws-project-canvas-entry" content="${canvasFailure === 'malformed-entry' ? '/dsh-image-canvas/invalid/index.html' : canvasPath}">` : '';
     await writeFile(join(directory, 'index.html'), html.replace('</head>', `<meta name="paws-bots-entry" content="${botsJs}"><meta name="paws-bots-style" content="${botsCss}">${canvasMeta}</head>`));
     if (includeCanvas) {
         for (const file of canvasFiles.keys()) {
@@ -121,8 +149,15 @@ async function runVerifier({
         }
     }
     let healthRequests = 0;
+    const requests = [];
     const server = http.createServer(async (request, response) => {
-        const origin = `http://127.0.0.1:${server.address().port}`;
+        requests.push(request.url);
+        const origin = mode === 'secondary-canvas' ? secondaryOrigin : `http://127.0.0.1:${server.address().port}`;
+        if (unownedSecondaryRoutes && request.url?.startsWith('/.well-known/')) {
+            response.writeHead(200, { 'Content-Type': 'text/html' });
+            response.end('<html>unrelated SPA fallback</html>');
+            return;
+        }
         const canvasPrefix = mode === 'immutable' ? `/web/releases/${revision}/dsh-image-canvas/` : `/dsh-image-canvas/${revision}/`;
         if (includeCanvas && request.url?.startsWith(canvasPrefix)) {
             const file = request.url.slice(canvasPrefix.length);
@@ -134,17 +169,18 @@ async function runVerifier({
             }
             response.statusCode = type && !(file === 'canvas.css' && canvasFailure === 'missing') ? 200 : 404;
             response.setHeader('Content-Type', file === 'canvas.js' && canvasFailure === 'mime' ? 'text/html' : type || 'text/plain');
-            response.setHeader('Cache-Control', 'public,max-age=31536000,immutable');
+            response.setHeader('Cache-Control', canvasFailure === 'cache' ? 'no-cache' : 'public,max-age=31536000,immutable');
             response.setHeader('X-Content-Type-Options', 'nosniff');
             if (canvasFailure !== 'frame-header') response.setHeader('X-Frame-Options', 'SAMEORIGIN');
             response.end(file === 'canvas.css' && canvasFailure === 'bytes' ? 'different css' : `canvas fixture ${file}`);
             return;
         }
-        if (request.url?.endsWith('.ttf')) {
+        if (request.url?.endsWith('.ttf') || request.url?.endsWith('.woff')) {
             if (assetNeverResponds) return;
             response.statusCode = 200;
-            response.setHeader('Content-Type', 'font/ttf');
-            if (includeFontCors) response.setHeader('Access-Control-Allow-Origin', origin);
+            const webFont = request.url.endsWith('.woff');
+            response.setHeader('Content-Type', webFont ? webFontContentType : 'font/ttf');
+            if (includeFontCors && (!webFont || webFontCors) && request.headers.origin === origin) response.setHeader('Access-Control-Allow-Origin', origin);
             response.setHeader('Cache-Control', 'public,max-age=31536000,immutable');
             response.end('font');
             return;
@@ -184,8 +220,8 @@ async function runVerifier({
         if (request.url === '/' || request.url?.startsWith('/session/') || request.url?.startsWith('/share/')) {
             if (entryNeverResponds && request.url === '/') return;
             response.statusCode = 200;
-            response.setHeader('Content-Type', 'text/html; charset=utf-8');
-            if (request.url?.startsWith('/share/')) {
+            response.setHeader('Content-Type', entryContentType);
+            if (request.url?.startsWith('/share/') && !unownedSecondaryRoutes && !unownedShareRoute) {
                 response.setHeader('Cache-Control', 'no-store');
                 response.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
                 response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -200,6 +236,16 @@ async function runVerifier({
             response.setHeader('Content-Type', botsAssetFailure === 'html' ? 'text/html' : request.url.endsWith('.css') ? 'text/css' : 'application/javascript');
             response.setHeader('Cache-Control', 'public,max-age=31536000,immutable');
             response.end('bots source build'); return;
+        }
+        if (request.url === '/_expo/app.mjs') {
+            response.writeHead(200, { 'Content-Type': moduleContentType, 'Cache-Control': 'public,max-age=31536000,immutable' });
+            response.end('export const app = true;');
+            return;
+        }
+        if (request.url === '/_expo/app.css') {
+            response.writeHead(200, { 'Content-Type': styleContentType, 'Cache-Control': 'public,max-age=31536000,immutable' });
+            response.end('.app { display: block; }');
+            return;
         }
         if (request.url === '/_expo/app.js') {
             response.statusCode = 200;
@@ -242,8 +288,18 @@ async function runVerifier({
     const legacyOrigin = `http://127.0.0.1:${legacyServer.address().port}`;
 
     try {
+        const fetchShim = join(directory, 'secondary-fetch-shim.mjs');
+        if (mode === 'secondary-canvas') await writeFile(fetchShim, `
+            const nativeFetch = globalThis.fetch;
+            globalThis.fetch = (input, init) => {
+                const url = new URL(input);
+                if (url.origin !== ${JSON.stringify(secondaryOrigin)}) throw new Error('Unexpected secondary request origin');
+                return nativeFetch(new URL(url.pathname + url.search, ${JSON.stringify(origin)}), init);
+            };
+        `);
         const result = await new Promise((resolve) => {
-            const args = [verifierPath, origin, join(directory, 'index.html')];
+            const args = mode === 'secondary-canvas' ? ['--import', fetchShim, verifierPath, secondaryOrigin, join(directory, 'index.html'), '--secondary-canvas']
+                : [verifierPath, origin, join(directory, 'index.html')];
             if (mode === 'immutable') args.push('--immutable', origin);
             const child = spawn(process.execPath, args, {
                 env: {
@@ -265,7 +321,7 @@ async function runVerifier({
                 resolve({ status, stdout, stderr });
             });
         });
-        return result;
+        return { ...result, requests };
     } finally {
         await new Promise((resolve) => legacyServer.close(resolve));
         await new Promise((resolve) => server.close(resolve));
@@ -445,3 +501,77 @@ test('refuses activation when a lazy Bots asset is absent or falls back to HTML'
         assert.match(result.stderr, /assets\/bots|invalid MIME/);
     }
 });
+
+
+test('secondary canvas mode verifies the scoped release without claiming association or share route ownership', async () => {
+    const result = await runVerifier({ mode: 'secondary-canvas', includeCanvas: true, includeAppCss: true, includeAppModule: true, includeWebFont: true, unownedSecondaryRoutes: true, omitUnrelatedLocalAssets: true });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /secondary canvas release.*verified/i);
+    for (const path of ['/health', '/', '/session/web-deploy-check', '/_expo/app.js', '/_expo/app.css', '/_expo/app.mjs', '/assets/fixture.woff',
+        '/assets/Ionicons.abc123.ttf', '/assets/Octicons.def456.ttf', canvasPath]) assert.ok(result.requests.includes(path), path);
+    assert.equal(result.requests.some(path => path.startsWith('/.well-known/') || path.startsWith('/share/')
+        || path.startsWith('/desktop-skins/') || path.startsWith('/assets/bots/') || path.endsWith('.wav')), false);
+});
+
+test('the full verifier retains association-route checks for the same secondary-like fixture', async () => {
+    for (const mode of ['live', 'immutable']) {
+        const result = await runVerifier({ includeCanvas: true, mode, unownedSecondaryRoutes: true });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /apple-app-site-association returned an invalid MIME type: text\/html/);
+    }
+});
+
+test('secondary canvas mode still rejects invalid renderer bytes, MIME, redirects, cache and protections', async () => {
+    for (const canvasFailure of ['redirect', 'mime', 'bytes', 'missing', 'entry', 'malformed-entry', 'unconfigured', 'frame-header', 'cache']) {
+        const result = await runVerifier({ mode: 'secondary-canvas', includeCanvas: true, unownedSecondaryRoutes: true, canvasFailure });
+        assert.notEqual(result.status, 0, canvasFailure);
+        assert.match(result.stderr, /Project Canvas/i, canvasFailure);
+    }
+});
+
+test('secondary canvas mode requires the renderer and healthy app entry assets', async () => {
+    for (const fixture of [
+        { includeCanvas: false, expected: /requires.*Project Canvas renderer/i },
+        { includeCanvas: true, includeEntryScript: false, expected: /requires.*app.*JavaScript entry/i },
+        { includeCanvas: true, entryContentType: 'text/plain', expected: /Web entry.*invalid MIME type/i },
+        { includeCanvas: true, scriptContentType: 'text/html', expected: /app.js.*invalid MIME type/i },
+        { includeCanvas: true, includeAppCss: true, styleContentType: 'text/html', expected: /app.css.*invalid MIME type/i },
+        { includeCanvas: true, includeFontCors: false, expected: /Access-Control-Allow-Origin/i },
+        { includeCanvas: true, liveRevision: 'a'.repeat(40), expected: /release revision mismatch/i },
+        { includeCanvas: true, healthBody: JSON.stringify({ status: 'not-ok' }), expected: /healthy happy-server/i },
+    ]) {
+        const { expected, ...options } = fixture;
+        const result = await runVerifier({ mode: 'secondary-canvas', unownedSecondaryRoutes: true, ...options });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, expected);
+    }
+});
+
+test('secondary canvas mode cannot weaken verification for any other origin', () => {
+    for (const origin of ['https://47.115.228.20:8443', 'http://121.43.32.242:8443', 'https://121.43.32.242:8444',
+        'https://121.43.32.242', 'https://121.43.32.242:8443/', 'https://121.43.32.242.evil.example:8443']) {
+        const result = spawnSync(process.execPath, [verifierPath, origin, '/unused/index.html', '--secondary-canvas'], { encoding: 'utf8' });
+        assert.notEqual(result.status, 0, origin);
+        assert.match(result.stderr, /secondary canvas verification requires the exact approved origin/i, origin);
+    }
+});
+
+
+test('the full live verifier retains public-share protection checks', async () => {
+    const result = await runVerifier({ includeCanvas: true, unownedShareRoute: true });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /public share header cache-control missing/i);
+});
+
+
+for (const { name, expected, ...options } of [
+    { name: 'module HTML fallback', includeAppModule: true, moduleContentType: 'text/html', expected: /app.mjs.*invalid MIME type/i },
+    { name: 'WOFF HTML fallback', includeWebFont: true, webFontContentType: 'text/html', expected: /fixture.woff.*invalid MIME type/i },
+    { name: 'WOFF without browser CORS', includeWebFont: true, webFontCors: false, expected: /fixture.woff Access-Control-Allow-Origin/i },
+]) {
+    test(`secondary canvas rejects declared app ${name}`, async () => {
+        const result = await runVerifier({ mode: 'secondary-canvas', includeCanvas: true, unownedSecondaryRoutes: true, ...options });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, expected);
+    });
+}

@@ -6,9 +6,14 @@ import { fileURLToPath } from 'node:url';
 const [origin, indexPath, mode, browserOriginArgument] = process.argv.slice(2);
 
 if (!origin || !indexPath) {
-    throw new Error('Usage: node scripts/verify-web-release.mjs <origin> <index.html> [--immutable <browser-origin>]');
+    throw new Error('Usage: node scripts/verify-web-release.mjs <origin> <index.html> [--immutable <browser-origin>|--secondary-canvas]');
 }
-if (mode && mode !== '--immutable') throw new Error(`unknown verification mode: ${mode}`);
+if (mode && !['--immutable', '--secondary-canvas'].includes(mode)) throw new Error(`unknown verification mode: ${mode}`);
+const secondaryCanvasMode = mode === '--secondary-canvas';
+if (secondaryCanvasMode && origin !== 'https://121.43.32.242:8443') {
+    throw new Error('Secondary canvas verification requires the exact approved origin https://121.43.32.242:8443.');
+}
+if (secondaryCanvasMode && process.argv.slice(2).length !== 3) throw new Error('--secondary-canvas accepts no additional origin or options.');
 if (mode === '--immutable' && !browserOriginArgument) throw new Error('--immutable requires the browser origin used for CORS');
 
 const normalizedOrigin = origin.replace(/\/+$/, '');
@@ -28,35 +33,43 @@ const canvasDirectory = await stat(join(distDirectory, 'dsh-image-canvas')).catc
 if (Boolean(canvasDirectory?.isDirectory()) !== Boolean(canvasEntry)) {
     throw new Error('The Project Canvas renderer and release entry must be included together.');
 }
+if (secondaryCanvasMode && !canvasEntry) throw new Error('Secondary canvas verification requires an enabled Project Canvas renderer.');
 const references = new Set();
 const attributePattern = /(?:src|href)=["']([^"']+)["']/gi;
 
 for (const match of html.matchAll(attributePattern)) {
     const reference = match[1];
-    if (reference.startsWith('/') && !reference.startsWith('//')) {
+    if (reference.startsWith('/') && !reference.startsWith('//')
+        && (!secondaryCanvasMode || /\.(?:[cm]?js|css|ttf|woff2?|otf)$/i.test(new URL(reference, normalizedOrigin).pathname))) {
         references.add(reference);
     }
 }
 
-// Bots is loaded on demand from immutable metadata, not a script tag in the
-// initial document. Verify both assets before activating this release as well.
-const botsReferences = [...html.matchAll(/<meta\s+name=["']paws-bots-(entry|style)["']\s+content=["']([^"']+)["'][^>]*>/gi)];
-if (botsReferences.length) {
-    if (botsReferences.length !== 2 || new Set(botsReferences.map(match => match[1])).size !== 2) throw new Error('incomplete Bots asset metadata');
-    for (const match of botsReferences) {
-        const extension = match[1] === 'entry' ? 'js' : 'css';
-        if (!new RegExp(`^/assets/bots/bots-[a-f0-9]{20}\\.${extension}$`).test(match[2])) throw new Error('invalid immutable Bots asset path');
-        references.add(match[2]);
-    }
+if (secondaryCanvasMode && ![...references].some(reference => /\.[cm]?js$/i.test(new URL(reference, normalizedOrigin).pathname))) {
+    throw new Error('Secondary canvas verification requires a declared app JavaScript entry.');
 }
 
-for (const requiredPath of [
-    '/metadata.json',
-    '/canvaskit.wasm',
-    '/.well-known/apple-app-site-association',
-    '/.well-known/assetlinks.json',
-]) {
-    references.add(requiredPath);
+if (!secondaryCanvasMode) {
+    // Bots is loaded on demand from immutable metadata, not a script tag in the
+    // initial document. Verify both assets before activating this release as well.
+    const botsReferences = [...html.matchAll(/<meta\s+name=["']paws-bots-(entry|style)["']\s+content=["']([^"']+)["'][^>]*>/gi)];
+    if (botsReferences.length) {
+        if (botsReferences.length !== 2 || new Set(botsReferences.map(match => match[1])).size !== 2) throw new Error('incomplete Bots asset metadata');
+        for (const match of botsReferences) {
+            const extension = match[1] === 'entry' ? 'js' : 'css';
+            if (!new RegExp(`^/assets/bots/bots-[a-f0-9]{20}\\.${extension}$`).test(match[2])) throw new Error('invalid immutable Bots asset path');
+            references.add(match[2]);
+        }
+    }
+
+    for (const requiredPath of [
+        '/metadata.json',
+        '/canvaskit.wasm',
+        '/.well-known/apple-app-site-association',
+        '/.well-known/assetlinks.json',
+    ]) {
+        references.add(requiredPath);
+    }
 }
 
 async function fetchRequired(label, url, init) {
@@ -209,12 +222,15 @@ function assertHtmlRevision(label, body) {
 }
 
 function expectedMimePattern(pathname) {
+    pathname = pathname.toLowerCase();
     if (pathname.endsWith('/apple-app-site-association') || pathname.endsWith('.json')) return /^application\/(?:[a-z0-9.+-]+\+)?json\b/i;
-    if (pathname.endsWith('.js')) return /^(?:application|text)\/javascript\b/i;
+    if (/\.[cm]?js$/.test(pathname)) return /^(?:application|text)\/javascript\b/i;
     if (pathname.endsWith('.css')) return /^text\/css\b/i;
     if (pathname.endsWith('.wasm')) return /^application\/wasm\b/i;
     if (pathname.endsWith('.ttf')) return /^(?:font\/ttf|application\/(?:x-font-ttf|font-sfnt))\b/i;
     if (pathname.endsWith('.woff2')) return /^font\/woff2\b/i;
+    if (pathname.endsWith('.woff')) return /^(?:font\/woff|application\/(?:font-woff|x-font-woff))\b/i;
+    if (pathname.endsWith('.otf')) return /^(?:font\/otf|application\/vnd\.ms-opentype)\b/i;
     if (pathname.endsWith('.wav')) return /^audio\/(?:wav|wave|x-wav|vnd\.wave)\b/i;
     if (pathname.endsWith('.ico')) return /^image\/(?:x-icon|vnd\.microsoft\.icon)\b/i;
     if (pathname.endsWith('.svg')) return /^image\/svg\+xml\b/i;
@@ -266,6 +282,13 @@ function assetUrlForFile(filePath) {
     return `${normalizedOrigin}/${relativePath}`;
 }
 
+function assertBrowserFontCors(label, response) {
+    const allowedOrigin = response.headers.get('access-control-allow-origin') ?? '';
+    if (allowedOrigin !== '*' && allowedOrigin !== browserOrigin) {
+        throw new Error(`${label} Access-Control-Allow-Origin does not cover ${browserOrigin}: ${allowedOrigin || '(missing)'}`);
+    }
+}
+
 const assetFiles = await listFiles(join(distDirectory, 'assets'));
 for (const family of ['Ionicons', 'Octicons']) {
     const fontPath = assetFiles.find((filePath) => filePath.endsWith('.ttf') && filePath.includes(family));
@@ -275,60 +298,60 @@ for (const family of ['Ionicons', 'Octicons']) {
     });
     assertMime(family, fontPath, response);
     assertCachePolicy(family, assetUrlForFile(fontPath).slice(normalizedOrigin.length), response);
-    const allowedOrigin = response.headers.get('access-control-allow-origin') ?? '';
-    if (allowedOrigin !== '*' && allowedOrigin !== browserOrigin) {
-        throw new Error(`${family} Access-Control-Allow-Origin does not cover ${browserOrigin}: ${allowedOrigin || '(missing)'}`);
+    assertBrowserFontCors(family, response);
+}
+
+// The secondary canvas does not own unrelated app feature assets or routes.
+if (!secondaryCanvasMode) {
+    const representativeImagePath = assetFiles.find((filePath) => /\.(?:png|jpe?g|gif|webp|svg)$/i.test(filePath));
+    if (!representativeImagePath) throw new Error(`representative image asset not found in ${join(distDirectory, 'assets')}`);
+    const representativeImageUrl = assetUrlForFile(representativeImagePath);
+    const representativeImageResponse = await fetchRequired('representative image asset', representativeImageUrl);
+    assertMime('representative image asset', representativeImagePath, representativeImageResponse);
+    assertCachePolicy('representative image asset', representativeImageUrl.slice(normalizedOrigin.length), representativeImageResponse);
+
+    const skinDirectory = join(distDirectory, 'desktop-skins');
+    const skinFiles = await listFiles(skinDirectory).catch((error) => {
+        if (error?.code === 'ENOENT') return [];
+        throw error;
+    });
+    const skinManifest = JSON.parse(await readFile(fileURLToPath(new URL('./desktop-skin-assets.json', import.meta.url)), 'utf8'));
+    const requiredSkins = new Map(skinManifest.skins.map((skin) => [skin.assetId, skin.filename]));
+    if (skinManifest.schemaVersion !== 1 || requiredSkins.size !== skinManifest.skins.length || skinFiles.length !== requiredSkins.size) {
+        throw new Error(`desktop skin background missing or ambiguous: found ${skinFiles.length}`);
     }
-}
-
-const representativeImagePath = assetFiles.find((filePath) => /\.(?:png|jpe?g|gif|webp|svg)$/i.test(filePath));
-if (!representativeImagePath) throw new Error(`representative image asset not found in ${join(distDirectory, 'assets')}`);
-const representativeImageUrl = assetUrlForFile(representativeImagePath);
-const representativeImageResponse = await fetchRequired('representative image asset', representativeImageUrl);
-assertMime('representative image asset', representativeImagePath, representativeImageResponse);
-assertCachePolicy('representative image asset', representativeImageUrl.slice(normalizedOrigin.length), representativeImageResponse);
-
-const skinDirectory = join(distDirectory, 'desktop-skins');
-const skinFiles = await listFiles(skinDirectory).catch((error) => {
-    if (error?.code === 'ENOENT') return [];
-    throw error;
-});
-const skinManifest = JSON.parse(await readFile(fileURLToPath(new URL('./desktop-skin-assets.json', import.meta.url)), 'utf8'));
-const requiredSkins = new Map(skinManifest.skins.map((skin) => [skin.assetId, skin.filename]));
-if (skinManifest.schemaVersion !== 1 || requiredSkins.size !== skinManifest.skins.length || skinFiles.length !== requiredSkins.size) {
-    throw new Error(`desktop skin background missing or ambiguous: found ${skinFiles.length}`);
-}
-const foundSkinIds = new Set();
-for (const skinPath of skinFiles) {
-    const relativePath = relative(skinDirectory, skinPath).split(sep).join('/');
-    const expectedHash = createHash('sha256').update(await readFile(skinPath)).digest('hex');
-    const skinId = relativePath.split('/')[0];
-    if (requiredSkins.get(skinId) !== `background.${expectedHash.slice(0, 16)}.webp`
-        || relativePath !== `${skinId}/${requiredSkins.get(skinId)}`) {
-        throw new Error(`desktop skin background is not content-addressed: ${relativePath}`);
+    const foundSkinIds = new Set();
+    for (const skinPath of skinFiles) {
+        const relativePath = relative(skinDirectory, skinPath).split(sep).join('/');
+        const expectedHash = createHash('sha256').update(await readFile(skinPath)).digest('hex');
+        const skinId = relativePath.split('/')[0];
+        if (requiredSkins.get(skinId) !== `background.${expectedHash.slice(0, 16)}.webp`
+            || relativePath !== `${skinId}/${requiredSkins.get(skinId)}`) {
+            throw new Error(`desktop skin background is not content-addressed: ${relativePath}`);
+        }
+        foundSkinIds.add(skinId);
+        const pathname = `/desktop-skins/${relativePath}`;
+        const response = await fetchRequired('desktop skin background', `${normalizedOrigin}${pathname}`);
+        assertMime('desktop skin background', pathname, response);
+        assertCachePolicy('desktop skin background', pathname, response);
+        const remoteHash = createHash('sha256').update(Buffer.from(await response.arrayBuffer())).digest('hex');
+        if (remoteHash !== expectedHash) throw new Error(`desktop skin background SHA-256 mismatch: ${pathname}`);
     }
-    foundSkinIds.add(skinId);
-    const pathname = `/desktop-skins/${relativePath}`;
-    const response = await fetchRequired('desktop skin background', `${normalizedOrigin}${pathname}`);
-    assertMime('desktop skin background', pathname, response);
-    assertCachePolicy('desktop skin background', pathname, response);
-    const remoteHash = createHash('sha256').update(Buffer.from(await response.arrayBuffer())).digest('hex');
-    if (remoteHash !== expectedHash) throw new Error(`desktop skin background SHA-256 mismatch: ${pathname}`);
-}
-if (foundSkinIds.size !== requiredSkins.size) throw new Error('desktop skin background missing for a required skin');
+    if (foundSkinIds.size !== requiredSkins.size) throw new Error('desktop skin background missing for a required skin');
 
-const requiredSoundPaths = ['approval', 'complete', 'error', 'start', 'submit']
-    .map((name) => `assets/sounds/codeisland/8bit_${name}.wav`);
-for (const soundPath of requiredSoundPaths) {
-    const filePath = join(distDirectory, ...soundPath.split('/'));
-    if (!assetFiles.includes(filePath)) throw new Error(`required audio asset missing from Web export: ${soundPath}`);
-    const url = `${normalizedOrigin}/${soundPath}`;
-    const response = await fetchRequired(`audio asset ${soundPath}`, url);
-    assertMime(`audio asset ${soundPath}`, soundPath, response);
-    assertCachePolicy(`audio asset ${soundPath}`, `/${soundPath}`, response);
-    const [expectedBytes, remoteBytes] = await Promise.all([readFile(filePath), response.arrayBuffer()]);
-    if (!expectedBytes.equals(Buffer.from(remoteBytes))) {
-        throw new Error(`audio asset ${soundPath} content mismatch`);
+    const requiredSoundPaths = ['approval', 'complete', 'error', 'start', 'submit']
+        .map((name) => `assets/sounds/codeisland/8bit_${name}.wav`);
+    for (const soundPath of requiredSoundPaths) {
+        const filePath = join(distDirectory, ...soundPath.split('/'));
+        if (!assetFiles.includes(filePath)) throw new Error(`required audio asset missing from Web export: ${soundPath}`);
+        const url = `${normalizedOrigin}/${soundPath}`;
+        const response = await fetchRequired(`audio asset ${soundPath}`, url);
+        assertMime(`audio asset ${soundPath}`, soundPath, response);
+        assertCachePolicy(`audio asset ${soundPath}`, `/${soundPath}`, response);
+        const [expectedBytes, remoteBytes] = await Promise.all([readFile(filePath), response.arrayBuffer()]);
+        if (!expectedBytes.equals(Buffer.from(remoteBytes))) {
+            throw new Error(`audio asset ${soundPath} content mismatch`);
+        }
     }
 }
 
@@ -353,40 +376,49 @@ if (immutableMode) {
     console.log(`OK immutable OSS release ${expectedRevision} is safe to activate`);
 } else {
     await waitForHealthyServer();
-    await waitForLegacyWebRedirect();
+    if (!secondaryCanvasMode) await waitForLegacyWebRedirect();
     for (const { label, url } of [
         { label: 'Web entry', url: `${normalizedOrigin}/` },
         { label: 'SPA route', url: `${normalizedOrigin}/session/web-deploy-check` },
     ]) {
         const response = await fetchRequired(label, url);
+        if (secondaryCanvasMode) assertMime(label, '/index.html', response);
         assertHtmlRevision(label, await response.text());
     }
     await verifyProjectCanvas();
     for (const reference of references) {
-        const response = await fetchRequired(reference, `${normalizedOrigin}${reference}`);
-        assertMime(reference, reference, response);
+        const pathname = new URL(reference, normalizedOrigin).pathname;
+        const browserFont = secondaryCanvasMode && /\.(?:ttf|woff2?|otf)$/i.test(pathname);
+        const response = await fetchRequired(reference, `${normalizedOrigin}${reference}`,
+            browserFont ? { headers: { Origin: browserOrigin } } : undefined);
+        assertMime(reference, secondaryCanvasMode ? pathname : reference, response);
         assertCachePolicy(reference, reference, response);
+        if (browserFont) assertBrowserFontCors(reference, response);
     }
 
-    const publicShareUrl = `${normalizedOrigin}/share/public-deployment-probe`;
-    const publicShareResponse = await fetchRequired('public share SPA route', publicShareUrl);
-    const publicShareContentType = publicShareResponse.headers.get('content-type') ?? '';
-    if (!publicShareContentType.includes('text/html')) {
-        throw new Error(`public share SPA route did not return HTML: ${publicShareContentType || '(missing)'}`);
-    }
-    const expectedPublicHeaders = {
-        'cache-control': 'no-store',
-        'x-robots-tag': 'noindex',
-        'x-content-type-options': 'nosniff',
-        'referrer-policy': 'no-referrer',
-        'content-security-policy': "default-src 'self'",
-    };
-    for (const [header, expected] of Object.entries(expectedPublicHeaders)) {
-        const actual = publicShareResponse.headers.get(header) ?? '';
-        if (!actual.toLowerCase().includes(expected.toLowerCase())) {
-            throw new Error(`public share header ${header} missing ${JSON.stringify(expected)}: ${JSON.stringify(actual)}`);
+    if (secondaryCanvasMode) {
+        console.log(`OK secondary canvas release ${expectedRevision} verified on ${normalizedOrigin}`);
+    } else {
+        const publicShareUrl = `${normalizedOrigin}/share/public-deployment-probe`;
+        const publicShareResponse = await fetchRequired('public share SPA route', publicShareUrl);
+        const publicShareContentType = publicShareResponse.headers.get('content-type') ?? '';
+        if (!publicShareContentType.includes('text/html')) {
+            throw new Error(`public share SPA route did not return HTML: ${publicShareContentType || '(missing)'}`);
         }
+        const expectedPublicHeaders = {
+            'cache-control': 'no-store',
+            'x-robots-tag': 'noindex',
+            'x-content-type-options': 'nosniff',
+            'referrer-policy': 'no-referrer',
+            'content-security-policy': "default-src 'self'",
+        };
+        for (const [header, expected] of Object.entries(expectedPublicHeaders)) {
+            const actual = publicShareResponse.headers.get(header) ?? '';
+            if (!actual.toLowerCase().includes(expected.toLowerCase())) {
+                throw new Error(`public share header ${header} missing ${JSON.stringify(expected)}: ${JSON.stringify(actual)}`);
+            }
+        }
+        assertHtmlRevision('public share SPA route', await publicShareResponse.text());
+        console.log('OK public share SPA route security headers');
     }
-    assertHtmlRevision('public share SPA route', await publicShareResponse.text());
-    console.log('OK public share SPA route security headers');
 }

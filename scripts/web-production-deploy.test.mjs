@@ -469,7 +469,7 @@ test('secondary canvas activation uses the pinned existing SSH identity and pres
     assert.ok(secondary > primary);
     assert.ok(verify > secondary);
     assert.match(steps[secondary].if, /live_verify.outcome == 'success'/);
-    assert.match(steps[verify].run, /PAWS_LEGACY_WEB_ORIGIN=''[\s\S]*verify-web-release\.mjs.*PAWS_SECONDARY_WEB_ORIGIN/);
+    assert.match(steps[verify].run, /verify-web-release\.mjs.*PAWS_SECONDARY_WEB_ORIGIN.*--secondary-canvas/);
     assert.match(steps.find(step => step.name === 'Roll back failed secondary canvas activation')?.run ?? '', /deploy-secondary-canvas-ingress\.sh --rollback/);
     const primaryRollback = steps.find(step => step.name === 'Roll back failed Web activation');
     assert.match(primaryRollback.if, /steps.live_verify.outcome != 'success'/);

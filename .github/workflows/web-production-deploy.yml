@@ -579,7 +579,7 @@ jobs:
         id: secondary_verify
         if: ${{ steps.secondary_caddy.outcome == 'success' }}
         run: |
-          PAWS_LEGACY_WEB_ORIGIN='' node scripts/verify-web-release.mjs "$PAWS_SECONDARY_WEB_ORIGIN" packages/happy-app/dist/index.html
+          node scripts/verify-web-release.mjs "$PAWS_SECONDARY_WEB_ORIGIN" packages/happy-app/dist/index.html --secondary-canvas
 
       - name: Roll back failed secondary canvas activation
         if: ${{ failure() && steps.secondary_verify.outcome != 'success' && steps.secondary_caddy.outputs.backup_path != '' }}
