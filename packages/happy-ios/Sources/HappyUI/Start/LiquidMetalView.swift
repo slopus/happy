@@ -534,6 +534,26 @@ float getColorChanges(float c1, float c2, float stripe_p, float3 w, float blur, 
   return ch;
 }
 
+// The H cut-out in the mark's unit square, y down: cloud.svg's 378.18-621.83
+// square with 15.23 outer corners, less its 81.22-wide notches top and bottom
+// (desktop's liquidMetalShader.ts).
+constant float2 H_CENTER = float2(.5);
+constant float2 H_HALF = float2(.121825);
+constant float H_RADIUS = .01523;
+// Each notch runs from .04061 off the centre outward, past the square's edge.
+constant float2 H_NOTCH_HALF = float2(.04061, .08);
+constant float H_NOTCH_CENTER = .12061;
+// Two texels of the 512 field, so the metal's soft inner edge always lies over black.
+constant float H_GROW = 2. / 512.;
+
+float hDistance(float2 p) {
+  float2 q = abs(p - H_CENTER) - H_HALF + H_RADIUS;
+  float square = length(max(q, 0.)) + min(max(q.x, q.y), 0.) - H_RADIUS;
+  float2 n = abs(float2(p.x - H_CENTER.x, abs(p.y - H_CENTER.y) - H_NOTCH_CENTER)) - H_NOTCH_HALF;
+  float notch = length(max(n, 0.)) + min(max(n.x, n.y), 0.);
+  return max(square, -notch);
+}
+
 fragment float4 liquid_metal_fragment(float4 position [[position]], constant Uniforms& u [[buffer(0)]],
                                       texture2d<float> image [[texture(0)]], sampler linear [[sampler(0)]]) {
   const float firstFrameOffset = 2.8;
@@ -641,7 +661,10 @@ fragment float4 liquid_metal_fragment(float4 position [[position]], constant Uni
 
   color += opacity / 256. * (fract(sin(dot(.014 * position.xy, float2(12.9898, 78.233))) * 43758.5453123) - .5);
 
-  return float4(color, opacity);
+  // The black H under the metal: coverage and no colour, from the distance
+  // in pixels (a unit-square distance times the square's side).
+  float hole = clamp(.5 - (hDistance(uv) - H_GROW) * side, 0., 1.);
+  return float4(color, opacity + hole * (1. - opacity));
 }
 """
 #endif

@@ -78,7 +78,8 @@ object LiquidMetalTags {
 }
 
 /**
- * The Happy Cloud mark (a cloud with the Happy H cut out of it) in Paper's
+ * The Happy Cloud mark (a cloud with the Happy H cut out of it, the H solid
+ * black under the metal, as on desktop) in Paper's
  * Liquid Metal: chrome stripes that flow over it, bending at its edges. It
  * fills [modifier]'s square (a wider or taller box centres it) and draws
  * nothing around it, so it sits on any background; happy-ios's
@@ -291,6 +292,26 @@ float getColorChanges(float c1, float c2, float stripe_p, float3 w, float blur, 
 
 // v_imageUV for a square image, fit contain, scale 1: the shorter side's
 // square, centred, y down.
+// The H cut-out in the mark's unit square, y down: cloud.svg's 378.18-621.83
+// square with 15.23 outer corners, less its 81.22-wide notches top and bottom
+// (desktop's liquidMetalShader.ts).
+const float2 H_CENTER = float2(.5);
+const float2 H_HALF = float2(.121825);
+const float H_RADIUS = .01523;
+// Each notch runs from .04061 off the centre outward, past the square's edge.
+const float2 H_NOTCH_HALF = float2(.04061, .08);
+const float H_NOTCH_CENTER = .12061;
+// Two texels of the field, so the metal's soft inner edge always lies over black.
+const float H_GROW = 2. / FIELD;
+
+float hDistance(float2 p) {
+  float2 q = abs(p - H_CENTER) - H_HALF + H_RADIUS;
+  float square = length(max(q, 0.)) + min(max(q.x, q.y), 0.) - H_RADIUS;
+  float2 n = abs(float2(p.x - H_CENTER.x, abs(p.y - H_CENTER.y) - H_NOTCH_CENTER)) - H_NOTCH_HALF;
+  float notch = length(max(n, 0.)) + min(max(n.x, n.y), 0.);
+  return max(square, -notch);
+}
+
 float2 imageUv(float2 fragCoord) {
   return (fragCoord - .5 * u_resolution) / min(u_resolution.x, u_resolution.y) + .5;
 }
@@ -366,7 +387,11 @@ half4 main(float2 fragCoord) {
   float2 uv = imageUv(fragCoord);
   // getImgFrame(v_imageUV, 0.) and the mask: nothing outside the mark.
   float opacity = u_image.eval(clamp(uv, 0., 1.) * FIELD).g;
-  if (uv.x < 0. || uv.x > 1. || uv.y < 0. || uv.y > 1. || opacity <= 0.) return half4(0.);
+  if (uv.x < 0. || uv.x > 1. || uv.y < 0. || uv.y > 1.) return half4(0.);
+  // The black H under the metal: coverage and no colour, from the distance
+  // in pixels (a unit-square distance times the square's side).
+  float hole = clamp(.5 - (hDistance(uv) - H_GROW) * min(u_resolution.x, u_resolution.y), 0., 1.);
+  if (opacity <= 0.) return half4(0., 0., 0., half(hole));
 
   const float firstFrameOffset = 2.8;
   float t = .3 * (u_time + firstFrameOffset);
@@ -407,6 +432,6 @@ half4 main(float2 fragCoord) {
 
   float3 color = float3(r, g, b) * opacity;
   color += opacity / 256. * (fract(sin(dot(.014 * fragCoord, float2(12.9898, 78.233))) * 43758.5453123) - .5);
-  return half4(half3(color), half(opacity));
+  return half4(half3(color), half(opacity + hole * (1. - opacity)));
 }
 """

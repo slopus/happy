@@ -63,11 +63,12 @@ class LiquidMetalTest {
         val pixels = rule.node(LiquidMetalTags.SHADER).captureToImage().toPixelMap()
         val side = pixels.width
         fun clear(x: Int, y: Int) = pixels[x, y].let { it.red > 0.95f && it.green < 0.05f && it.blue > 0.95f }
-        // The square's corners and the H's left post are clear; the cloud's
-        // body left of the H is drawn.
+        fun black(x: Int, y: Int) = pixels[x, y].let { it.red < 0.02f && it.green < 0.02f && it.blue < 0.02f }
+        // The square's corners are clear; the H's left post is solid black,
+        // not a hole (Kirill, every client); the cloud's body left of the H is drawn.
         assertTrue(clear(2, 2))
         assertTrue(clear(side - 3, side - 3))
-        assertTrue(clear((side * 0.419).toInt(), (side * 0.5).toInt()))
+        assertTrue(black((side * 0.419).toInt(), (side * 0.5).toInt()))
         assertFalse(clear((side * 0.15).toInt(), (side * 0.65).toInt()))
         var drawn = 0
         var tinted = 0
