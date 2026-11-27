@@ -305,6 +305,19 @@ class TodoLibrary(
         counts
     }
 
+    /**
+     * How many todos are open in a list the phone hasn't kept, as the
+     * computer says now, kept nowhere (TODOs' page counts every list, as
+     * desktop's does); null when it can't be read.
+     */
+    suspend fun readOutstanding(surfaceId: String): Int? = try {
+        routes.todos(surfaceId, TodoItem.Status.Active).count { it.heading == null }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
     /** The index follows kept counts without opening or downloading every list. */
     fun outstandingStates(surfaceIds: List<String>): Flow<Map<String, Int>> = revision
         .map { outstanding(surfaceIds) }.distinctUntilChanged()

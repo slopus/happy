@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentCatalog
+import com.slopus.happy.agent.homePage
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
@@ -275,9 +276,9 @@ sealed interface AgentSearchResult {
         val title: String = "",
         val detail: String? = null,
     ) : AgentSearchResult {
-        /** Home's own pages (Artifacts, Activity, Todos), which only the phone has, draw as home draws them. */
+        /** Home's own pages (Artifacts, Activity, Documents, TODOs), which only the phone has, draw as home draws them. */
         val drawn: AgentSearchResult?
-            get() = local.takeIf { (it as? Home)?.item?.row.let { row -> row == AgentFeedRow.Artifacts || row == AgentFeedRow.Plugins || row == AgentFeedRow.Pipelines || row is AgentFeedRow.Feed || row == AgentFeedRow.Todos } }
+            get() = local.takeIf { (it as? Home)?.item?.row?.homePage == true }
     }
 }
 
@@ -323,8 +324,8 @@ data class AgentSearchSources(
         suspend fun reads(feed: AgentFeed, kept: (String) -> JsonObject?, get: suspend (String) -> JsonObject): Map<String, JsonObject> = coroutineScope {
             val paths = LinkedHashMap<String, String>()
             if (kept(ArtifactCatalogFeed.RESOURCE) == null) paths[ArtifactCatalogFeed.RESOURCE] = "/v0/artifacts?limit=${ArtifactCatalogFeed.PAGE_SIZE}"
-            for (row in feed.rows) {
-                if (row !is AgentFeedRow.Surface || row.type != SurfaceReader.TODO) continue
+            for (row in feed.lists) {
+                if (row.type != SurfaceReader.TODO) continue
                 val resource = TodoLibrary.resource(row.id)
                 if (kept(resource) == null) paths[resource] = "/v0/surfaces/todo/${AgentClient.escape(row.id)}?scope=active"
             }
@@ -347,7 +348,7 @@ data class AgentSearchSources(
          * being left ([feed] no longer lists it) is out already.
          */
         fun read(catalog: AgentCatalog, feed: AgentFeed, kept: (String) -> JsonObject?, pending: List<Intent> = emptyList()): AgentSearchSources {
-            val listed = feed.rows.mapNotNullTo(HashSet()) { (it as? AgentFeedRow.Surface)?.id }
+            val listed = (feed.rows.filterIsInstance<AgentFeedRow.Surface>() + feed.lists).mapTo(HashSet()) { it.id }
             val surfaces = catalog.surfaces.values
                 .filter { it.string("status") != "archived" && it["archivedAt"].isNullish() && it.string("type") in KINDS }
                 .mapNotNull { surface ->
@@ -455,7 +456,7 @@ private class Local(
  */
 private fun localSearch(feed: AgentFeed, query: String, label: (AgentFeedRow) -> String?, words: AgentSearchWords, sources: AgentSearchSources): List<Local> {
     val surfaces = sources.surfaces +
-        feed.rows.filterIsInstance<AgentFeedRow.Surface>().filter { row -> sources.surfaces.none { it.row.id == row.id } }.map { AgentSearchSources.Surface(it, joined = true) }
+        (feed.rows.filterIsInstance<AgentFeedRow.Surface>() + feed.lists).filter { row -> sources.surfaces.none { it.row.id == row.id } }.map { AgentSearchSources.Surface(it, joined = true) }
     val candidates = ArrayList<Local>()
     for (surface in surfaces) {
         val row = surface.row
@@ -519,7 +520,7 @@ private fun localSearch(feed: AgentFeed, query: String, label: (AgentFeedRow) ->
         }
     }
     for (row in feed.rows) {
-        if (row != AgentFeedRow.Artifacts && row != AgentFeedRow.Plugins && row != AgentFeedRow.Pipelines && row !is AgentFeedRow.Feed && row != AgentFeedRow.Todos) continue
+        if (!row.homePage) continue
         val title = label(row) ?: continue
         candidates += Local("home:${row.key}", title, emptyList(), 0) { place -> AgentSearchResult.Home(AgentHomeItem.Row(row, place.first, place.last)) }
     }
@@ -634,7 +635,7 @@ fun agentSearchResults(
 /** What the phone holds to name what the daemon found by ID, and the words for it. */
 private class SearchNames(feed: AgentFeed, label: (AgentFeedRow) -> String?, sources: AgentSearchSources, private val words: AgentSearchWords) {
     private val surfaces: Map<String, AgentFeedRow.Surface> =
-        feed.rows.filterIsInstance<AgentFeedRow.Surface>().associateBy { it.id } + sources.surfaces.associate { it.row.id to it.row }
+        (feed.rows.filterIsInstance<AgentFeedRow.Surface>() + feed.lists).associateBy { it.id } + sources.surfaces.associate { it.row.id to it.row }
     private val conversations: Map<String, String> =
         feed.rows.filterIsInstance<AgentFeedRow.Conversation>().mapNotNull { row -> label(row)?.let { row.agentId to it } }.toMap()
     private val projects: Map<String, String> = feed.rows.filterIsInstance<AgentFeedRow.Folder>().filter { it.depth == 0 }.associate { it.id to it.name }
@@ -756,6 +757,7 @@ fun AgentSearchResults(
     /** Room under the last result to scroll clear of what stands at the foot (the sidebar's settings and compose). */
     bottomClearance: Dp = 0.dp,
     onOpenFeed: () -> Unit = {},
+    onOpenDocuments: () -> Unit = {},
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
     onOpenPipelines: () -> Unit = {},
@@ -808,6 +810,7 @@ fun AgentSearchResults(
                         tag = tag,
                         onOpen = onOpenConversation,
                         onOpenArtifacts = onOpenArtifacts,
+                        onOpenDocuments = onOpenDocuments,
                         onOpenTodos = onOpenTodos,
                         onOpenPlugins = onOpenPlugins,
                         onOpenPipelines = onOpenPipelines,

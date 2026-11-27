@@ -56,7 +56,7 @@ class AgentFeedTest {
         val feed = AgentFeed.derive(catalog(sample))
         assertEquals(
             listOf(
-                "section-places", "artifacts", "todos",
+                "section-places", "artifacts", "documents", "todos",
                 "section-bots", "agent-ab1", "agent-as1", "agent-as2", "agent-ab2",
                 "section-tasks", "agent-at2", "agent-at1",
                 "section-projects", "folder-p1", "agent-ap1", "folder-w1", "agent-aw1",
@@ -79,22 +79,22 @@ class AgentFeedTest {
 
     @Test
     fun aConnectionWithPluginsListsThemUnderArtifacts() {
-        val places = { plugins: Boolean -> AgentFeed.derive(catalog(sample), plugins = plugins).rows.map { it.key }.take(4) }
-        assertEquals(listOf("section-places", "artifacts", "plugins", "todos"), places(true))
-        assertEquals(listOf("section-places", "artifacts", "todos", "section-bots"), places(false))
+        val places = { plugins: Boolean -> AgentFeed.derive(catalog(sample), plugins = plugins).rows.map { it.key }.take(5) }
+        assertEquals(listOf("section-places", "artifacts", "plugins", "documents", "todos"), places(true))
+        assertEquals(listOf("section-places", "artifacts", "documents", "todos", "section-bots"), places(false))
     }
 
     @Test
     fun thePlacesComeInDesktopsOrderActivityThenArtifacts() {
-        val keys = AgentFeed.derive(catalog(sample), feedUnread = 2, plugins = true, pipelines = true).rows.map { it.key }.take(6)
-        assertEquals(listOf("section-places", "feed", "artifacts", "plugins", "pipelines", "todos"), keys)
+        val keys = AgentFeed.derive(catalog(sample), feedUnread = 2, plugins = true, pipelines = true).rows.map { it.key }.take(7)
+        assertEquals(listOf("section-places", "feed", "artifacts", "plugins", "pipelines", "documents", "todos"), keys)
     }
 
     @Test
     fun aServerWithPipelinesListsThemUnderPlugins() {
-        val places = { plugins: Boolean, pipelines: Boolean -> AgentFeed.derive(catalog(sample), plugins = plugins, pipelines = pipelines).rows.map { it.key }.take(5) }
-        assertEquals(listOf("section-places", "artifacts", "plugins", "pipelines", "todos"), places(true, true))
-        assertEquals(listOf("section-places", "artifacts", "pipelines", "todos", "section-bots"), places(false, true))
+        val places = { plugins: Boolean, pipelines: Boolean -> AgentFeed.derive(catalog(sample), plugins = plugins, pipelines = pipelines).rows.map { it.key }.take(6) }
+        assertEquals(listOf("section-places", "artifacts", "plugins", "pipelines", "documents", "todos"), places(true, true))
+        assertEquals(listOf("section-places", "artifacts", "pipelines", "documents", "todos", "section-bots"), places(false, true))
     }
 
     @Test
@@ -107,7 +107,7 @@ class AgentFeedTest {
         val hidden = catalog(sample.with("userSettings", kotlinx.serialization.json.JsonArray(listOf(Wire.projectsHidden(true, "v2")))))
         assertTrue(hidden.projectsHidden)
         assertEquals(
-            listOf("section-places", "artifacts", "todos", "section-bots", "agent-ab1", "agent-as1", "agent-as2", "agent-ab2", "section-tasks", "agent-at2", "agent-at1"),
+            listOf("section-places", "artifacts", "documents", "todos", "section-bots", "agent-ab1", "agent-as1", "agent-as2", "agent-ab2", "section-tasks", "agent-at2", "agent-at1"),
             keys(hidden),
         )
 
@@ -322,11 +322,11 @@ class AgentFeedTest {
         val empty = AgentFeed.derive(catalog(Wire.bootstrap()))
         assertTrue(empty.loaded)
         // The fixed Places rows remain even before anything is created.
-        assertEquals(listOf("section-places", "artifacts", "todos"), empty.rows.map { it.key })
+        assertEquals(listOf("section-places", "artifacts", "documents", "todos"), empty.rows.map { it.key })
     }
 
     @Test
-    fun theSurfacesThePersonJoinedFollowArtifactsInTheirOrder() {
+    fun theOtherSurfacesThePersonJoinedFollowTodosInTheirOrderAndDocumentsAndListsGoUnderTheirRows() {
         val bootstrap = Wire.bootstrap(
             surfaces = listOf(
                 Wire.surface("s1", "Groceries", "todo", mapOf("u2" to "0", Wire.USER to "3")),
@@ -337,12 +337,13 @@ class AgentFeedTest {
             ),
             bots = listOf(Wire.bot("b1", "Happy", Wire.agent("ab1"))),
         )
-        val rows = AgentFeed.derive(catalog(bootstrap)).rows
+        val feed = AgentFeed.derive(catalog(bootstrap))
         assertEquals(
-            listOf("section-places", "artifacts", "todos", "surface-s2", "surface-s3", "surface-s1", "section-bots", "agent-ab1"),
-            rows.map { it.key },
+            listOf("section-places", "artifacts", "documents", "todos", "surface-s3", "section-bots", "agent-ab1"),
+            feed.rows.map { it.key },
         )
-        assertEquals(AgentFeedRow.Surface("s3", "Week", "calendar"), rows[4])
+        assertEquals(AgentFeedRow.Surface("s3", "Week", "calendar"), feed.rows[4])
+        assertEquals(listOf(AgentFeedRow.Surface("s2", "Launch plan", "document"), AgentFeedRow.Surface("s1", "Groceries", "todo")), feed.lists)
     }
 
     @Test
@@ -355,10 +356,7 @@ class AgentFeedTest {
             Wire.bootstrap(surfaces = listOf(local("s1", "Groceries", "2"), local("s2", "Launch", "1"))) +
                 ("profile" to buildJsonObject { put("userId", JsonNull) }),
         )
-        assertEquals(
-            listOf("section-places", "artifacts", "todos", "surface-s2", "surface-s1"),
-            AgentFeed.derive(catalog(bootstrap)).rows.map { it.key },
-        )
+        assertEquals(listOf("s2", "s1"), AgentFeed.derive(catalog(bootstrap)).lists.map { it.id })
     }
 
     @Test

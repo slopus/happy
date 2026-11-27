@@ -55,7 +55,7 @@ import java.util.concurrent.atomic.AtomicReference
 @Config(qualifiers = PHONE)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @OptIn(ExperimentalTestApi::class)
-class TodoListsScreenTest {
+class SurfaceListsScreenTest {
     @get:Rule val rule = createComposeRule()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val created = AtomicReference<JsonObject?>(null)
@@ -84,26 +84,39 @@ class TodoListsScreenTest {
     }
     @After fun close() = scope.cancel()
 
-    @Test fun indexShowsOnlyJoinedTodosAndCreatesWithARequiredName() {
+    @Test fun todosListEveryTodoListJoinedOrNotAndCreateOneWithARequiredName() {
         val session = session()
         var opened: String? = null
-        rule.setHappyContent { TodoListsScreen(session, {}, { opened = it }) }
+        rule.setHappyContent { SurfaceListsScreen(session, SurfaceList.Todos, {}, { opened = it }) }
         rule.waitUntilAtLeastOneExists(hasTestTag("todo.lists.s1"), 5_000)
-        rule.node("todo.lists.s2").assertDoesNotExist()
+        rule.node("todo.lists.s2").assertExists()
         rule.node("todo.lists.s3").assertDoesNotExist()
         assertDp("card column", 0, rule.node("todo.lists.s1").bounds.left)
-        assertDp("leading keyline", 32, rule.node(CardListTags.LEADING).bounds.left)
+        assertDp("leading keyline", 32, rule.onAllNodes(hasTestTag(CardListTags.LEADING), useUnmergedTree = true)[0].bounds.left)
         assertTrue(rule.node("todo.lists.s1").bounds.top >= rule.node("place.bar").bounds.bottom)
         rule.node("todo.lists.s1").performClick()
         assertEquals("s1", opened)
         rule.node("todo.lists.new").performClick()
-        rule.node("todo.lists.new.list").performClick()
         rule.node("prompt.confirm").assertIsNotEnabled()
         rule.node("prompt.input").performTextReplacement("  Weekend  ")
         rule.node("prompt.confirm").performClick()
         rule.waitUntil(5_000) { created.get() != null && opened != "s1" }
         assertEquals("Weekend", created.get()?.get("name")?.jsonPrimitive?.content)
         assertEquals("todo", created.get()?.get("type")?.jsonPrimitive?.content)
+        assertEquals(created.get()?.get("id")?.jsonPrimitive?.content, opened)
+    }
+
+    @Test fun documentsListTheDocumentsAndCreateADocument() {
+        val session = session()
+        var opened: String? = null
+        rule.setHappyContent { SurfaceListsScreen(session, SurfaceList.Documents, {}, { opened = it }) }
+        rule.waitUntilAtLeastOneExists(hasTestTag("document.lists.s3"), 5_000)
+        rule.node("document.lists.s1").assertDoesNotExist()
+        rule.node("document.lists.new").performClick()
+        rule.node("prompt.input").performTextReplacement("Plan")
+        rule.node("prompt.confirm").performClick()
+        rule.waitUntil(5_000) { created.get() != null && opened != null }
+        assertEquals("document", created.get()?.get("type")?.jsonPrimitive?.content)
         assertEquals(created.get()?.get("id")?.jsonPrimitive?.content, opened)
     }
 }

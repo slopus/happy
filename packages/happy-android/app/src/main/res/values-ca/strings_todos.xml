@@ -1,5 +1,4 @@
 <resources>
-    <string name="todo_new">Nou</string>
     <string name="todo_create_failed_title">No s’ha creat</string>
     <string name="todo_create_failed">No s’ha pogut crear. %1$s</string>
     <string name="todo_empty">Encara no hi ha res. Què cal fer?</string>
@@ -37,12 +36,14 @@
     <string name="todo_history_restored">Restaurada</string>
     <string name="todo_history_moved">Moguda</string>
     <string name="todo_history_changed_and">S’ha canviat i %1$s</string>
-    <string name="todo_lists">Llistes de tasques</string>
     <string name="todo_new_list">Llista de tasques nova</string>
     <string name="todo_new_document">Document nou</string>
     <string name="todo_no_lists">Encara no hi ha llistes de tasques. Toca + per crear-ne una.</string>
     <string name="todo_loading_lists">S’estan carregant les llistes de tasques…</string>
     <string name="todo_unsupported">Aquest Happy Agent no admet llistes de tasques.</string>
-    <string name="todo_nothing">Res a fer</string>
-    <plurals name="todo_outstanding"><item quantity="one">%1$d per fer</item><item quantity="many">%1$d per fer</item><item quantity="other">%1$d per fer</item></plurals>
+    <string name="surface_lists_documents">Documents</string>
+    <string name="surface_lists_todos">Tasques</string>
+    <string name="document_lists_empty">Encara no hi ha documents. Toca + per crear-ne un.</string>
+    <string name="document_lists_loading">S’estan carregant els documents…</string>
+    <string name="document_lists_unsupported">Aquest Happy Agent no admet documents.</string>
 </resources>

@@ -195,6 +195,7 @@ object MainPanelKey {
     const val PLUGINS = "plugins"
     const val PIPELINES = "pipelines"
     const val FEED = "feed"
+    const val DOCUMENTS = "documents"
     const val TODOS = "todos"
     const val NEW_SESSION = "newSession"
     const val CHANGELOG = "changelog"
@@ -221,6 +222,7 @@ object MainPanelKey {
             destination.hasRoute<com.slopus.happy.ui.plugins.PluginsRoute>() -> PLUGINS
             destination.hasRoute<com.slopus.happy.ui.pipelines.PipelinesRoute>() -> PIPELINES
             destination.hasRoute<AgentFeedRoute>() -> FEED
+            destination.hasRoute<com.slopus.happy.ui.todos.DocumentListsRoute>() -> DOCUMENTS
             destination.hasRoute<com.slopus.happy.ui.todos.TodoListsRoute>() -> TODOS
             destination.hasRoute<SettingsRoute>() -> SETTINGS
             destination.hasRoute<MachineRoute>() -> machine(entry.toRoute<MachineRoute>().id)

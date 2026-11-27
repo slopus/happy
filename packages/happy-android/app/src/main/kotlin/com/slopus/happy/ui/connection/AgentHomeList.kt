@@ -376,6 +376,7 @@ fun LazyListScope.agentHomeRows(
     /** The tablet sidebar's selection, what its main panel shows ([MainPanelKey]). */
     selected: String? = null,
     onOpenFeed: () -> Unit = {},
+    onOpenDocuments: () -> Unit = {},
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
     onOpenPipelines: () -> Unit = {},
@@ -396,7 +397,7 @@ fun LazyListScope.agentHomeRows(
             // Drawn from what its line shows: a change to nothing on it composes nothing.
             is AgentHomeItem.Row -> AgentHomeCardRow(
                 item.drawn(), motion, selected != null && selected == item.row.panelKey(), AgentHomeTags.row(item.key),
-                onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, onOpenFeed, onOpenTodos, onOpenPlugins, onOpenPipelines,
+                onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, onOpenFeed, onOpenDocuments, onOpenTodos, onOpenPlugins, onOpenPipelines,
             )
         }
     }
@@ -419,6 +420,7 @@ internal fun AgentHomeCardRow(
     onLeaveSurface: ((AgentFeedRow.Surface) -> Unit)? = null,
     onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null,
     onOpenFeed: () -> Unit = {},
+    onOpenDocuments: () -> Unit = {},
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
     onOpenPipelines: () -> Unit = {},
@@ -438,7 +440,8 @@ internal fun AgentHomeCardRow(
             AgentFeedRow.Plugins -> PlaceRow(stringResource(R.string.plugins_title), { TileMark(Ionicon.ExtensionPuzzleOutline, RowTile.Orange) }, onOpenPlugins)
             AgentFeedRow.Pipelines -> PlaceRow(stringResource(R.string.pipelines_title), { TileMark(Ionicon.GitNetworkOutline, RowTile.Teal) }, onOpenPipelines)
             is AgentFeedRow.Feed -> FeedPlaceRow(row.unread, onOpenFeed)
-            AgentFeedRow.Todos -> PlaceRow(stringResource(R.string.agent_search_todos), { TileMark(Ionicon.CheckboxOutline, RowTile.Green) }, onOpenTodos)
+            AgentFeedRow.Documents -> PlaceRow(stringResource(R.string.surface_lists_documents), { TileMark(Ionicon.DocumentTextOutline, RowTile.Blue) }, onOpenDocuments)
+            AgentFeedRow.Todos -> PlaceRow(stringResource(R.string.surface_lists_todos), { TileMark(Ionicon.CheckboxOutline, RowTile.Green) }, onOpenTodos)
             is AgentFeedRow.Surface -> SurfaceRow(row, { onOpenSurface(row) }, onLeaveSurface)
             is AgentFeedRow.Section -> Unit
         }
@@ -508,6 +511,7 @@ internal fun AgentFeedRow.panelKey(): String? = when (val row = this) {
     AgentFeedRow.Plugins -> MainPanelKey.PLUGINS
     AgentFeedRow.Pipelines -> MainPanelKey.PIPELINES
     is AgentFeedRow.Feed -> MainPanelKey.FEED
+    AgentFeedRow.Documents -> MainPanelKey.DOCUMENTS
     AgentFeedRow.Todos -> MainPanelKey.TODOS
     else -> null
 }
@@ -517,7 +521,7 @@ private fun titleStart(row: AgentFeedRow): Dp {
     val (depth, marked) = when (row) {
         is AgentFeedRow.Conversation -> row.depth to AgentHomeSpec.hasMark(row.kind)
         is AgentFeedRow.Folder -> row.depth to (row.mark != null)
-        AgentFeedRow.Artifacts, AgentFeedRow.Plugins, AgentFeedRow.Pipelines, is AgentFeedRow.Feed, AgentFeedRow.Todos, is AgentFeedRow.Surface -> 0 to true
+        AgentFeedRow.Artifacts, AgentFeedRow.Plugins, AgentFeedRow.Pipelines, is AgentFeedRow.Feed, AgentFeedRow.Documents, AgentFeedRow.Todos, is AgentFeedRow.Surface -> 0 to true
         is AgentFeedRow.Section -> return 0.dp
     }
     return AgentHomeSpec.markInset + AgentHomeSpec.indent * depth + if (marked) AgentHomeSpec.mark + AgentHomeSpec.markGap else 0.dp
@@ -767,6 +771,7 @@ fun AgentHomeList(
     bottom: @Composable () -> Unit = {},
     selected: String? = null,
     onOpenFeed: () -> Unit = {},
+    onOpenDocuments: () -> Unit = {},
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
     onOpenPipelines: () -> Unit = {},
@@ -789,7 +794,7 @@ fun AgentHomeList(
         contentPadding = contentPadding,
     ) {
         header?.invoke(this)
-        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected, onOpenFeed, onOpenTodos, onOpenPlugins, onOpenPipelines)
+        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected, onOpenFeed, onOpenDocuments, onOpenTodos, onOpenPlugins, onOpenPipelines)
         item(key = "bottom", contentType = "bottom") { bottom() }
     }
 }

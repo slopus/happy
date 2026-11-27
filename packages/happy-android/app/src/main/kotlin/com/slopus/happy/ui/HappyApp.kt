@@ -186,6 +186,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                 onSettingsRow = { row -> go.open(null) { nav.openAgentSettingsRow(account.id, row) } },
                                 onOpenArtifacts = { go.open(MainPanelKey.ARTIFACTS) { nav.navigate(AgentArtifactsRoute(account.id)) } },
                                 onOpenSurface = { go.open(MainPanelKey.surface(it.id)) { nav.openSurface(graph, account.id, it.id) } },
+                                onOpenDocuments = { go.open(MainPanelKey.DOCUMENTS) { nav.navigate(com.slopus.happy.ui.todos.DocumentListsRoute(account.id)) } },
                                 onOpenTodos = { go.open(MainPanelKey.TODOS) { nav.navigate(com.slopus.happy.ui.todos.TodoListsRoute(account.id)) } },
                                 onOpenPlugins = { go.open(MainPanelKey.PLUGINS) { nav.navigate(com.slopus.happy.ui.plugins.PluginsRoute(account.id)) } },
                                 onOpenPipelines = { go.open(MainPanelKey.PIPELINES) { nav.navigate(com.slopus.happy.ui.pipelines.PipelinesRoute(account.id)) } },

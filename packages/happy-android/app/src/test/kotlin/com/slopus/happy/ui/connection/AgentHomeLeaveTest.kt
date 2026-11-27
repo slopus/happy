@@ -64,7 +64,7 @@ class AgentHomeLeaveTest {
     private val agent = FakeAgent(
         Wire.bootstrap(
             bots = listOf(Wire.bot("b1", "Happy", Wire.agent("ab1"))),
-            surfaces = listOf(Wire.surface("s1", "Groceries", "todo"), Wire.surface("s2", "Launch plan", "document", mapOf(Wire.USER to "2"))),
+            surfaces = listOf(Wire.surface("s1", "Groceries", "calendar"), Wire.surface("s2", "Launch plan", "vault", mapOf(Wire.USER to "2"))),
         ),
     )
     private val cacheDir = File(context.cacheDir, "agent-home-leave-test")

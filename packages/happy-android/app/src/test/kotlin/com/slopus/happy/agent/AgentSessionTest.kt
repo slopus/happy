@@ -1336,7 +1336,8 @@ class AgentSessionTest {
         }.session(id)!!
     }
 
-    private fun surfaces(session: AgentSession) = session.feed.value.rows.filterIsInstance<AgentFeedRow.Surface>().map { it.id }
+    /** The joined Surfaces home holds: its rows', then the documents and todo lists under Documents and TODOs. */
+    private fun surfaces(session: AgentSession) = session.feed.value.let { feed -> feed.rows.filterIsInstance<AgentFeedRow.Surface>() + feed.lists }.map { it.id }
 
     @Test
     fun refreshingSurfacesMergesVersionsAndRetainsAccessibleUnjoinedInstances() = runBlocking {

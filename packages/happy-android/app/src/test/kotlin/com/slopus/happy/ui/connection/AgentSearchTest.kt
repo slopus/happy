@@ -46,7 +46,8 @@ class AgentSearchTest {
             AgentFeedRow.Plugins -> "Plugins"
             AgentFeedRow.Pipelines -> "Pipelines"
             is AgentFeedRow.Feed -> "Activity"
-            AgentFeedRow.Todos -> "Todos"
+            AgentFeedRow.Documents -> "Documents"
+            AgentFeedRow.Todos -> "TODOs"
             is AgentFeedRow.Section -> null
         }
     }
@@ -177,7 +178,7 @@ class AgentSearchTest {
         assertEquals("Document · not joined", lines["document:d2"])
         assertEquals("Errands", lines["todo:todo1"])
         // The kind's name finds a Surface; an artifact by its type too.
-        assertEquals(listOf("surface:c1"), found("calendar", sources))
+        assertEquals(listOf("surface:c1", "surface:s4"), found("calendar", sources))
         assertEquals(listOf("artifact:a1"), found("web page", sources))
         // Nothing typed: none of it.
         assertTrue(agentSearchResults(feed, "", label, words, emptyList(), emptyList(), sources).all { it is AgentSearchResult.Home })

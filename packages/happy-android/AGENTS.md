@@ -2780,6 +2780,22 @@ the wire and state, `ui/viewers/` the slot; words are
   runs two people's sessions against a real team-mode daemon when
   `HAPPY_VIEWERS_ENV` names the JSON happy-agent's live fixture writes.
 
+### Documents and TODOs
+
+Desktop's two sections, the same on every client (Steve): home's places
+have a fixed Documents row then a TODOs row (`AgentFeedRow.Documents`,
+`AgentFeedRow.Todos`) after Pipelines, never left or moved. A document or
+todo list is never a home row of its own: the feed keeps the joined ones in
+`AgentFeed.lists` (search's), not in `rows`; other Surface kinds stay rows.
+Nothing stored changes. Each row opens a page (`ui/todos/SurfaceListsScreen`,
+`DocumentListsRoute` / `TodoListsRoute`, `MainPanelKey.DOCUMENTS` / `TODOS`)
+of every Surface of that kind in the catalog, joined or not, by name; a
+todo list's open todos (headings left out) trail it when there are any,
+kept or read once for the page (`TodoLibrary.readOutstanding`). + makes one
+of that kind ("New document", "New todo list") and opens it. An item opens
+the Surface's own page, Back returning to the list; tabs are desktop's
+alone. Search and links open a Surface directly.
+
 ### Plugins
 
 A Happy Cloud server's plugins (happy-cluster API.md, "Plugins"; desktop's
@@ -2827,7 +2843,8 @@ daemon sends none, and its bots stay as they were). `agent/Bots.kt` reads it
 
 - **Where:** a `shared` bot (only owners are sent it) is the last row of
   home's places card, after desktop's order there (Activity, Artifacts,
-  Plugins, Pipelines, Todos, then joined Surfaces), opening its conversation; `personal`
+  Plugins, Pipelines, Documents, TODOs, then the other joined Surfaces),
+  opening its conversation; `personal`
   bots are the Bots section, each `agent` the caller's own conversation.
   Placement follows `kind` alone and editing `editable` alone, never
   `isAdmin` or `systemKey` (any pair of kind and admin reads). An unknown

@@ -62,10 +62,10 @@ class BotKindsTest {
 
     @Test
     fun anOwnerHasTheSharedBotLastAmongThePlacesAndThePersonalOnesUnderBots() {
-        val surfaces = listOf(Wire.surface("s1", "Roadmap", "document"))
+        val surfaces = listOf(Wire.surface("s1", "Week", "calendar"))
         val feed = AgentFeed.derive(catalog(Wire.bootstrap(bots = listOf(writer, shared, researcher), surfaces = surfaces)), feedUnread = 1)
         assertEquals(
-            listOf("section-places", "feed", "artifacts", "todos", "surface-s1", "agent-achief", "section-bots", "agent-aresearch", "agent-awriter"),
+            listOf("section-places", "feed", "artifacts", "documents", "todos", "surface-s1", "agent-achief", "section-bots", "agent-aresearch", "agent-awriter"),
             feed.rows.map { it.key },
         )
         val chief = feed.conversations.first { it.agentId == "achief" }
@@ -78,7 +78,7 @@ class BotKindsTest {
     fun aMemberHasOnlyThePersonalBotsUnderBots() {
         val feed = AgentFeed.derive(catalog(Wire.bootstrap(bots = listOf(researcher, writer))))
         assertEquals(
-            listOf("section-places", "artifacts", "todos", "section-bots", "agent-aresearch", "agent-awriter"),
+            listOf("section-places", "artifacts", "documents", "todos", "section-bots", "agent-aresearch", "agent-awriter"),
             feed.rows.map { it.key },
         )
     }
@@ -89,7 +89,7 @@ class BotKindsTest {
         val personalAdmin = bot("p", "Builder", "personal", admin = true, orderKey = "2")
         val feed = AgentFeed.derive(catalog(Wire.bootstrap(bots = listOf(sharedPlain, personalAdmin))))
         assertEquals(
-            listOf("section-places", "artifacts", "todos", "agent-as", "section-bots", "agent-ap"),
+            listOf("section-places", "artifacts", "documents", "todos", "agent-as", "section-bots", "agent-ap"),
             feed.rows.map { it.key },
         )
     }
@@ -100,7 +100,7 @@ class BotKindsTest {
         val other = Wire.bot("b2", "Scout", Wire.agent("ab2"), orderKey = "2")
         val feed = AgentFeed.derive(catalog(Wire.bootstrap(bots = listOf(admin, other))))
         assertEquals(
-            listOf("section-places", "artifacts", "todos", "section-bots", "agent-ab1", "agent-ab2"),
+            listOf("section-places", "artifacts", "documents", "todos", "section-bots", "agent-ab1", "agent-ab2"),
             feed.rows.map { it.key },
         )
     }

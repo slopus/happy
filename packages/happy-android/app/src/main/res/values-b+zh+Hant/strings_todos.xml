@@ -1,5 +1,4 @@
 <resources>
-    <string name="todo_new">新增</string>
     <string name="todo_create_failed_title">未能建立</string>
     <string name="todo_create_failed">無法建立。%1$s</string>
     <string name="todo_empty">這裡還沒有內容。有什麼需要做的？</string>
@@ -37,12 +36,14 @@
     <string name="todo_history_restored">已還原</string>
     <string name="todo_history_moved">已移動</string>
     <string name="todo_history_changed_and">已變更並%1$s</string>
-    <string name="todo_lists">待辦清單</string>
     <string name="todo_new_list">新增待辦清單</string>
     <string name="todo_new_document">新增文件</string>
     <string name="todo_no_lists">還沒有待辦清單。點選 + 建立一個。</string>
     <string name="todo_loading_lists">正在載入待辦清單…</string>
     <string name="todo_unsupported">此 Happy Agent 不支援待辦清單。</string>
-    <string name="todo_nothing">沒有待辦事項</string>
-    <plurals name="todo_outstanding"><item quantity="other">%1$d 項待辦</item></plurals>
+    <string name="surface_lists_documents">文件</string>
+    <string name="surface_lists_todos">待辦</string>
+    <string name="document_lists_empty">還沒有文件。點選 + 建立一個。</string>
+    <string name="document_lists_loading">正在載入文件…</string>
+    <string name="document_lists_unsupported">此 Happy Agent 不支援文件。</string>
 </resources>

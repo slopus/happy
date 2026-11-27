@@ -33,14 +33,18 @@ sealed interface AgentFeedRow {
     data class Feed(val unread: Int) : AgentFeedRow {
         override val key get() = "feed"
     }
-    /** iOS direct:todos: the computer's todo lists among the fixed places. */
+    /** Desktop's fixed Documents row: a page of every document Surface, joined or not; home lists none as a row. */
+    data object Documents : AgentFeedRow { override val key get() = "documents" }
+
+    /** Desktop's fixed TODOs row, under Documents: a page of every todo list, joined or not; home lists none as a row. */
     data object Todos : AgentFeedRow { override val key get() = "todos" }
 
     /**
-     * A Surface the person joined: a todo list, a document, a calendar, a
-     * system monitor or a chat ([type]). It opens on its own page. A
-     * [locked] vault is listed for the team, but the person's role can't
-     * open it.
+     * A Surface the person joined: a calendar, a system monitor, a vault or
+     * a chat ([type]); a document or a todo list only as search finds it,
+     * home having them under [Documents] and [Todos]. It opens on its own
+     * page. A [locked] vault is listed for the team, but the person's role
+     * can't open it.
      */
     data class Surface(val id: String, val name: String, val type: String, val locked: Boolean = false) : AgentFeedRow {
         override val key get() = "surface-$id"
@@ -105,6 +109,11 @@ sealed interface AgentFeedRow {
     }
 }
 
+/** One of home's fixed places, a page of the phone's own: Activity, Artifacts, Plugins, Pipelines, Documents or TODOs. */
+val AgentFeedRow.homePage: Boolean
+    get() = this is AgentFeedRow.Feed || this == AgentFeedRow.Artifacts || this == AgentFeedRow.Plugins ||
+        this == AgentFeedRow.Pipelines || this == AgentFeedRow.Documents || this == AgentFeedRow.Todos
+
 enum class ConversationKind { Bot, Task, Project, Subtask }
 
 /** What a project's folder wears (API.md "Projects", `avatar`). */
@@ -142,7 +151,12 @@ enum class AgentFeedSection(val key: String) { Places("places"), Bots("bots"), T
 
 /** What home shows for an agent connection. [loaded] is false until a snapshot (cached or read) is in. */
 @Immutable
-data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> = emptyList()) {
+data class AgentFeed(
+    val loaded: Boolean = false,
+    val rows: List<AgentFeedRow> = emptyList(),
+    /** The joined documents and todo lists, in the person's order: listed under [AgentFeedRow.Documents] and [AgentFeedRow.Todos], not as rows. */
+    val lists: List<AgentFeedRow.Surface> = emptyList(),
+) {
     val conversations: List<AgentFeedRow.Conversation> get() = rows.filterIsInstance<AgentFeedRow.Conversation>()
 
     /** The name home shows for [agentId]'s row; null if home has no row for it or the row has no name yet. */
@@ -156,8 +170,9 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
         /**
          * iOS's home (SidebarRows.swift), in the agent's own orders, never
          * by activity, so nothing moves while nothing is done: desktop's places
-         * (Activity, Artifacts, Plugins, Pipelines, Todos), the Surfaces the
-         * person joined (in their own order) and Happy Cloud's shared bot
+         * (Activity, Artifacts, Plugins, Pipelines, Documents, TODOs), the
+         * other Surfaces the person joined (in their own order; documents and
+         * todo lists go to [lists]) and Happy Cloud's shared bot
          * ([BotKind.Shared]), then the other bots
          * (catalog order), then the tasks in the person's list (their
          * order), then the projects, each a folder over its root
@@ -190,6 +205,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
             if (!catalog.loaded) return Empty
             val removed = intents.removed
             val rows = ArrayList<AgentFeedRow>()
+            val lists = ArrayList<AgentFeedRow.Surface>()
             val shown = HashSet<String>()
 
             fun active(resource: JsonObject) = resource["archivedAt"].isNullish() &&
@@ -288,6 +304,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 rows += AgentFeedRow.Artifacts
                 if (plugins) rows += AgentFeedRow.Plugins
                 if (pipelines) rows += AgentFeedRow.Pipelines
+                rows += AgentFeedRow.Documents
                 rows += AgentFeedRow.Todos
                 catalog.surfaces.values
                     .filter { it.string("status") != "archived" && it["archivedAt"].isNullish() }
@@ -302,7 +319,8 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                         val id = surface.string("id")?.takeIf { it !in leaving && it !in removed } ?: return@forEach
                         val type = surface.string("type").orEmpty()
                         val locked = Surface.parse(surface)?.showsLock == true
-                        rows += AgentFeedRow.Surface(id, surface.string("name").orEmpty(), type, locked)
+                        val row = AgentFeedRow.Surface(id, surface.string("name").orEmpty(), type, locked)
+                        if (type == SurfaceType.DOCUMENT || type == SurfaceType.TODO) lists += row else rows += row
                     }
                 shared.forEach(::botRows)
             }
@@ -352,7 +370,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     folderActivity(projectAt)
                 }
             }
-            return AgentFeed(loaded = true, rows = rows)
+            return AgentFeed(loaded = true, rows = rows, lists = lists)
         }
 
         private val byOrderKey = compareBy<JsonObject>({ it.string("orderKey") ?: "\uFFFF" }, { it.string("id") ?: it.string("taskId") })

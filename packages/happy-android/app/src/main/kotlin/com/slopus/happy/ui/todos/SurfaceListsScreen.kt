@@ -1,9 +1,9 @@
 package com.slopus.happy.ui.todos
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -20,8 +20,6 @@ import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
-import com.slopus.happy.ui.components.HappyDropdownMenu
-import com.slopus.happy.ui.components.HappyMenuItem
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Prompt
 import com.slopus.happy.ui.components.PromptModal
@@ -32,14 +30,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** iOS TodoListsViewController: joined lists with kept counts, refresh and a required-name creation menu. */
+/**
+ * Home's Documents or TODOs page (desktop's section list): every Surface of
+ * [list]'s kind by name, joined or not, refreshed on open and by pulling;
+ * a todo list counts its open todos, kept or read now. + asks a name and
+ * makes one of the kind, then opens it.
+ */
 @Composable
-internal fun TodoListsScreen(session: AgentSession, onBack: () -> Unit, onOpen: (String) -> Unit) {
+internal fun SurfaceListsScreen(session: AgentSession, list: SurfaceList, onBack: () -> Unit, onOpen: (String) -> Unit) {
     val catalog by session.surfaces.collectAsStateWithLifecycle()
-    val ids = remember(catalog) { catalog.surfaces.filter { it.type == SurfaceType.TODO && catalog.joined(it) }.map { it.id } }
-    val counts by remember(session, ids) { session.todos.outstandingStates(ids) }.collectAsStateWithLifecycle(emptyMap())
-    val entries by produceState(emptyList<TodoListEntry>(), catalog, counts) {
-        value = withContext(Dispatchers.Default) { catalog.of(SurfaceType.TODO).filter(catalog::joined).map { TodoListEntry(it.id, it.name, counts[it.id]) } }
+    val ids = remember(catalog, list) { if (list.type == SurfaceType.TODO) catalog.of(SurfaceType.TODO).map { it.id } else emptyList() }
+    val kept by remember(session, ids) { session.todos.outstandingStates(ids) }.collectAsStateWithLifecycle(emptyMap())
+    // The lists the phone hasn't kept, read once while the page is open.
+    val read = remember { mutableStateMapOf<String, Int>() }
+    LaunchedEffect(session, ids, kept.keys) {
+        for (id in ids) if (id !in kept && id !in read) launch { session.todos.readOutstanding(id)?.let { read[id] = it } }
+    }
+    val entries by produceState(emptyList<SurfaceListEntry>(), catalog, list, kept, read.toMap()) {
+        value = withContext(Dispatchers.Default) { catalog.of(list.type).map { SurfaceListEntry(it.id, it.name, kept[it.id] ?: read[it.id]) } }
     }
     var unsupported by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
@@ -56,17 +64,16 @@ internal fun TodoListsScreen(session: AgentSession, onBack: () -> Unit, onOpen: 
     var prompt by remember { mutableStateOf<Prompt?>(null) }
     var creating by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
-    val listTitle = stringResource(R.string.todo_new_list)
-    val documentTitle = stringResource(R.string.todo_new_document)
+    val createTitle = stringResource(list.create)
     val create = stringResource(R.string.common_create)
     val fallback = stringResource(R.string.common_error)
-    fun ask(type: String) {
+    fun ask() {
         if (creating) return
-        prompt = Prompt(if (type == SurfaceType.TODO) listTitle else documentTitle, confirmText = create, allowBlank = false) { value ->
+        prompt = Prompt(createTitle, confirmText = create, allowBlank = false) { value ->
             if (value != null) {
                 creating = true
                 scope.launch {
-                    try { onOpen(session.createSurface(type, value.trim()).id) }
+                    try { onOpen(session.createSurface(list.type, value.trim()).id) }
                     catch (error: CancellationException) { throw error }
                     catch (error: Exception) { failure = error.message?.takeIf { it.isNotBlank() } ?: fallback }
                     finally { creating = false }
@@ -74,22 +81,10 @@ internal fun TodoListsScreen(session: AgentSession, onBack: () -> Unit, onOpen: 
             }
         }
     }
-    PlaceScaffold(surfaceTitle(session, stringResource(R.string.todo_lists)), onBack, tag = "todo.lists.screen", actions = {
-        TodoNewMenu(creating, onList = { ask(SurfaceType.TODO) }, onDocument = { ask(SurfaceType.DOCUMENT) })
-    }) { TodoListsContent(entries, catalog.loaded, unsupported, onOpen, { scope.launch { refresh() } }, refreshing) }
+    PlaceScaffold(surfaceTitle(session, stringResource(list.title)), onBack, tag = "${list.tag}.screen", actions = {
+        BarIconButton(Ionicon.Add, createTitle, ::ask, Modifier.testTag("${list.tag}.new"))
+    }) { SurfaceListsContent(list, entries, catalog.loaded, unsupported, onOpen, { scope.launch { refresh() } }, refreshing) }
     prompt?.let { current -> PromptModal(current) { prompt = null } }
     failure?.let { reason -> HappyAlert(Alert(stringResource(R.string.todo_create_failed_title), stringResource(R.string.todo_create_failed, reason),
         listOf(AlertButton(stringResource(R.string.common_ok)))), { failure = null }) }
-}
-
-@Composable
-private fun TodoNewMenu(busy: Boolean, onList: () -> Unit, onDocument: () -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        BarIconButton(Ionicon.Add, stringResource(R.string.todo_new), { if (!busy) expanded = true }, Modifier.testTag("todo.lists.new"))
-        HappyDropdownMenu(expanded, { expanded = false }) {
-            HappyMenuItem(stringResource(R.string.todo_new_list), { expanded = false; onList() }, Modifier.testTag("todo.lists.new.list"))
-            HappyMenuItem(stringResource(R.string.todo_new_document), { expanded = false; onDocument() }, Modifier.testTag("todo.lists.new.document"))
-        }
-    }
 }
