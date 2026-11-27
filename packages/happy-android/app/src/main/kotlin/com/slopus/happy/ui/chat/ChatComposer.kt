@@ -117,7 +117,7 @@ object SessionStatusColors {
 }
 
 /** What the composer's round button does (agentInputPrimaryAction.ts). */
-enum class PrimaryAction { Stop, Blocked, Send, Voice, Idle }
+enum class PrimaryAction { Stop, Blocked, Send, Idle }
 
 /**
  * `resolveAgentInputPrimaryAction`: Stop wins on an empty
@@ -130,12 +130,10 @@ fun resolvePrimaryAction(
     canAbort: Boolean,
     blocked: Boolean,
     disabled: Boolean = false,
-    canVoice: Boolean = false,
 ): PrimaryAction = when {
     showAbort && canAbort && !hasContent -> PrimaryAction.Stop
     blocked && hasContent -> PrimaryAction.Blocked
     !disabled && hasContent -> PrimaryAction.Send
-    !disabled && canVoice -> PrimaryAction.Voice
     else -> PrimaryAction.Idle
 }
 
@@ -154,7 +152,7 @@ fun resolvePrimaryAction(
  * button.primary.background (dark #F5F5F5) with Octicons stop 16 white
  * (dark black); locked surfaceHigh with a 1 divider border and
  * lock-closed 14 textSecondary. A spinner replaces the glyph while
- * stopping. Voice uses surfaceHighest and the bundled 24 voice glyph tinted text.
+ * stopping.
  * A locked button still takes taps (to refuse them); an idle one
  * doesn't. [panelShake] shakes the card and [primaryShake] the button
  * (Shaker.tsx). With [showDetails] false (reading older messages under
@@ -334,7 +332,7 @@ private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () 
         when (action) {
             PrimaryAction.Stop -> if (dark) Color(0xFFF5F5F5) else colors.button.primaryBackground
             PrimaryAction.Blocked -> colors.surfaceHigh
-            PrimaryAction.Send, PrimaryAction.Voice -> colors.surfaceHighest
+            PrimaryAction.Send -> colors.surfaceHighest
             PrimaryAction.Idle -> if (dark) Color(0xFF3A3A3C) else Color(0xFFD1D1D6)
         },
         androidx.compose.animation.core.tween(PrimaryGlyphMotion.DURATION_MS),
@@ -345,7 +343,6 @@ private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () 
     // Literal in happy-app (AgentInput.tsx accessibilityLabel).
     val label = when (action) {
         PrimaryAction.Stop -> stringResource(R.string.chat_stop)
-        PrimaryAction.Voice -> stringResource(R.string.chat_voice)
         else -> stringResource(R.string.chat_send)
     }
     Box(
@@ -369,12 +366,6 @@ private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () 
                 )
                 shown == PrimaryAction.Stop -> Icon(Octicon.Stop, ComposerSpec.primaryIcon, if (dark) Color.Black else Color.White)
                 shown == PrimaryAction.Blocked -> Icon(Ionicon.LockClosed, ComposerSpec.lockIcon, colors.textSecondary)
-                shown == PrimaryAction.Voice -> androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(com.slopus.happy.R.drawable.icon_voice_white),
-                    contentDescription = null,
-                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(colors.text),
-                    modifier = Modifier.size(24.dp),
-                )
                 else -> Icon(
                     Octicon.ArrowUp,
                     ComposerSpec.primaryIcon,

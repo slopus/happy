@@ -11,6 +11,7 @@ import com.slopus.happy.ui.RestoreManualRoute
 import com.slopus.happy.ui.RestoreRoute
 import com.slopus.happy.ui.ServerRoute
 import com.slopus.happy.ui.SettingsRoute
+import com.slopus.happy.ui.connection.AgentVoiceTags
 import com.slopus.happy.ui.files.MessageDetailRoute
 import com.slopus.happy.ui.files.SessionChangesRoute
 import com.slopus.happy.ui.files.SessionFileRoute
@@ -24,8 +25,6 @@ import com.slopus.happy.ui.settings.AgentsRoute
 import com.slopus.happy.ui.settings.AppearanceRoute
 import com.slopus.happy.ui.settings.ChangelogRoute
 import com.slopus.happy.ui.settings.LanguageRoute
-import com.slopus.happy.ui.voice.VoiceSettingsRoute
-import com.slopus.happy.ui.voice.VoiceLanguageRoute
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -152,8 +151,8 @@ private fun route(segments: List<String>, rawQuery: String?): DeepLink? {
         listOf("settings", "appearance") -> screen(AppearanceRoute)
         listOf("settings", "agents") -> screen(AgentsRoute)
         listOf("settings", "language") -> screen(LanguageRoute())
-        listOf("settings", "voice") -> screen(VoiceSettingsRoute())
-        listOf("settings", "voice", "language") -> screen(VoiceLanguageRoute)
+        // Voice is a row of Settings (its page needs the account): Settings, at that row.
+        listOf("settings", "voice") -> screen(SettingsRoute(reveal = AgentVoiceTags.ROW))
         listOf("server") -> signedOut(ServerRoute)
         listOf("restore") -> signedOut(RestoreRoute)
         listOf("restore", "manual") -> signedOut(RestoreManualRoute)

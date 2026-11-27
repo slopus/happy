@@ -11,6 +11,18 @@ import com.slopus.happy.accounts.LockedAccount
 import com.slopus.happy.accounts.RnServerConfigImporter
 import com.slopus.happy.accounts.accountId
 import com.slopus.happy.call.CallController
+import com.slopus.happy.call.LegacyCallAccount
+import com.slopus.happy.call.LegacyCallAccounts
+import com.slopus.happy.call.LegacyCallModes
+import com.slopus.happy.call.LegacyCallTargets
+import com.slopus.happy.chat.ChatState
+import com.slopus.happy.chat.ComposerModeResolver
+import com.slopus.happy.model.SessionMetadata
+import com.slopus.happy.model.settings.ModeOptions
+import com.slopus.happy.sync.AgentModeField
+import com.slopus.happy.sync.ComposerMirror
+import com.slopus.happy.sync.SpawnSessionOptions
+import com.slopus.happy.sync.SpawnSessionResult
 import com.slopus.happy.agent.AgentSessions
 import com.slopus.happy.agent.StartupLink
 import com.slopus.happy.analytics.Analytics
@@ -75,19 +87,13 @@ import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.sync.SessionFileCache
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
 import com.slopus.happy.ui.home.HomeServices
+import com.slopus.happy.ui.home.HomeSnapshot
+import com.slopus.happy.chat.ChatFeed
+import com.slopus.happy.chat.StoreChatSessionSource
+import com.slopus.happy.chat.SyncChatMessagesSource
+import com.slopus.happy.chat.SyncChatPresenceSource
 import com.slopus.happy.ui.home.NewSessionDraftStore
 import com.slopus.happy.ui.home.PrefsReviewStamps
-import com.slopus.happy.voice.ElevenLabsTransport
-import com.slopus.happy.voice.StoreVoiceContext
-import com.slopus.happy.voice.VoiceApi
-import com.slopus.happy.voice.VoiceEngine
-import com.slopus.happy.voice.VoiceLanguages
-import com.slopus.happy.voice.VoiceOptions
-import com.slopus.happy.voice.VoicePaywall
-import com.slopus.happy.voice.VoicePreferences
-import com.slopus.happy.voice.VoiceTools
-import com.slopus.happy.voice.VoiceStatus
-import com.slopus.happy.voice.VoiceUpsell
 import com.slopus.happy.chat.AgentState
 import com.slopus.happy.sync.SendOptions
 import com.slopus.happy.sync.SendResult
@@ -115,6 +121,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
@@ -251,6 +260,7 @@ class AppGraph(
             if (onDisk) {
                 appContext.deleteDatabase("account-$id.db")
                 SessionFileCache.directory(appContext.noBackupFilesDir, id).deleteRecursively()
+                cliCallHistory(id).delete()
                 if (!hasMediaOwner(publicId)) legacyMediaDirectory(publicId)?.deleteRecursively()
             }
             removals.finish(id)
@@ -446,59 +456,6 @@ class AppGraph(
 
     /** The signed-in account's sync, or null when signed out. */
     val account: StateFlow<AccountSync?> = accountState.asStateFlow()
-
-    val voicePreferences = VoicePreferences(context.getSharedPreferences(VoicePreferences.PREFS_NAME, Context.MODE_PRIVATE))
-
-    /**
-     * The relay sessions' voice. Switched off: a Happy session's chat shows
-     * no voice button and nothing reaches ElevenLabs. Agent connections call
-     * through [calls]. The SDK is allocated only inside connect(), never
-     * while constructing the app graph.
-     */
-    val voice: VoiceEngine = VoiceEngine(
-        scope = scope,
-        enabled = false,
-        foreground = foreground,
-        service = VoiceApi(okHttp, clientId, { serverUrl }, { serverConfig.voiceUrl }, BuildConfig.ELEVENLABS_AGENT_ID),
-        transport = ElevenLabsTransport(appContext),
-        credentials = { (auth.state.value as? AuthState.SignedIn)?.credentials },
-        options = {
-            val values = settings.settings.value
-            val local = localSettings.values.value
-            VoiceOptions(values.voiceBypassToken, values.voiceCustomAgentId,
-                VoiceLanguages.elevenLabsCode(values.voiceAssistantLanguage),
-                VoiceUpsell.resolve(override = local.voiceUpsellOverride, overrideEnabled = BuildConfig.DEBUG || local.devModeEnabled))
-        },
-        paywall = object : VoicePaywall {
-            override fun hasPro() = subscription.hasPro()
-            override suspend fun present(flow: String) = offers.relayVoice(flow)
-        },
-        preferences = voicePreferences,
-        contextFactory = {
-            StoreVoiceContext(store, checkNotNull(accountState.value).messages.stored, scope, onSessionDeleted = ::onVoiceSessionDeleted)
-        },
-        toolsFactory = { isCurrent, onSent ->
-            // Capture this call's account, never a later sign-in or whichever session UI is now open.
-            val bound = checkNotNull(accountState.value)
-            VoiceTools(
-                send = { id, message ->
-                    check(accountState.value === bound && isCurrent())
-                    val result = bound.sender.send(id, message, SendOptions(source = "voice", isCurrent = { accountState.value === bound && isCurrent() }))
-                    check(result is SendResult.Accepted) { "Voice message was not queued" }
-                },
-                permissionOwner = { requestId -> withContext(Dispatchers.IO) {
-                    check(accountState.value === bound && isCurrent())
-                    store.sessions().firstOrNull { AgentState.parse(it.agentStateJson)?.requests?.containsKey(requestId) == true }?.id
-                } },
-                decide = { id, requestId, allow ->
-                    check(accountState.value === bound && isCurrent())
-                    if (allow) bound.sessionOps.allow(id, requestId) else bound.sessionOps.deny(id, requestId)
-                },
-                sent = onSent,
-                isCurrent = { accountState.value === bound && isCurrent() },
-            )
-        },
-    )
 
     /**
      * Agent connections over Happy Protocol V2: accounts of their own beside
@@ -853,21 +810,97 @@ class AppGraph(
     )
 
     /**
-     * The agent connection's voice call, apart from the relay's [voice]:
-     * made the first time home's voice button or the bar asks for it.
+     * The voice call, on an agent connection or a Happy CLI account: made the
+     * first time a voice button or the bar asks for it.
      */
     val calls: CallController by lazy {
         CallController(
             appContext,
             agentSessions,
             foreground = isForeground,
-            openAccount = openAccount.map { (it as? OpenAccount.Agent)?.id },
-            relayVoiceActive = voice.state.map { it.status != VoiceStatus.Disconnected },
-            stopRelayVoice = voice::stop,
+            openAccount = openAccount.map { it.id },
+            cli = cliCalls,
             subscription = subscription,
             offers = offers,
         )
     }
+
+    /** The open Happy CLI account as a call reads and sends to it: home's sessions, each chat as its screen has it. */
+    private val cliCalls = object : LegacyCallAccounts {
+        override fun account(accountId: String): LegacyCallAccount? {
+            if (openAccount.value != OpenAccount.Happy(accountId)) return null
+            val sync = accountState.value ?: return null
+            val home = HomeServices.of(this@AppGraph)
+            fun directory(snapshot: HomeSnapshot?, archiving: Set<String>) = LegacyCallTargets.directory(snapshot?.sessions.orEmpty(), archiving)
+            val feed = ChatFeed(SyncChatMessagesSource(sync.messages, sync.sender), StoreChatSessionSource(store), SyncChatPresenceSource(sync.presence))
+            val resources = appContext.resources
+            return object : LegacyCallAccount {
+                override fun directory() = directory(home.snapshots.value, home.archiver.archiving.value)
+                override val directoryChanges = combine(home.snapshots, home.archiver.archiving, ::directory)
+                override fun unlisted(sessionId: String) = home.session(sessionId)?.let(LegacyCallTargets::unlisted)
+                override fun chat(sessionId: String) = feed.state(sessionId)
+                override suspend fun catchUp(sessionId: String) = sync.messages.invalidateAndAwait(sessionId)
+                override suspend fun isCurrent(sessionId: String): Boolean {
+                    if (sync.connectionStatus.value != ConnectionStatus.CONNECTED) return false
+                    return withContext(Dispatchers.IO) {
+                        val session = store.session(sessionId) ?: return@withContext false
+                        val history = store.messageHistory(sessionId) ?: return@withContext false
+                        history.isLoaded && history.newestSeq >= session.seq
+                    }
+                }
+                override fun modes(chat: ChatState): LegacyCallModes {
+                    val metadata = chat.session?.metadata
+                    val mirror = chat.session?.id?.let { sync.composer.mirrors.value[it] } ?: ComposerMirror()
+                    val composer = ComposerModeResolver.resolve(metadata, mirror, settings.settings.value.agentDefaultOverrides, resources::getString)
+                    return LegacyCallTargets.modes(composer) { key -> ModeOptions.effortLevelsForModel(metadata?.flavor, key, metadata) }
+                }
+                override suspend fun setModes(sessionId: String, model: String?, effort: String?) {
+                    val patch = buildMap {
+                        model?.let { put(AgentModeField.MODEL_MODE, it) }
+                        effort?.let { put(AgentModeField.EFFORT_LEVEL, it) }
+                    }
+                    if (patch.isNotEmpty() && accountState.value === sync) sync.composer.setAgentModes(sessionId, patch)
+                }
+                override suspend fun send(sessionId: String, text: String, waitOnlineMillis: Long, onAccepted: () -> Unit): Boolean {
+                    // Online as the chat has it: live presence, else the stored flag.
+                    fun online(stored: Boolean) = sync.presence.sessions.value[sessionId]?.active ?: stored
+                    if (waitOnlineMillis > 0) withTimeoutOrNull(waitOnlineMillis) {
+                        sync.presence.sessions.first { it[sessionId]?.active ?: withContext(Dispatchers.IO) { store.session(sessionId)?.active == true } }
+                    }
+                    // Checked again where the sender puts it in the outbox, nothing suspending after; the store read is off the main thread.
+                    fun takes(): Boolean {
+                        if (accountState.value !== sync || sessionId in home.archiver.archiving.value) return false
+                        val session = store.session(sessionId) ?: return false
+                        if (SessionMetadata.parse(session.metadataJson)?.lifecycleState == "archived") return false
+                        return online(session.active)
+                    }
+                    val options = SendOptions(source = "voice", isCurrent = ::takes, onAccepted = onAccepted)
+                    return withContext(Dispatchers.IO) { sync.sender.send(sessionId, text, options) } is SendResult.Accepted
+                }
+                override fun newWorkPlace(bot: Boolean) = LegacyCallTargets.newWorkPlace(
+                    home.snapshots.value?.machines.orEmpty(), home.newSession(appContext).draft.value.selectedMachineId, bot,
+                )
+                override suspend fun spawn(options: SpawnSessionOptions): SpawnSessionResult =
+                    if (accountState.value === sync) sync.machineOps.spawnSession(options) else SpawnSessionResult.Error("The call has ended.")
+                override suspend fun awaitSession(sessionId: String): Boolean {
+                    suspend fun stored() = withContext(Dispatchers.IO) { store.session(sessionId) != null }
+                    var attempt = 0
+                    while (!stored() && attempt < 3 && accountState.value === sync) {
+                        if (attempt > 0) delay(300L * attempt)
+                        withTimeoutOrNull(4_000) { sync.syncNow() }
+                        attempt++
+                    }
+                    return stored()
+                }
+            }
+        }
+
+        override fun historyFile(accountId: String): File = cliCallHistory(accountId)
+    }
+
+    /** A Happy CLI account's call history, beside its other kept files; gone with the account. */
+    private fun cliCallHistory(accountId: String): File =
+        File(File(appContext.noBackupFilesDir, "call-history"), "${accountId.filter { it.isLetterOrDigit() || it == '-' }}.json")
 
 
 
@@ -1004,6 +1037,7 @@ class AppGraph(
             if (!hasMediaOwner(publicId)) legacyMediaDirectory(publicId)?.deleteRecursively()
             // The file viewer's kept reads go with the account (its cache closed with its sync).
             SessionFileCache.directory(appContext.noBackupFilesDir, id).deleteRecursively()
+            cliCallHistory(id).delete()
             if (wipeCaches) LocalCaches.wipe(appContext)
             removals.finish(id)
         }
@@ -1050,14 +1084,9 @@ class AppGraph(
     }
 
     private suspend fun stopAccount() {
-        voice.stop()
         val account = accountState.value ?: return
         accountState.value = null
         account.stop()
-    }
-
-    private fun onVoiceSessionDeleted(id: String) {
-        if (voice.state.value.sessionId == id) scope.launch { voice.stop() }
     }
 }
 
@@ -1091,4 +1120,4 @@ private const val TAG = "AppGraph"
  * empties). The server choice, the secure store (cleared by [AuthRepository])
  * and the push token store (cleared by its own logout hook) are not here.
  */
-private val WIPED_PREFS = listOf(NewSessionDraftStore.PREFS_NAME, PrefsReviewStamps.PREFS_NAME, VoicePreferences.PREFS_NAME)
+private val WIPED_PREFS = listOf(NewSessionDraftStore.PREFS_NAME, PrefsReviewStamps.PREFS_NAME)

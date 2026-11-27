@@ -66,7 +66,6 @@ sealed interface OfferSheet {
     fun offering(offer: Offer): OfferSheet = when (this) {
         is Welcome -> copy(offer = offer)
         is Used -> copy(offer = offer)
-        is Required -> copy(offer = offer)
     }
 
     /** Voice's welcome, before a first call: its "Start Voice Session" goes on to the call, for free. */
@@ -74,9 +73,6 @@ sealed interface OfferSheet {
 
     /** Voice's free time is used; when some is back on the wall clock, if that is known. Its start is greyed out. */
     data class Used(val freeAgain: Long?, override val offer: Offer) : OfferSheet
-
-    /** The relay's voice is refused without the subscription: voice's sheet with no free way on. */
-    data class Required(override val offer: Offer) : OfferSheet
 }
 
 /** How an offer sheet was closed. */
@@ -201,18 +197,6 @@ class Offers(
     /** [ask] for [sheet], answered to no one. */
     fun show(sheet: OfferSheet) {
         scope.launch { ask(sheet) }
-    }
-
-    /**
-     * The relay's voice asking for the subscription (`VoicePaywall`): true
-     * to go on. Refused without it (`voice_must_pay`), only once it is
-     * bought or restored on the Required sheet; before a first call
-     * (`voice_trial_eligible`), voice's welcome where one is due, its start
-     * or a purchase going on and its close not.
-     */
-    suspend fun relayVoice(flow: String): Boolean = when (flow) {
-        "voice_must_pay" -> ask(OfferSheet.Required(offer)) == OfferResult.Pro
-        else -> !welcomes() || ask(OfferSheet.Welcome(offer)) != OfferResult.Dismissed
     }
 
     /** Whether a voice button's tap now shows voice's welcome first, counted as seen ([CallIntro]). */

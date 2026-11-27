@@ -61,14 +61,14 @@ class OffersTest {
         offers.dismiss()
         assertEquals(OfferResult.Dismissed, closed.await())
 
-        // Required has no start at all.
-        val required = async { offers.ask(OfferSheet.Required(offers.offer)) }
+        // The used-up sheet has no start at all.
+        val used = async { offers.ask(OfferSheet.Used(null, offers.offer)) }
         runCurrent()
         offers.start()
         runCurrent()
-        assertTrue(offers.sheet.value is OfferSheet.Required)
+        assertTrue(offers.sheet.value is OfferSheet.Used)
         offers.dismiss()
-        assertEquals(OfferResult.Dismissed, required.await())
+        assertEquals(OfferResult.Dismissed, used.await())
     }
 
     @Test
@@ -76,7 +76,7 @@ class OffersTest {
         val (_, offers) = setUp()
         val first = async { offers.ask(OfferSheet.Welcome(offers.offer)) }
         runCurrent()
-        assertEquals(OfferResult.Dismissed, offers.ask(OfferSheet.Required(offers.offer)))
+        assertEquals(OfferResult.Dismissed, offers.ask(OfferSheet.Used(null, offers.offer)))
         assertTrue(offers.sheet.value is OfferSheet.Welcome)
         first.cancel()
         runCurrent()
@@ -86,7 +86,7 @@ class OffersTest {
     @Test
     fun proThatCameWhileUpClosesItAsBought() = runTest {
         val (subscription, offers) = setUp()
-        val asked = async { offers.ask(OfferSheet.Required(offers.offer)) }
+        val asked = async { offers.ask(OfferSheet.Welcome(offers.offer)) }
         runCurrent()
         assertTrue(offers.offer is Offer.OnSale)
         // The store's sheet came back bought, and RevenueCat took it.
@@ -116,9 +116,9 @@ class OffersTest {
         rc.pro[subscription.customer] = "happy"
         subscription.refresh(); runCurrent()
         assertTrue(subscription.pro.value)
-        val asked = async { offers.ask(OfferSheet.Required(offers.offer)) }
+        val asked = async { offers.ask(OfferSheet.Welcome(offers.offer)) }
         runCurrent()
-        assertTrue(offers.sheet.value is OfferSheet.Required)
+        assertTrue(offers.sheet.value is OfferSheet.Welcome)
         offers.dismiss()
         assertEquals(OfferResult.Dismissed, asked.await())
     }
@@ -126,59 +126,11 @@ class OffersTest {
     @Test
     fun closeTakesWhateverIsUpAway() = runTest {
         val (_, offers) = setUp()
-        val asked = async { offers.ask(OfferSheet.Required(offers.offer)) }
+        val asked = async { offers.ask(OfferSheet.Welcome(offers.offer)) }
         runCurrent()
         offers.close()
         assertEquals(OfferResult.Dismissed, asked.await())
         assertNull(offers.sheet.value)
-    }
-
-    /** The relay's voice refused without the subscription: on only when it is bought on the Required sheet. */
-    @Test
-    fun theRelaysVoiceGoesOnOnlyOnceBoughtWhenRequired() = runTest {
-        val (subscription, offers) = setUp()
-        val closed = async { offers.relayVoice("voice_must_pay") }
-        runCurrent()
-        assertTrue(offers.sheet.value is OfferSheet.Required)
-        offers.dismiss()
-        assertFalse(closed.await())
-        val bought = async { offers.relayVoice("voice_must_pay") }
-        runCurrent()
-        assertTrue(subscription.buy(activity)); runCurrent()
-        store.emit(store.bought("t1")); runCurrent()
-        assertTrue(bought.await())
-    }
-
-    /** Before a first relay call: the welcome once, where one is due; its start goes on, its close doesn't, and with none due it just goes on. */
-    @Test
-    fun theRelaysTrialWelcomeIsOnceAndOnlyItsStartGoesOn() = runTest {
-        val (_, offers) = setUp()
-        val closed = async { offers.relayVoice("voice_trial_eligible") }
-        runCurrent()
-        assertTrue(offers.sheet.value is OfferSheet.Welcome)
-        offers.dismiss()
-        assertFalse(closed.await())
-        // Seen: from now on, no welcome, straight on (the agent's welcome counts the same).
-        assertTrue(offers.relayVoice("voice_trial_eligible"))
-        assertNull(offers.sheet.value)
-        offers.intro.reset()
-        val started = async { offers.relayVoice("voice_trial_eligible") }
-        runCurrent()
-        offers.start()
-        assertTrue(started.await())
-    }
-
-    @Test
-    fun withNothingOnSaleTheRelaysTrialHasNoWelcomeAndRequiredStillSaysSo() = runTest {
-        store.monthly = null
-        val (_, offers) = setUp()
-        assertTrue(offers.relayVoice("voice_trial_eligible"))
-        assertTrue(offers.intro.due)
-        val asked = async { offers.relayVoice("voice_must_pay") }
-        runCurrent()
-        assertEquals(OfferSheet.Required(Offer.Unavailable), offers.sheet.value)
-        offers.dismiss()
-        assertFalse(asked.await())
     }
 
     @Test

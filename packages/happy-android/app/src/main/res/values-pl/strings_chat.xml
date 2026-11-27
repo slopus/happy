@@ -9,7 +9,6 @@
     <string name="chat_created">Utworzono %1$s</string>
     <string name="chat_permissions_in_terminal">Uprawnienia są wyświetlane tylko w terminalu. Zresetuj lub wyślij wiadomość, aby sterować z aplikacji.</string>
     <string name="chat_stop">Zatrzymaj</string>
-    <string name="chat_voice">Głos</string>
     <string name="chat_send">Wyślij</string>
     <string name="chat_markdown_image">Obraz Markdown</string>
     <string name="chat_remove_image">Usuń %1$s</string>

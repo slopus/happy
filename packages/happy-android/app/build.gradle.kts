@@ -167,9 +167,6 @@ android {
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", groovy.json.JsonOutput.toJson(happyCloudGoogleClientId))
         buildConfigField("String", "REVENUE_CAT_GOOGLE_KEY", groovy.json.JsonOutput.toJson(revenueCatGoogleKey))
         buildConfigField("String", "POSTHOG_KEY", groovy.json.JsonOutput.toJson(postHogKey))
-        // Existing relay voice agent, retained for compatibility with installed clients.
-        val voiceAgentId = "agent_6701k211syvvegba4kt7m68nxjmw"
-        buildConfigField("String", "ELEVENLABS_AGENT_ID", "\"$voiceAgentId\"")
         buildConfigField("String", "CALL_AGENT_ID", callAgentId?.let { groovy.json.JsonOutput.toJson(it.trim()) } ?: "null")
         buildConfigField("String", "BUILD_COMMIT_SHA", buildCommitSha?.let { "\"$it\"" } ?: "null")
         buildConfigField("String", "BUILD_COMMIT_TIMESTAMP", buildCommitTimestamp?.let { "\"$it\"" } ?: "null")

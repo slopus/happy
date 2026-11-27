@@ -20,7 +20,6 @@
     <string name="settings_appearance_file_diffs_sidebar">Panel boczny zmian w plikach</string>
     <string name="settings_appearance_file_diffs_sidebar_description">Pokazuj zmiany git obok czatu na komputerze</string>
     <string name="chat_scroll_to_bottom">Przewiń na dół</string>
-    <string name="voice_clear_search">Wyczyść wyszukiwanie</string>
     <string name="scan_unavailable">Skaner kodów QR jest niedostępny na tym urządzeniu. Zamiast tego wklej link.</string>
     <string name="scan_not_happy_code">To nie jest kod QR Happy.</string>
     <string name="scan_terminal_code_elsewhere">Ten kod łączy terminal. Zeskanuj go w Ustawienia › Zeskanuj kod QR, aby się uwierzytelnić.</string>
@@ -34,7 +33,4 @@
     <string name="state_animation_replay">Odtwórz ponownie</string>
     <string name="scan_no_camera">To urządzenie nie ma aparatu. Wklej link.</string>
     <string name="scan_camera_failed">Nie udało się uruchomić aparatu. Spróbuj ponownie albo wklej link.</string>
-    <string name="voice_microphone_title">Wymagany dostęp do mikrofonu</string>
-    <string name="voice_microphone_ask">Happy potrzebuje dostępu do mikrofonu na potrzeby czatu głosowego. Zezwól na niego, gdy pojawi się pytanie.</string>
-    <string name="voice_microphone_settings">Happy potrzebuje dostępu do mikrofonu na potrzeby czatu głosowego. Włącz dostęp do mikrofonu w ustawieniach urządzenia.</string>
 </resources>

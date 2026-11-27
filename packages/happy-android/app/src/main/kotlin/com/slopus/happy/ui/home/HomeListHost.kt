@@ -19,6 +19,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
+import com.slopus.happy.OpenAccount
+import com.slopus.happy.ui.call.rememberMicrophonePermission
 import com.slopus.happy.R
 import com.slopus.happy.ui.connect.EnterTerminalUrlPrompt
 import com.slopus.happy.ui.connect.rememberTerminalConnect
@@ -153,7 +155,13 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, phone: Boolean = f
     var enteringUrl by remember { mutableStateOf(false) }
     connect.onUnavailable = { enteringUrl = true }
     val switchAccount = rememberHomeAccountSwitch(graph)
-    val actions = remember(navigation, uriHandler, connect, switchAccount) {
+    // Voice, as an agent connection's home has it: a call on this account (ui/call).
+    val open by graph.openAccount.collectAsStateWithLifecycle()
+    val microphone = rememberMicrophonePermission()
+    val voice = remember(graph, open, microphone) {
+        (open as? OpenAccount.Happy)?.id?.let { id -> { graph.calls.startCli(id) { microphone.request().granted } } }
+    }
+    val actions = remember(navigation, uriHandler, connect, switchAccount, voice) {
         HomeScreenActions(
             onSettings = navigation.onSettings,
             onNewSession = navigation.onNewSession,
@@ -165,6 +173,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, phone: Boolean = f
             onCompose = navigation.onCompose,
             onMigration = navigation.onMigration,
             onCloseMigration = graph.desktopMigration::close,
+            onVoice = voice,
         )
     }
 

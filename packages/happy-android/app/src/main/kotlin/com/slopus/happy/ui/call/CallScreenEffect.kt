@@ -10,7 +10,11 @@ import androidx.navigation.toRoute
 import androidx.navigation.NavDestination.Companion.hasRoute
 import com.slopus.happy.call.CallController
 import com.slopus.happy.call.CallScreen
+import com.slopus.happy.OpenAccount
 import com.slopus.happy.ui.HomeRoute
+import com.slopus.happy.ui.chat.SessionRoute
+import com.slopus.happy.ui.chat.isComposeChatId
+import com.slopus.happy.ui.chat.shownSessionId
 import com.slopus.happy.ui.conversation.ConversationRoute
 import com.slopus.happy.ui.conversation.openConversationInPlace
 import com.slopus.happy.ui.conversation.shownConversation
@@ -27,12 +31,13 @@ import com.slopus.happy.ui.tablet.MainPanelOpener
  * ([openConversationInPlace]); on a tablet's split, as the sidebar opens
  * one, the main panel's new root ([MainPanel.opener]). Back pops one page
  * and home pops to [HomeRoute], as the system's back and the sidebar do.
+ * On a Happy CLI account the same, with its chats ([legacyCallScreen]).
  */
 @Composable
-fun CallScreenEffect(calls: CallController, nav: NavHostController, connectionId: String?) {
+fun CallScreenEffect(calls: CallController, nav: NavHostController, open: OpenAccount) {
     val panel = LocalMainPanel.current
-    DisposableEffect(calls, nav, connectionId, panel) {
-        val screen = callScreen(nav, connectionId, panel)
+    DisposableEffect(calls, nav, open, panel) {
+        val screen = if (open is OpenAccount.Happy) legacyCallScreen(nav, panel) else callScreen(nav, (open as? OpenAccount.Agent)?.id, panel)
         calls.screen = screen
         onDispose { if (calls.screen === screen) calls.screen = null }
     }
@@ -42,7 +47,7 @@ fun CallScreenEffect(calls: CallController, nav: NavHostController, connectionId
 }
 
 /** [CallScreenEffect]'s [CallScreen] over [nav], on its own for a device check to drive. */
-internal fun callScreen(nav: NavHostController, connectionId: String?, panel: MainPanel?): CallScreen = object : CallScreen {
+internal fun callScreen(nav: NavHostController, connectionId: String?, panel: MainPanel?): CallScreen = object : StackCallScreen(nav) {
     override val focused: String?
         get() {
             val top = nav.currentBackStackEntry ?: return null
@@ -57,7 +62,35 @@ internal fun callScreen(nav: NavHostController, connectionId: String?, panel: Ma
         val go = panel?.opener ?: MainPanelOpener.Push
         go.open(MainPanelKey.conversation(agentId)) { nav.openConversationInPlace(connection, agentId) }
     }
+}
 
+/**
+ * [CallScreenEffect]'s [CallScreen] on a Happy CLI account: the chat on top
+ * is the focus (as it shows it, a compose screen's none), and a chat opens
+ * in place of one on top, or over anything else; on the split, the main
+ * panel's new root, as the sidebar opens it.
+ */
+internal fun legacyCallScreen(nav: NavHostController, panel: MainPanel?): CallScreen = object : StackCallScreen(nav) {
+    override val focused: String?
+        get() {
+            val top = nav.currentBackStackEntry ?: return null
+            if (!top.destination.hasRoute<SessionRoute>()) return null
+            return top.shownSessionId().takeUnless(::isComposeChatId)
+        }
+
+    override fun open(agentId: String) {
+        val go = panel?.opener ?: MainPanelOpener.Push
+        go.open(MainPanelKey.session(agentId)) {
+            val current = nav.currentBackStackEntry
+            nav.navigate(SessionRoute(agentId)) {
+                if (current?.destination?.hasRoute<SessionRoute>() == true) popUpTo(current.destination.id) { inclusive = true }
+            }
+        }
+    }
+}
+
+/** Back, home and the pressed controls, the same over either account's stack. */
+private abstract class StackCallScreen(private val nav: NavHostController) : CallScreen {
     override fun back(): Boolean {
         if (nav.currentBackStackEntry?.destination?.hasRoute<HomeRoute>() != false) return false
         return nav.popBackStack()

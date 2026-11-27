@@ -9,7 +9,6 @@ import com.slopus.happy.ui.connection.openAgentSettingsRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import com.slopus.happy.ui.voice.LocalVoiceController
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -127,7 +126,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
     val animatedAvatars by graph.liveAvatars.enabled.collectAsStateWithLifecycle()
 
     // Avatar.tsx reads the avatar settings everywhere: the chat header and Settings as well as Home.
-    LocalizedContent(language.locale) { HappyTheme(preference = theme) { ProvideAvatarSettings(settings) { CompositionLocalProvider(LocalVoiceController provides graph.voice, LocalAnimatedAvatars provides animatedAvatars) {
+    LocalizedContent(language.locale) { HappyTheme(preference = theme) { ProvideAvatarSettings(settings) { CompositionLocalProvider(LocalAnimatedAvatars provides animatedAvatars) {
         val dark = HappyTheme.colors.dark
         // In the frame that composes it, before that frame is drawn: the window's colour is the theme's from the first frame.
         SideEffect { onDarkThemeChange(dark) }
@@ -213,7 +212,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                 // The tablet shell (home in a sidebar beside the stack) or, on a phone, just the stack.
                 TabletShell(graph, nav, hasHome = open != OpenAccount.None, sidebar = home) {
                     // Inside the shell: on the split, what the call opens is the main panel's new root.
-                    CallScreenEffect(graph.calls, nav, agent)
+                    CallScreenEffect(graph.calls, nav, open)
                     // An account picked that can't be unlocked: its page, not a switch.
                     LaunchedEffect(graph, nav) { graph.unlockRequests.collect { nav.navigate(UnlockAccountRoute(it)) } }
                     com.slopus.happy.ui.gates.CloudOnboardingEffect(graph, nav, agent)

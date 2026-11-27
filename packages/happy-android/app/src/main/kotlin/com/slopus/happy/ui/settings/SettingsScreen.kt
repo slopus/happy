@@ -9,7 +9,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.call.CallAllowance
+import com.slopus.happy.ui.connection.AgentVoiceSummary
 import com.slopus.happy.ui.connection.DataStorageTags
+import com.slopus.happy.ui.connection.agentVoiceEntry
 import com.slopus.happy.ui.connection.privacySection
 import com.slopus.happy.model.Profile
 import com.slopus.happy.ui.components.Avatar
@@ -31,7 +34,6 @@ object SettingsTags {
     const val BACKUP = "settings.row.backup"
     const val APPEARANCE = "settings.row.appearance"
     const val LANGUAGE = "settings.row.language"
-    const val VOICE = "settings.row.voice"
     const val AGENTS = "settings.row.agents"
     const val SCAN_TERMINAL = "settings.row.scanTerminal"
     const val ENTER_TERMINAL = "settings.row.enterTerminal"
@@ -114,10 +116,11 @@ class HappySettingsActions(
 /**
  * A Happy account's cards between the accounts card and Support us
  * (iOS's `rowsFor`): Account and Backup & Restore; Appearance, Language,
- * Voice Assistant and Agents; the terminal's Scan QR code and Enter URL.
+ * Voice (an agent connection's row: this phone's [voice] time) and Agents;
+ * the terminal's Scan QR code and Enter URL.
  */
 @Composable
-fun happySettingsSections(actions: HappySettingsActions, connectingTerminal: Boolean): List<SettingsSection> = listOf(
+fun happySettingsSections(actions: HappySettingsActions, connectingTerminal: Boolean, voice: AgentVoiceSummary): List<SettingsSection> = listOf(
     SettingsSection(
         listOf(
             SettingsEntry(
@@ -148,12 +151,7 @@ fun happySettingsSections(actions: HappySettingsActions, connectingTerminal: Boo
                 icon = { SettingsTile(Ionicon.LanguageOutline, SettingsTiles.green) },
                 onClick = actions.onLanguage,
             ),
-            SettingsEntry(
-                id = SettingsTags.VOICE,
-                title = stringResource(R.string.settings_voice_assistant),
-                icon = { SettingsTile(Ionicon.MicOutline, SettingsTiles.orange) },
-                onClick = actions.onVoice,
-            ),
+            agentVoiceEntry(voice, actions.onVoice),
             SettingsEntry(
                 id = SettingsTags.AGENTS,
                 title = stringResource(R.string.settings_agents),
@@ -195,7 +193,7 @@ fun happySettingsSections(actions: HappySettingsActions, connectingTerminal: Boo
  * (an account with no name goes by "Happy CLI", iOS 64edb6a34) at the top
  * ([SettingsHeader]); every account on the phone with
  * Add Agent ([AccountsCard]); Account and Backup & Restore; Appearance,
- * Language, Voice Assistant and Agents; the terminal's Scan QR code and
+ * Language, Voice and Agents; the terminal's Scan QR code and
  * Enter URL; Support us; Privacy; About; and Logout. Rows carry iOS's coloured
  * tiles ([SettingsTile]). happy-app's Connected Accounts (Claude Code,
  * GitHub) are gone from here, as from iOS.
@@ -203,7 +201,7 @@ fun happySettingsSections(actions: HappySettingsActions, connectingTerminal: Boo
  * Search is the bar's (iOS's integrated search button): the bar becomes a
  * field and the page what it finds ([SettingsSearchResults]): the accounts
  * by name, this page's rows and [pages], the rows of Account, Backup &
- * Restore, Voice and Language, which open their page at the row.
+ * Restore and Language, which open their page at the row.
  *
  * The Version detail is "versionName (versionCode)": happy-app shows
  * "version / runtime N", its OTA runtime, and a native build has none; the
@@ -219,11 +217,13 @@ fun SettingsScreen(
     aboutActions: AboutActions = AboutActions(),
     connectingTerminal: Boolean = false,
     pages: List<SettingsEntry> = emptyList(),
+    /** This phone's voice time, for the Voice row ([com.slopus.happy.ui.connection.rememberAgentVoiceSummary]). */
+    voice: AgentVoiceSummary = AgentVoiceSummary(CallAllowance.FREE_MILLIS),
     /** Where the page is scrolled; shared with the other kind's page, so a switch keeps it ([AccountSettings]). */
     scroll: ScrollState = rememberScrollState(),
 ) {
     val search = rememberSettingsSearch()
-    val sections = happySettingsSections(actions, connectingTerminal) +
+    val sections = happySettingsSections(actions, connectingTerminal, voice) +
         supportSection(about, aboutActions) +
         privacySection(actions.onPrivacy) +
         aboutSection(about, aboutActions)

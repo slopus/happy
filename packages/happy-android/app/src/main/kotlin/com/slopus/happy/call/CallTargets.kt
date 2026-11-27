@@ -10,6 +10,7 @@ import com.slopus.happy.conversation.Delivery
 import com.slopus.happy.conversation.FailureReason
 import com.slopus.happy.conversation.Mode
 import com.slopus.happy.conversation.ModeCatalog
+import kotlinx.coroutines.flow.Flow
 
 /**
  * One conversation a call can talk about, as home lists it (iOS's
@@ -19,7 +20,7 @@ import com.slopus.happy.conversation.ModeCatalog
  */
 data class CallTarget(
     val agentId: String,
-    /** Home's label, whatever it is: "New Task" or "Untitled" too. */
+    /** Home's label, whatever it is: "New Task", "Untitled" or "New chat" too. */
     val title: String,
     val kind: Kind,
     val status: Status,
@@ -67,7 +68,7 @@ data class CallTarget(
          * computer's, until the first message names it, and the rows' own
          * for none.
          */
-        val placeholders = setOf("", "New Task", "New Bot", "Untitled")
+        val placeholders = setOf("", "New Task", "New Bot", "Untitled", "New chat")
 
         /** Longest a title goes into the call, in UTF-8. */
         const val TITLE_BYTES = 200
@@ -259,6 +260,9 @@ data class CallTargetState(
     val mode: CallMode? = null,
     /** What it may switch to ([CallModel.options]); empty while the computer's models aren't known. */
     val models: List<CallModel> = emptyList(),
+    /** The computer keeps its model, or its effort, as it is: a send that asks for another is refused. */
+    val modelLocked: Boolean = false,
+    val effortLocked: Boolean = false,
     /** What it says is current: read from the computer, whose events it follows live. False for what this phone kept, until the computer answers. */
     val fresh: Boolean = true,
     /** When this phone last read it from the computer (ms since 1970); null if never. */
@@ -447,6 +451,8 @@ sealed interface CallSendOutcome {
  * can name another account, an endpoint or a credential.
  */
 interface CallTargets {
+    /** The kind of account the call is bound to: what `message` can do there besides sending. */
+    val account: CallAccount get() = CallAccount.Agent
     /** Every conversation home lists, in its order, with what each sits under. */
     suspend fun directory(): List<CallTarget>
     /** One conversation, read if it must be (a bounded page); null if the connection has none by that ID. What this phone has, `fresh` or not. */
@@ -474,6 +480,10 @@ interface CallTargets {
      * from then on. Null if it can't start.
      */
     suspend fun draft(kind: CallTarget.Kind, name: String): CallTarget?
+    /** Why new work of [kind] named [name] can't start here, said to the agent; null when it can ([draft]). */
+    suspend fun newWorkRefusal(kind: CallTarget.Kind, name: String): String? = null
+    /** Whether new work can start here at all, for the first context to say so. */
+    suspend fun startsWork(): Boolean = true
     /** A [draft] nothing was sent to, let go: nothing of it stays. */
     suspend fun discard(agentId: String)
     /** New work under [agentId] that home doesn't list yet: a [draft] on its way, or compose's on screen; null for anything else. */
@@ -482,4 +492,28 @@ interface CallTargets {
     suspend fun back(): CallScreenMove
     /** Home, with nothing over it. */
     suspend fun home(): CallScreenMove
+}
+
+/**
+ * The kind of account a call is bound to. A Happy CLI account's sessions take
+ * messages, but new work and a model or effort change are the app's alone.
+ */
+enum class CallAccount { Agent, HappyCli }
+
+/**
+ * The account a call is bound to, as the call holds it ([CallController]):
+ * its tools' [CallTargets], the conversations it follows, what changes on
+ * its home, and the screen in front. Let go of with the call.
+ */
+interface HeldCallTargets : CallTargets {
+    /** A followed conversation changed. */
+    var onChange: ((CallTargetState) -> Unit)?
+    /** The conversation in front now, if one of this account is. */
+    val focusedNow: String?
+    /** The conversations held for the call. */
+    val following: List<String>
+    /** Home's conversations as they are each time home changes. */
+    val directoryChanges: Flow<List<CallTarget>>
+    /** Ended with its call: nothing is held, opened or sent after. */
+    fun close()
 }

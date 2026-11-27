@@ -9,7 +9,6 @@
     <string name="chat_created">%1$s に作成</string>
     <string name="chat_permissions_in_terminal">権限はターミナルにのみ表示されます。アプリから操作するにはリセットするかメッセージを送信してください。</string>
     <string name="chat_stop">停止</string>
-    <string name="chat_voice">音声</string>
     <string name="chat_send">送信</string>
     <string name="chat_markdown_image">Markdown の画像</string>
     <string name="chat_remove_image">%1$s を削除</string>

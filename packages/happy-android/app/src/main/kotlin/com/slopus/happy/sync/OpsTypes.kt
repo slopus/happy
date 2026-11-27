@@ -93,9 +93,12 @@ sealed interface HappyAgentSpawnTarget {
         override fun toJson() = buildJsonObject { put("kind", "bot"); put("name", name) }
     }
 
-    /** A new task, unnamed: the daemon derives its id from the request and names it from its first message. */
-    data object Task : HappyAgentSpawnTarget {
-        override fun toJson() = buildJsonObject { put("kind", "task") }
+    /** A new task: the daemon derives its id from the request and, without a [name], names it from its first message. */
+    data class Task(val name: String? = null) : HappyAgentSpawnTarget {
+        override fun toJson() = buildJsonObject {
+            put("kind", "task")
+            name?.takeIf { it.isNotBlank() }?.let { put("name", it) }
+        }
     }
 }
 

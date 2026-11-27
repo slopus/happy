@@ -246,7 +246,7 @@ class SessionStarter(
             HappyAgentSpawnTarget.Bot(bot.name)
         } else if (task) {
             // Unnamed: the daemon names it from its first message.
-            HappyAgentSpawnTarget.Task
+            HappyAgentSpawnTarget.Task()
         } else if (rig && targetOverride != null) {
             targetOverride.target
         } else if (rig) {
