@@ -28,6 +28,9 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var draining = false
     /// An action the computer refused, said for a moment while it rolls back.
     public var notice: String?
+    /// The bots carry a `kind` (`BotKind`): a Happy Cloud server's, whose
+    /// bots its admin bot makes, so none is made here.
+    public var botKinds = false
     public init() {}
 }
 
@@ -1090,6 +1093,7 @@ public actor SyncEngine {
             }
             snapshot.rows = Rows.visible(snapshot.allRows)
             snapshot.unjoinedTasks = SidebarRows.unjoinedTasks(desktop)
+            snapshot.botKinds = desktop.bots?.contains { $0.kind != nil } == true
             shownRows = Dictionary(snapshot.rows.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
             snapshot.userId = desktop.profile?.userId
             snapshot.profilePhoto = desktop.profile?.photo?.thumbhash

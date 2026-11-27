@@ -134,6 +134,12 @@ public struct Row: Equatable, Sendable, Identifiable {
     public var lineChanges: GitLineChanges?
     /// A muted bot's, or under one: drawn with no status or dot.
     public var muted = false
+    /// A shared bot's (`BotKind.shared`): last of the first group, with
+    /// Activity and Artifacts, never among the bots, and never moved.
+    public var sharedBot = false
+    /// A bot whose name, picture and instructions the person may change
+    /// (its `editable`).
+    public var editable = false
     /// A count at the row's end, as iOS's lists show one (the Feed's unread
     /// entries); nil for none.
     public var count: Int?

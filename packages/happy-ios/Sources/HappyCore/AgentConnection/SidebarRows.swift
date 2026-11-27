@@ -6,8 +6,8 @@ import HappyWire
 /// Sections have no titles and nothing folds: each section is parted from
 /// the one before by a separator, and every nested row is shown.
 public enum SidebarRows {
-    /// Desktop's fixed Feed row under Artifacts, shown while the computer
-    /// keeps a feed for the person: how many entries they haven't seen.
+    /// Desktop's fixed Feed row (Activity), first of all, shown while the
+    /// computer keeps a feed for the person: how many entries they haven't seen.
     public struct FeedRow: Equatable, Sendable {
         public var unread: Int
         public init(unread: Int) { self.unread = unread }
@@ -53,8 +53,28 @@ public enum SidebarRows {
             row.canArchive = owner?.systemKey != "chief_of_staff" && owner?.canArchive == true
             row.activityTime = agent.activityAt.map(Rows.minute)
             row.muted = muted
+            if kind == "bot", let owner {
+                row.sharedBot = owner.botKind == .shared
+                row.editable = owner.editable == true
+            }
             rows.append(row)
             for child in children { agentRow(child, depth: depth + 1, muted: muted) }
+        }
+        func botRow(_ bot: DesktopSnapshot.Owner) {
+            guard let agent = bot.agent else { return }
+            let attention = settings["happy-desktop.bot.\(bot.id)"]
+            // A shared bot is a destination of its own, never hidden from the list.
+            guard bot.botKind == .shared || attention?["hidden"] != .bool(true) else { return }
+            agentRow(agent, depth: 0, label: bot.name, owner: bot, kind: "bot", muted: attention?["muted"] == .bool(true))
+        }
+        // Desktop's first group: Activity, Artifacts, Plugins, Pipelines,
+        // then the person's Surfaces, and a Happy Cloud server's shared bot
+        // last (only owners are ever sent one).
+        if let feed {
+            // Bold while something is unread, with how many beside it.
+            var row = Row(id: "direct:feed", nodeId: "direct:feed", kind: .space, label: "Activity", mark: .glyph("feed"), unread: feed.unread > 0, targetKind: "feed")
+            row.count = feed.unread > 0 ? feed.unread : nil
+            rows.append(row)
         }
         rows.append(Row(id: "direct:artifacts", nodeId: "direct:artifacts", kind: .space, label: "Artifacts", mark: .glyph("doc"), targetKind: "artifacts"))
         if plugins {
@@ -62,12 +82,6 @@ public enum SidebarRows {
         }
         if pipelines {
             rows.append(Row(id: "direct:pipelines", nodeId: "direct:pipelines", kind: .space, label: "Pipelines", mark: .glyph("pipeline"), targetKind: "pipelines"))
-        }
-        if let feed {
-            // Bold while something is unread, with how many beside it.
-            var row = Row(id: "direct:feed", nodeId: "direct:feed", kind: .space, label: "Activity", mark: .glyph("feed"), unread: feed.unread > 0, targetKind: "feed")
-            row.count = feed.unread > 0 ? feed.unread : nil
-            rows.append(row)
         }
         rows.append(Row(id: "direct:todos", nodeId: "direct:todos", kind: .space, label: "Todos", mark: .glyph(Rows.surfaceGlyph("todo")), targetKind: "todos"))
         let joined = (desktop.surfaces ?? []).compactMap { surface -> (DesktopSnapshot.Surface, String)? in
@@ -81,13 +95,9 @@ public enum SidebarRows {
             row.surfaceType = surface.type
             rows.append(row)
         }
+        for bot in bots where bot.botKind == .shared { botRow(bot) }
         separator("direct:bots")
-        for bot in bots {
-            guard let agent = bot.agent else { continue }
-            let attention = settings["happy-desktop.bot.\(bot.id)"]
-            guard attention?["hidden"] != .bool(true) else { continue }
-            agentRow(agent, depth: 0, label: bot.name, owner: bot, kind: "bot", muted: attention?["muted"] == .bool(true))
-        }
+        for bot in bots where bot.botKind != .shared { botRow(bot) }
         if desktop.tasks != nil {
             separator("direct:tasks")
             for task in tasks {

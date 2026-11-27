@@ -244,7 +244,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         self.previewing = previewing
         self.prefill = previewing ? nil : prefill
         self.newTask = newTask
-        newWorkPanel = newTask == nil || previewing ? nil : NewWorkPanel(mode: .work)
+        // A Happy Cloud server's bots come from its admin bot: new work is a task.
+        newWorkPanel = newTask == nil || previewing ? nil : NewWorkPanel(mode: .work, offersBot: !(session.isCloud || session.home.botKinds))
         opensFocused = newTask != nil
         // An ask typed in for the person brings the keyboard up too, so
         // they only have to finish the sentence.
@@ -369,6 +370,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         if newWorkPanel != nil { followGlobalSkills() }
         if let newWorkPanel, let newTask {
             newWorkPanel.choice = newTask.choice
+            // A bot chosen where none is offered is a task.
+            if !newWorkPanel.offersBot, newTask.choice.kind == .bot { newTask.choice = NewTask.Choice(kind: .task) }
             newWorkPanel.onChange = { [newTask] choice in newTask.choice = choice }
             newWorkPanel.onReturn = { [weak self] in self?.card.focus() }
             view.addSubview(newWorkPanel)

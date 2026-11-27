@@ -74,6 +74,41 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
         /// A task's: the team member it belongs to, who made it; nil on a
         /// standalone computer, for a bot, or when nobody was identified.
         public var ownerUserId: String?
+        /// A Happy Cloud bot's `kind` (`BotKind`), and whether the reader
+        /// may change its name, picture and instructions; nil elsewhere.
+        public var kind: String?
+        public var editable: Bool?
+
+        public init(id: String, name: String? = nil, status: String? = nil, systemKey: String? = nil, agent: AgentWire.Agent? = nil, avatar: AgentWire.Avatar? = nil,
+                    canArchive: Bool? = nil, ownerUserId: String? = nil, kind: String? = nil, editable: Bool? = nil) {
+            self.id = id
+            self.name = name
+            self.status = status
+            self.systemKey = systemKey
+            self.agent = agent
+            self.avatar = avatar
+            self.canArchive = canArchive
+            self.ownerUserId = ownerUserId
+            self.kind = kind
+            self.editable = editable
+        }
+
+        enum CodingKeys: String, CodingKey { case id, name, status, systemKey, agent, avatar, canArchive, ownerUserId, kind, editable }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            name = try container.decodeIfPresent(String.self, forKey: .name)
+            status = try container.decodeIfPresent(String.self, forKey: .status)
+            systemKey = try container.decodeIfPresent(String.self, forKey: .systemKey)
+            agent = try container.decodeIfPresent(AgentWire.Agent.self, forKey: .agent)
+            avatar = try container.decodeIfPresent(AgentWire.Avatar.self, forKey: .avatar)
+            canArchive = try container.decodeIfPresent(Bool.self, forKey: .canArchive)
+            ownerUserId = try container.decodeIfPresent(String.self, forKey: .ownerUserId)
+            // Ones it can't read are none, never a lost bootstrap.
+            kind = (try? container.decodeIfPresent(String.self, forKey: .kind)) ?? nil
+            editable = (try? container.decodeIfPresent(Bool.self, forKey: .editable)) ?? nil
+        }
     }
     public struct Membership: Codable, Equatable, Sendable {
         public var taskId: String
