@@ -207,6 +207,111 @@ describe('claudeLocalLauncher', () => {
         await launcher;
     });
 
+    async function startWithMetadata(initial: Record<string, unknown>) {
+        const localRun = createDeferred<void>();
+        let scannerOptions: ScannerOptions | undefined;
+        const state = { metadata: initial };
+
+        mockCreateSessionScanner.mockImplementation(async (opts: ScannerOptions) => {
+            scannerOptions = opts;
+            return {
+                onNewSession: vi.fn(),
+                cleanup: vi.fn(async () => {}),
+            };
+        });
+        mockClaudeLocal.mockImplementation(async () => {
+            await localRun.promise;
+        });
+
+        const updateMetadata = vi.fn((handler: (m: Record<string, unknown>) => Record<string, unknown>) => {
+            state.metadata = handler(state.metadata);
+        });
+        const session = {
+            sessionId: 'claude-session-1',
+            path: '/tmp/project',
+            client: {
+                sendClaudeSessionMessage: vi.fn(),
+                sendClaudeSessionMessageFromLocalTranscript: vi.fn(async () => {}),
+                closeClaudeSessionTurn: vi.fn(),
+                updateMetadata,
+                rpcHandlerManager: {
+                    registerHandler: vi.fn(),
+                },
+            },
+            queue: {
+                reset: vi.fn(),
+                setOnMessage: vi.fn(),
+                size: vi.fn(() => 0),
+            },
+            addSessionFoundCallback: vi.fn(),
+            removeSessionFoundCallback: vi.fn(),
+            onAbort: vi.fn(),
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            consumeOneTimeFlags: vi.fn(),
+            claudeEnvVars: undefined,
+            claudeArgs: undefined,
+            mcpServers: {},
+            allowedTools: [],
+            hookSettingsPath: '/tmp/hook-settings.json',
+            sandboxConfig: undefined,
+        };
+
+        const launcher = claudeLocalLauncher(session as any);
+        await vi.waitFor(() => {
+            expect(scannerOptions).toBeDefined();
+        });
+        return {
+            state,
+            updateMetadata,
+            send: (message: Record<string, unknown>) => scannerOptions!.onMessage(message),
+            assistant: (uuid: string, model: string, extra: Record<string, unknown> = {}) =>
+                scannerOptions!.onMessage({ type: 'assistant', uuid, message: { model, content: [] }, ...extra }),
+            finish: async () => {
+                localRun.resolve();
+                await launcher;
+            },
+        };
+    }
+
+    it('publishes the model local turns run, so a terminal /model switch reaches the app', async () => {
+        // Started as `happy --model claude-sonnet-5-5`.
+        const run = await startWithMetadata({ currentModelCode: 'claude-sonnet-5-5' });
+
+        run.assistant('a1', 'claude-sonnet-5-5');
+        expect(run.state.metadata.currentModelCode).toBe('claude-sonnet-5-5');
+
+        // `/model opus` in the terminal: the next turn runs Opus, and the app must see it.
+        run.assistant('a2', 'claude-opus-5-5');
+        expect(run.state.metadata.currentModelCode).toBe('claude-opus-5-5');
+
+        // Subagents, API error placeholders and user turns don't name the session's model.
+        run.assistant('a3', 'claude-haiku-4-5', { isSidechain: true });
+        run.assistant('a4', '<synthetic>');
+        run.send({ type: 'user', uuid: 'u1', message: { content: 'hi' } });
+        expect(run.state.metadata.currentModelCode).toBe('claude-opus-5-5');
+
+        // Repeats of the published model don't rewrite metadata.
+        const writes = run.updateMetadata.mock.calls.length;
+        run.assistant('a5', 'claude-opus-5-5');
+        expect(run.updateMetadata.mock.calls.length).toBe(writes);
+
+        await run.finish();
+    });
+
+    it('keeps a published [1m] model while local turns run its base model', async () => {
+        // Transcripts name the base model; the 1M context variant must survive.
+        const run = await startWithMetadata({ currentModelCode: 'claude-opus-5-5[1m]' });
+
+        run.assistant('a1', 'claude-opus-5-5');
+        expect(run.state.metadata.currentModelCode).toBe('claude-opus-5-5[1m]');
+
+        run.assistant('a2', 'claude-sonnet-5-5');
+        expect(run.state.metadata.currentModelCode).toBe('claude-sonnet-5-5');
+
+        await run.finish();
+    });
+
     it('reports the underlying error when a launch throws, instead of a bare notice', async () => {
         // The SDK surfaces an unresolvable native binary as a plain Error; the
         // launcher used to drop it and report only "Process exited unexpectedly".

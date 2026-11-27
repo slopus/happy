@@ -6,6 +6,7 @@ import com.slopus.happy.model.settings.ModeOptions
 import com.slopus.happy.model.settings.AgentDefaultOverrides
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.MessageMetaResolver
+import com.slopus.happy.sync.Present
 import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.sync.SessionComposerTest
 import kotlinx.serialization.json.Json
@@ -201,6 +202,19 @@ class ComposerModesTest {
         // The user's default and the session's pick are sent, so they win.
         check(claude("claude-sonnet-5-5"), ComposerMirror(), haiku, chip = "claude-haiku-5-5", sent = "claude-haiku-5-5")
         check(claude("claude-sonnet-5-5"), ComposerMirror(modelMode = "claude-fable-5-2"), haiku, chip = "claude-fable-5-2", sent = "claude-fable-5-2")
+    }
+
+    @Test
+    fun claudesOwnDefaultAliasIsShownAndSentAsItself() {
+        val session = plain("claude") { put("version", "1.2.7"); put("currentModelCode", "default") }
+        // Started with `happy --model default`: the chip has a row for it, and messages
+        // and resume keep `--model default` rather than dropping the model.
+        val chip = ComposerModeResolver.resolve(session, ComposerMirror(), null, translate).modelMode
+        assertEquals("default" to "Default", chip?.key to chip?.name)
+        assertEquals(Present("default"), MessageMetaResolver.mode(session, ComposerMirror(), null).model)
+
+        // The app's own `default` pick is its reset: still sent as null.
+        assertEquals(Present(null), MessageMetaResolver.mode(session, ComposerMirror(modelMode = "default"), null).model)
     }
 
     @Test

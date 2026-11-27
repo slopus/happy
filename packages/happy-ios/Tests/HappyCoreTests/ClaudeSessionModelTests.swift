@@ -64,6 +64,16 @@ final class ClaudeSessionModelTests: XCTestCase {
         }
         XCTAssertEqual(try resume(self.claude(reported: nil)), .string("claude-opus-5-5"))
         XCTAssertEqual(try resume(self.claude(reported: "claude-sonnet-5-5")), .string("claude-sonnet-5-5"))
+        XCTAssertEqual(try resume(self.claude(reported: "default")), .string("default"))
+    }
+
+    func testClaudesOwnDefaultAliasIsShownAndSentAsItself() throws {
+        // Started with `happy --model default`: a row of its own, and `--model default` kept.
+        try check(claude(reported: "default"), chip: "default", sent: .string("default"))
+        let modes = ComposerModes(metadata: claude(reported: "default"), picks: ComposerPicks(), agentDefaultOverrides: [:])
+        XCTAssertEqual(modes.modelMode?.name, "Default")
+        // The app's own `default` pick is its reset: still sent as null.
+        try check(claude(reported: "default"), picks: ComposerPicks(modelMode: "default"), chip: "default", sent: .null)
     }
 
     func testOtherHarnessesAreUnchanged() throws {

@@ -4,12 +4,26 @@ import { Session } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { launchFailureMessage } from "./utils/launchFailureMessage";
+import { RawJSONLines } from "./types";
+
+/** The model a main-thread assistant turn ran on, from the local transcript. */
+function localTurnModel(message: RawJSONLines): string | undefined {
+    if (message.type !== 'assistant' || message.isSidechain === true) return undefined;
+    const model = message.message?.model;
+    return model && model !== '<synthetic>' ? model : undefined;
+}
+
+/** Whether a turn's model is the one already published; transcripts drop a `[1m]` suffix. */
+function isPublishedModel(published: string | undefined, model: string): boolean {
+    return published !== undefined && published.replace(/\[1m\]$/i, '') === model;
+}
 
 export type LauncherResult = { type: 'switch' } | { type: 'exit', code: number };
 
 export async function claudeLocalLauncher(session: Session): Promise<LauncherResult> {
 
     let scannerMessageChain = Promise.resolve();
+    let lastTurnModel: string | undefined;
 
     // Create scanner
     const scanner = await createSessionScanner({
@@ -18,6 +32,15 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
         onMessage: (message) => { 
             // Block SDK summary messages - we generate our own
             if (message.type !== 'summary') {
+                // The terminal can switch models (/model): publish what local turns run,
+                // so an unpicked app composer shows and sends that model, not a stale one.
+                const model = localTurnModel(message);
+                if (model && model !== lastTurnModel) {
+                    lastTurnModel = model;
+                    session.client.updateMetadata((metadata) => isPublishedModel(metadata.currentModelCode, model)
+                        ? metadata
+                        : { ...metadata, currentModelCode: model });
+                }
                 scannerMessageChain = scannerMessageChain.then(async () => {
                     try {
                         await session.client.sendClaudeSessionMessageFromLocalTranscript(message);

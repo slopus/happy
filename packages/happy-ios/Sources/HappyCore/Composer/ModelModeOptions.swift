@@ -188,9 +188,13 @@ public enum ModelModeOptions {
         guard
             flavor == "codex" || flavor == "agy" || isClaude,
             let key = AgentDefaults.retireModelMode(configured, flavor: flavor),
-            !key.isEmpty, key != "default",
+            !key.isEmpty,
             !models.contains(where: { $0.key == key })
         else { return models }
+        // Claude takes `--model default` (its account default) and its CLI reports it as such.
+        if key == "default" {
+            return isClaude ? models + [ModeOption(key: key, name: "Default", description: "Claude's default")] : models
+        }
         return models + [ModeOption(
             key: key,
             name: (isClaude ? unlistedClaudeModelNames[key] : nil) ?? key,
