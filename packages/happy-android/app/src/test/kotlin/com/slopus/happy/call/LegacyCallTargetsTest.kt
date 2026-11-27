@@ -32,8 +32,13 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.add
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -309,10 +314,19 @@ class LegacyCallTargetsTest {
             return true
         }
         override fun newWorkPlace(bot: Boolean) = place
-        override suspend fun spawn(options: SpawnSessionOptions): SpawnSessionResult { spawns += options; return spawned.removeAt(0) }
+        /** What happens while spawn is asked, before its answer: the server telling of the new session, say. */
+        var onSpawn: (suspend () -> Unit)? = null
+        override suspend fun spawn(options: SpawnSessionOptions): SpawnSessionResult {
+            spawns += options
+            onSpawn?.invoke()
+            return spawned.removeAt(0)
+        }
+        fun lists(sessionId: String) {
+            if (listed.value.none { it.agentId == sessionId }) listed.value = listed.value + CallTarget(sessionId, "New", CallTarget.Kind.Task, CallTarget.Status.Idle)
+        }
         override suspend fun awaitSession(sessionId: String): Boolean {
             // Home lists it before the store has it here: already under the draft's ref.
-            listed.value = listed.value + CallTarget(sessionId, "New", CallTarget.Kind.Task, CallTarget.Status.Idle)
+            lists(sessionId)
             seenWhileWaiting = targets?.directory()?.map { it.agentId }
             chatOf(sessionId).value = chat(emptyList(), rigMetadata(), id = sessionId)
             return true
@@ -390,6 +404,44 @@ class LegacyCallTargetsTest {
         targets.follow(draft.agentId, true)
         assertEquals(listOf(draft.agentId), targets.following)
         assertEquals(draft.agentId, kotlinx.coroutines.withTimeout(5_000) { heard.await() }.target.agentId)
+        targets.close()
+    }
+
+    private fun obj(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
+
+    @Test
+    fun aSessionHomeListedBeforeSpawnAnsweredKeepsTheRefTheCallGaveItAndTheDraftsNamesItToo() = runBlocking {
+        val cli = FakeAccount(emptyList())
+        cli.spawned = mutableListOf(SpawnSessionResult.Success("made"))
+        val targets = LegacyCallTargets(cli) { null }
+        val context = CallContext(targets)
+        context.initial()
+        // The server tells of the new session before spawn answers: home lists it, and the agent is given its ref.
+        var given: String? = null
+        cli.onSpawn = {
+            cli.lists("made")
+            cli.chatOf("made").value = chat(emptyList(), rigMetadata(), id = "made")
+            val update = context.directoryUpdate().context.map(::obj)
+            given = update.firstNotNullOf { it["added"] }.jsonArray.single().jsonObject["ref"]!!.jsonPrimitive.content
+        }
+        val started = obj(context.handle(CallToolCall("c1", "message", obj("""{"to":"new-task","text":"Fix the build"}"""))).text)
+        assertEquals("queued", started["status"]!!.jsonPrimitive.content)
+        val drafted = started["ref"]!!.jsonPrimitive.content
+        val made = requireNotNull(given)
+        assertTrue(made != drafted)
+        assertEquals(listOf("made" to "Fix the build"), cli.sends)
+        // Home keeps listing it under its own ID; nothing came or went.
+        assertEquals(listOf("made"), targets.directory().map { it.agentId })
+        assertTrue(context.directoryUpdate().isEmpty)
+        // Both refs read and reach the one session.
+        for ((ref, text) in listOf(made to "and the tests", drafted to "and the docs")) {
+            assertFalse(context.handle(CallToolCall("r-$ref", "readConversation", obj("""{"ref":"$ref"}"""))).isError)
+            val sent = context.handle(CallToolCall("m-$ref", "message", obj("""{"to":"$ref","text":"$text"}""")))
+            assertFalse(sent.text, sent.isError)
+            assertEquals("made" to text, cli.sends.last())
+        }
+        assertEquals(1, cli.spawns.size)
+        context.close()
         targets.close()
     }
 

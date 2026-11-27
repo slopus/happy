@@ -121,7 +121,8 @@ interface LegacyCallAccounts {
  * would pick. New work is Happy Agent's spawn of a task or a bot on the
  * computer compose would use, its first message sent once it is made; until
  * then it is a draft of the call's own, and after, the call reads and sends
- * to the session it made under the draft's reference. A call reads what
+ * to the session it made under the draft's reference (and under its own,
+ * where home listed it to the call first). A call reads what
  * comes, but never marks it read: that is the screen's. Runs on the main
  * thread.
  */
@@ -142,7 +143,11 @@ class LegacyCallTargets(
     override var onChange: ((CallTargetState) -> Unit)? = null
     private var closed = false
 
-    private class Draft(val target: CallTarget, val place: LegacyNewWork.Ready, var made: String? = null)
+    /** [aliased]: the session it made is told under the draft's ref; else under its own ID, which the call had first. */
+    private class Draft(val target: CallTarget, val place: LegacyNewWork.Ready, @Volatile var made: String? = null, @Volatile var aliased: Boolean = false)
+
+    /** Sessions the call was given under their own IDs: a ref it handed out for one stays good. */
+    private val given: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet() // marked from the directory's collector too
 
     override val account: CallAccount get() = CallAccount.HappyCli
 
@@ -171,8 +176,9 @@ class LegacyCallTargets(
     /** The session [agentId] names: itself, or what a draft of the call's made. */
     private fun session(agentId: String): String? = drafts[agentId]?.let { it.made } ?: agentId.takeUnless { it in drafts }
 
-    /** What the call calls [sessionId]: the draft that made it, else itself. */
-    private fun called(sessionId: String): String = drafts.entries.firstOrNull { it.value.made == sessionId }?.key ?: sessionId
+    /** What the call calls [sessionId]: the draft that made it, unless the call had it under its own ID first; else itself. */
+    private fun called(sessionId: String): String =
+        drafts.entries.firstOrNull { it.value.made == sessionId && it.value.aliased }?.key ?: sessionId.also { given += it }
 
     /** [target] under the call's own ID, so a session new work made stays the one ref the call knows it by. */
     private fun outward(target: CallTarget): CallTarget = called(target.agentId).let { if (it == target.agentId) target else target.copy(agentId = it) }
@@ -364,7 +370,10 @@ class LegacyCallTargets(
             is SpawnSessionResult.Pending -> return CallSendOutcome.Refused("It's still starting on the computer; look for it in the app.")
             is SpawnSessionResult.RequestToApproveDirectoryCreation -> return CallSendOutcome.Refused(CallContext.CLI_NEW_WORK_REFUSED)
         }
-        // The draft's ref is the session's from now on, before home lists it under its own ID.
+        // The draft's ref is the session's from now on, before home lists it under its own ID. The server tells of a new
+        // session before spawn answers, so home may have listed it already: then it keeps its own ID, the ref the call
+        // gave it still naming it, and the draft's naming it too.
+        draft.aliased = session !in given
         draft.made = session
         aliases.value++
         if (!cli.awaitSession(session)) return CallSendOutcome.Refused("It started, but hasn't reached this phone yet; look for it in the app.")
