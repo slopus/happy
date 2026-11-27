@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.ui.connection.DataStorageTags
+import com.slopus.happy.ui.connection.happyCloudSection
 import com.slopus.happy.ui.connection.privacySection
 import com.slopus.happy.model.Profile
 import com.slopus.happy.ui.components.Avatar
@@ -221,12 +222,18 @@ fun SettingsScreen(
     pages: List<SettingsEntry> = emptyList(),
     /** Where the page is scrolled; shared with the other kind's page, so a switch keeps it ([AccountSettings]). */
     scroll: ScrollState = rememberScrollState(),
+    /** Settings' Happy Cloud switch ([rememberHappyCloudSwitch]); null, no card. */
+    happyCloud: Boolean? = null,
+    onHappyCloud: (Boolean) -> Unit = {},
 ) {
     val search = rememberSettingsSearch()
-    val sections = happySettingsSections(actions, connectingTerminal) +
-        supportSection(about, aboutActions) +
-        privacySection(actions.onPrivacy) +
-        aboutSection(about, aboutActions)
+    val sections = (
+        happySettingsSections(actions, connectingTerminal) +
+            supportSection(about, aboutActions) +
+            happyCloudSection(happyCloud, onHappyCloud) +
+            privacySection(actions.onPrivacy) +
+            aboutSection(about, aboutActions)
+        ).filter { it.rows.isNotEmpty() }
     Screen(
         header = {
             if (search.searching) {

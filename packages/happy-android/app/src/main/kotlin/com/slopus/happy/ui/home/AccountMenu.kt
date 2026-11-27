@@ -147,7 +147,7 @@ object AccountMenuSpec {
  * the server or kind under it; the open one checked, one needing attention
  * flagged), then Add, which scans a code and adds the Happy account or
  * agent connection it is for ([LocalAddFlow]), and a + for Happy Cloud
- * ([LocalCloudConnect], left out where the build has none). Picking one
+ * ([LocalCloudConnect], left out while Happy Cloud isn't offered). Picking one
  * switches.
  * Outside a top app bar, where the slot is not already 4 in, pass a 0 [inset].
  */

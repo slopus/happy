@@ -2,6 +2,7 @@ package com.slopus.happy.ui.connect
 
 import com.slopus.happy.ui.connection.CloudInviteRoute
 import com.slopus.happy.ui.connection.CloudInvites
+import com.slopus.happy.ui.connection.LocalCloudConnect
 import com.slopus.happy.connection.PairingStart
 import com.slopus.happy.ui.components.LocalOverlays
 import com.slopus.happy.ui.guest.GuestChatEntry
@@ -105,7 +106,8 @@ fun DeepLinkEffect(
     val pending by DeepLinks.pending.collectAsStateWithLifecycle()
     val connectAgent = LocalAgentPairing.current
     val overlays = LocalOverlays.current
-    LaunchedEffect(pending, signedIn) {
+    val cloud = LocalCloudConnect.current != null
+    LaunchedEffect(pending, signedIn, cloud) {
         val link = pending ?: return@LaunchedEffect
         if (link is DeepLink.OnConnection && link.connectionId != openConnection) return@LaunchedEffect
         // Whatever is over the stack (a menu, a sheet, a dialog) goes first, animated, and the link
@@ -128,8 +130,10 @@ fun DeepLinkEffect(
             nav.navigate(GuestChatRoute(link.url))
             return@LaunchedEffect
         }
-        // A Happy Cloud invite is the Cloud account's, not the open one's: it opens signed in or out.
+        // A Happy Cloud invite is the Cloud account's, not the open one's: it opens signed in or out,
+        // and only while Happy Cloud is offered (Settings' switch); otherwise it is dropped.
         if (link is DeepLink.CloudServerInvite) {
+            if (!cloud) return@LaunchedEffect
             CloudInvites.offer(link.invite)
             nav.navigate(CloudInviteRoute) { launchSingleTop = true }
             return@LaunchedEffect

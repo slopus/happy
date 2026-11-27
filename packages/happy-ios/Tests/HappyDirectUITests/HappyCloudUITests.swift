@@ -8,7 +8,12 @@ import UIKit
 /// `TEST_RUNNER_HAPPY_CLOUD_E2E=1`.
 @MainActor
 final class HappyCloudUITests: XCTestCase {
-    private let app = XCUIApplication()
+    /// With Settings' Happy Cloud switch on, as only the preview app has it until changed.
+    private let app: XCUIApplication = {
+        let app = XCUIApplication()
+        app.launchArguments = ["-happy-cloud", "YES"]
+        return app
+    }()
     private var env: [String: String] { ProcessInfo.processInfo.environment }
 
     override func setUp() { continueAfterFailure = false }
@@ -678,7 +683,7 @@ final class HappyCloudUITests: XCTestCase {
               let accounts = env["CLOUD_ACCOUNTS"], let base = env["CLOUD_BASE"], let web = env["CLOUD_WEB"], let invite = env["CLOUD_INVITE"]
         else { throw XCTSkip("no invite run") }
         app.launchArguments = ["-HappyCloudAccounts", accounts, "-HappyCloudAPI", env["CLOUD_API"] ?? "https://api.\(base)", "-HappyCloudBase", base,
-                               "-HappyCloudWeb", web, "-HappyCloudInvite", invite]
+                               "-HappyCloudWeb", web, "-HappyCloudInvite", invite, "-happy-cloud", "YES"]
         app.launch()
         require(first([element("account-switcher"), app.buttons["start-cloud"]], timeout: 30) != nil, "the app didn't start")
         app.terminate()
@@ -755,7 +760,7 @@ final class HappyCloudUITests: XCTestCase {
               let accounts = env["CLOUD_ACCOUNTS"], let base = env["CLOUD_BASE"], let web = env["CLOUD_WEB"], let invite = env["CLOUD_INVITE"]
         else { throw XCTSkip("no first-bootstrap run") }
         app.launchArguments = ["-HappyCloudAccounts", accounts, "-HappyCloudAPI", env["CLOUD_API"] ?? "https://api.\(base)", "-HappyCloudBase", base,
-                               "-HappyCloudWeb", web, "-HappyCloudInvite", invite]
+                               "-HappyCloudWeb", web, "-HappyCloudInvite", invite, "-happy-cloud", "YES"]
         app.launch()
         signInWithTestAccount(login: login, password: password)
         let name = element("cloud-create-name")

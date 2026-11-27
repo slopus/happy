@@ -89,4 +89,7 @@
     <string name="cloud_invite_other_account">Войти с другим аккаунтом</string>
     <string name="cloud_invite_not_now">Не сейчас</string>
     <string name="cloud_invite_inviter">%1$s приглашает вас</string>
+    <string name="cloud_turn_on">Включить Happy Cloud</string>
+    <string name="cloud_turn_off">Выключить Happy Cloud</string>
+    <string name="cloud_switch_footer">Happy Cloud появляется на первом экране и в меню аккаунтов, а его приглашения открываются в приложении. Серверы, уже добавленные на этот телефон, работают в любом случае.</string>
 </resources>

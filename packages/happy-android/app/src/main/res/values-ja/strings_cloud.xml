@@ -89,4 +89,7 @@
     <string name="cloud_invite_other_account">別のアカウントでサインイン</string>
     <string name="cloud_invite_not_now">後で</string>
     <string name="cloud_invite_inviter">%1$s さんから招待されました</string>
+    <string name="cloud_turn_on">Happy Cloud をオンにする</string>
+    <string name="cloud_turn_off">Happy Cloud をオフにする</string>
+    <string name="cloud_switch_footer">最初の画面とアカウントメニューに Happy Cloud を表示し、招待リンクをアプリで開きます。この端末に追加済みのサーバーはどちらの場合も使えます。</string>
 </resources>

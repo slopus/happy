@@ -56,7 +56,7 @@ class StartLayoutTest {
     private val taps = mutableListOf<String>()
     private lateinit var view: View
 
-    private fun show(dark: Boolean = false, density: Density? = null, height: Int? = null, cloud: Boolean = false) {
+    private fun show(dark: Boolean = false, density: Density? = null, height: Int? = null, cloud: Boolean = false, cloudOffered: Boolean? = null) {
         rule.setHappyContent(dark = dark) {
             view = LocalView.current
             val screen = @Composable {
@@ -64,6 +64,8 @@ class StartLayoutTest {
                     connecting = false,
                     onStart = { taps += "start" },
                     onCloud = if (cloud) ({ taps += "cloud" }) else null,
+                    cloudOffered = cloudOffered,
+                    onCloudOffered = { taps += "cloud $it" },
                 )
             }
             val sized = @Composable {
@@ -135,6 +137,17 @@ class StartLayoutTest {
         for (link in listOf("Ask on Discord", "DM @bra1n_dump on X", "DM @Ex3NDR on X", "Browse known issues", "Cancel")) {
             rule.onNodeWithText(link).assertExists()
         }
+    }
+
+    /** Settings' Happy Cloud switch in Get help, above Cancel, where the build has Happy Cloud: on while off, off while on. */
+    @Test
+    fun getHelpTurnsHappyCloudOnAndOff() {
+        show(cloudOffered = false)
+        rule.onNodeWithContentDescription("Get help").performClick()
+        rule.onNodeWithText("Turn off Happy Cloud").assertDoesNotExist()
+        rule.onNodeWithText("Turn on Happy Cloud").performClick()
+        assertEquals(listOf("cloud true"), taps)
+        rule.onNodeWithText("Ask on Discord").assertDoesNotExist()
     }
 
     /** Use Happy Cloud: 12 under Start and as wide, 24 above the bottom; Start rises from its 48 to make room. */

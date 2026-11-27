@@ -98,9 +98,13 @@ split contract (v1, frozen 2026-11-15).
   list of accounts and servers, under Add) and in Settings
   (`AccountAdding.connectToCloud`). Not in any ⋯: the first screen has
   none, and the next screens' and the scanner's ⋯ hold the self-hosted
-  ways in only. Development and preview builds only
-  (`HappyCloud.isOffered`, from `AppVariant`): production shows none of
-  these entries and `connectToCloud` does nothing there.
+  ways in only. Only while Settings' Happy Cloud switch is on
+  (`HappyCloud.isOffered`; UserDefaults `happy-cloud`, kept for every
+  account): until changed it is on in the preview app and off in
+  development and production, which then show none of these entries, open
+  no invite link, and `connectToCloud` does nothing. The switch is a card
+  above Privacy in Settings, and in the first screen's Get help (Turn On /
+  Turn Off Happy Cloud), as Settings can't be reached before an account.
 - **Screens.** Desktop's steps and words (happy-desktop
   `CloudConnectScreen.tsx`), every one a full-screen page on the first
   screen's grain gradient, under the standard bar with Back: Welcome, Sign

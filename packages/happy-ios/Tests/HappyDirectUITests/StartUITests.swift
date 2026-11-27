@@ -13,7 +13,12 @@ import XCTest
 /// attached to the result either way.
 @MainActor
 final class StartUITests: XCTestCase {
-    private let app = XCUIApplication()
+    /// With Settings' Happy Cloud switch on, as only the preview app has it until changed.
+    private let app: XCUIApplication = {
+        let app = XCUIApplication()
+        app.launchArguments = ["-happy-cloud", "YES"]
+        return app
+    }()
 
     private static let skipsQuiescence: Bool = {
         guard let process = NSClassFromString("XCUIApplicationProcess") else { return false }

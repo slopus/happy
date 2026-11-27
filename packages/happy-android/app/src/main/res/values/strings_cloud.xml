@@ -91,4 +91,7 @@
     <string name="cloud_invite_other_account">Sign in with another account</string>
     <string name="cloud_invite_not_now">Not now</string>
     <string name="cloud_invite_inviter">%1$s invited you</string>
+    <string name="cloud_turn_on">Turn on Happy Cloud</string>
+    <string name="cloud_turn_off">Turn off Happy Cloud</string>
+    <string name="cloud_switch_footer">Offers Happy Cloud on the first screen and in the account menu, and opens its invite links in the app. Servers already on this phone keep working either way.</string>
 </resources>
