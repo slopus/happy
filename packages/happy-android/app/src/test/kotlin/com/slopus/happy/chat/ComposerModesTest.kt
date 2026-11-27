@@ -176,8 +176,7 @@ class ComposerModesTest {
 
     /**
      * A Claude session started from the terminal has no pick. Its chip names
-     * the model its next message runs: the one sent, or with nothing sent,
-     * the one its CLI reports running.
+     * the model its next message sends.
      */
     @Test
     fun aClaudeSessionsChipNamesTheModelItsNextMessageRuns() {
@@ -193,12 +192,12 @@ class ComposerModesTest {
 
         // Nothing reported yet: the chip's default goes out with the message, or Claude Code would pick its own.
         check(claude(null), ComposerMirror(), null, chip = "claude-opus-5-5", sent = "claude-opus-5-5")
-        // The CLI reports what it runs: the chip shows that and the message leaves it alone.
-        check(claude("claude-sonnet-5-5"), ComposerMirror(), null, chip = "claude-sonnet-5-5", sent = null)
-        // A reported [1m] model shows the row that runs it.
-        check(claude("claude-opus-5[1m]"), ComposerMirror(), null, chip = "claude-opus-5", sent = null)
+        // The CLI reports what it runs: the chip shows that and the message sends it.
+        check(claude("claude-sonnet-5-5"), ComposerMirror(), null, chip = "claude-sonnet-5-5", sent = "claude-sonnet-5-5")
+        // A reported [1m] model shows the row that runs it and is sent as reported.
+        check(claude("claude-opus-5[1m]"), ComposerMirror(), null, chip = "claude-opus-5", sent = "claude-opus-5[1m]")
         // A model Claude was configured with that the list lacks gets its own row.
-        check(claude("opusplan"), ComposerMirror(), null, chip = "opusplan", sent = null)
+        check(claude("opusplan"), ComposerMirror(), null, chip = "opusplan", sent = "opusplan")
         // The user's default and the session's pick are sent, so they win.
         check(claude("claude-sonnet-5-5"), ComposerMirror(), haiku, chip = "claude-haiku-5-5", sent = "claude-haiku-5-5")
         check(claude("claude-sonnet-5-5"), ComposerMirror(modelMode = "claude-fable-5-2"), haiku, chip = "claude-fable-5-2", sent = "claude-fable-5-2")

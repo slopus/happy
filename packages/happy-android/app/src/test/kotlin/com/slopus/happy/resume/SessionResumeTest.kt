@@ -77,8 +77,8 @@ class SessionResumeTest {
     fun withoutAPermissionPickNothingIsPinned() {
         val ops = FakeOps()
         assertEquals(ResumeOutcome.Resumed("s1"), resume(ops))
-        // No model pick either: the new process starts on the model its own configuration names.
-        assertEquals(listOf("resume:m1/s1 model=null permission=null", "refresh"), ops.calls)
+        // No model pick either: the model the chip shows, as a message sends it.
+        assertEquals(listOf("resume:m1/s1 model=claude-opus-5 permission=null", "refresh"), ops.calls)
     }
 
     @Test
@@ -99,7 +99,7 @@ class SessionResumeTest {
     fun aFailedRefreshStillOpensTheResumedSession() {
         val ops = FakeOps(ComposerMirror(permissionMode = "plan")).apply { refreshFails = true }
         assertEquals(ResumeOutcome.Resumed("s1"), resume(ops))
-        assertEquals(listOf("resume:m1/s1 model=null permission=plan", "refresh", "pin:s1=plan"), ops.calls)
+        assertEquals(listOf("resume:m1/s1 model=claude-opus-5 permission=plan", "refresh", "pin:s1=plan"), ops.calls)
     }
 
     @Test

@@ -4,8 +4,8 @@ import HappyWire
 import XCTest
 
 /// A Claude session started from the terminal has no pick. Its model chip
-/// names the model its next message runs: the one sent, or with nothing
-/// sent, the one its CLI reports running (`currentModelCode`).
+/// names the model its next message sends; with nothing else known, the
+/// one its CLI reports running (`currentModelCode`).
 final class ClaudeSessionModelTests: XCTestCase {
     private func claude(reported: String?) -> JSONValue {
         var metadata: [String: JSONValue] = ["flavor": .string("claude"), "version": .string("1.2.7")]
@@ -40,10 +40,10 @@ final class ClaudeSessionModelTests: XCTestCase {
         try check(claude(reported: nil), chip: "claude-opus-5-5", sent: .string("claude-opus-5-5"))
     }
 
-    func testAReportedModelIsShownAndLeftAlone() throws {
-        try check(claude(reported: "claude-sonnet-5-5"), chip: "claude-sonnet-5-5", sent: nil)
-        try check(claude(reported: "claude-opus-5[1m]"), chip: "claude-opus-5", sent: nil)
-        try check(claude(reported: "opusplan"), chip: "opusplan", sent: nil)
+    func testAReportedModelIsShownAndSentAsReported() throws {
+        try check(claude(reported: "claude-sonnet-5-5"), chip: "claude-sonnet-5-5", sent: .string("claude-sonnet-5-5"))
+        try check(claude(reported: "claude-opus-5[1m]"), chip: "claude-opus-5", sent: .string("claude-opus-5[1m]"))
+        try check(claude(reported: "opusplan"), chip: "opusplan", sent: .string("opusplan"))
     }
 
     func testTheUserDefaultAndTheSessionPickAreSentSoTheyWin() throws {
@@ -58,16 +58,12 @@ final class ClaudeSessionModelTests: XCTestCase {
         )
     }
 
-    func testAResumeLeavesTheDefaultForTheNewProcessToReport() throws {
-        let resume = { (composer: [String: JSONValue], overrides: [String: JSONValue]) in
-            try UserMessageEncoder.modeMeta(
-                metadata: self.claude(reported: nil), composer: .object(composer),
-                settings: .object(["agentDefaultOverrides": .object(overrides)]), resuming: true
-            )["model"]
+    func testAResumeSendsWhatTheChipShows() throws {
+        let resume = { (metadata: JSONValue) in
+            try UserMessageEncoder.modeMeta(metadata: metadata, composer: .object([:]), settings: nil)["model"]
         }
-        XCTAssertNil(try resume([:], [:]))
-        XCTAssertEqual(try resume([:], ["claude": .object(["modelMode": .string("claude-haiku-5-5")])]), .string("claude-haiku-5-5"))
-        XCTAssertEqual(try resume(["modelMode": .string("claude-fable-5-2")], [:]), .string("claude-fable-5-2"))
+        XCTAssertEqual(try resume(self.claude(reported: nil)), .string("claude-opus-5-5"))
+        XCTAssertEqual(try resume(self.claude(reported: "claude-sonnet-5-5")), .string("claude-sonnet-5-5"))
     }
 
     func testOtherHarnessesAreUnchanged() throws {

@@ -53,8 +53,9 @@ object ComposerModeResolver {
      * ([mirror]) when the list has it, then, for a Happy Agent session,
      * what the agent reports; for any other, the user's agent default and
      * then what the agent reports, except that Claude's code default comes
-     * after what its CLI reports ([AgentDefaults.unpickedClaudeModel]). A
-     * pick on a retired Claude row shows the row that runs the same model.
+     * after what its CLI reports ([AgentDefaults.unpickedClaudeModel], the
+     * model its messages send). A pick on a retired Claude row shows the row
+     * that runs the same model.
      */
     fun resolve(
         metadata: SessionMetadata?,
@@ -66,9 +67,9 @@ object ComposerModeResolver {
         val rig = metadata.isRig()
         val defaults = AgentDefaults.resolve(overrides, flavor, metadata?.version)
         val sessionModel = if (rig) mirror.modelMode else AgentDefaults.retireModelMode(flavor, mirror.modelMode)
-        // A Claude session with no pick shows what it runs, not a default no message sends.
+        // A Claude session with no pick shows the model its messages send.
         val unpickedModel = if (!rig && AgentDefaults.isClaude(flavor)) {
-            AgentDefaults.unpickedClaudeModel(overrides, flavor, metadata?.version, metadata?.currentModelCode)
+            AgentDefaults.retireModelMode(flavor, AgentDefaults.unpickedClaudeModel(overrides, flavor, metadata?.version, metadata?.currentModelCode))
         } else {
             defaults.modelMode
         }

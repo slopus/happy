@@ -63,14 +63,11 @@ object MessageMetaResolver {
     /**
      * messageMeta.ts `resolveMessageModeMeta`: the composer's picks ([mirror]),
      * falling back to the agent defaults the composer displays; for Claude,
-     * to the model its CLI reports running, which needs no sending.
-     * [resuming] leaves Claude's code default out: the new process reports
-     * the model its own configuration names, and a message sends the
-     * default only if it reports none.
+     * always the model its chip shows ([AgentDefaults.unpickedClaudeModel]).
      *
      * @throws UnsupportedPermissionModeException
      */
-    fun mode(metadata: SessionMetadata?, mirror: ComposerMirror, overrides: AgentDefaultOverrides?, resuming: Boolean = false): MessageModeMeta {
+    fun mode(metadata: SessionMetadata?, mirror: ComposerMirror, overrides: AgentDefaultOverrides?): MessageModeMeta {
         if (metadata.isRigV1()) return rigMode(metadata!!, mirror)
 
         val flavor = metadata?.flavor
@@ -100,13 +97,11 @@ object MessageMetaResolver {
             agentOverrides.permissionMode != null -> supported(agentOverrides.permissionMode)
             else -> null
         }
-        // Claude's code default goes out too while its CLI reports no model:
-        // the chip shows it, and without it Claude Code would run its own
-        // account default (Sonnet on some plans) under that chip. Once the
-        // CLI reports the model it runs, nothing is sent and that one stays.
+        // Claude always gets the model its chip shows: left out, Claude Code
+        // would run its own account default (Sonnet on some plans) under it.
         val modelMode = mirror.modelMode ?: agentOverrides.modelMode
-            ?: if (!resuming && AgentDefaults.isClaude(flavor) && AgentDefaults.sendsDefaultClaudeModel(metadata?.currentModelCode)) {
-                AgentDefaults.resolve(overrides, flavor, cliVersion).modelMode
+            ?: if (AgentDefaults.isClaude(flavor)) {
+                AgentDefaults.unpickedClaudeModel(overrides, flavor, cliVersion, metadata?.currentModelCode)
             } else {
                 null
             }

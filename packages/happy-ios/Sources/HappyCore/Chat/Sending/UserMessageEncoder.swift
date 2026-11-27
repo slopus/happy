@@ -81,10 +81,7 @@ public enum UserMessageEncoder {
         SessionMetadata.isRigV1(metadata)
     }
 
-    /// `resuming` leaves Claude's code default out: the new process reports
-    /// the model its own configuration names, and a message sends the
-    /// default only if it reports none.
-    static func modeMeta(metadata m: JSONValue, composer c: JSONValue, settings: JSONValue?, resuming: Bool = false) throws -> [String: JSONValue] {
+    static func modeMeta(metadata m: JSONValue, composer c: JSONValue, settings: JSONValue?) throws -> [String: JSONValue] {
         var result: [String: JSONValue] = [:]
         func value(_ value: JSONValue?) -> JSONValue? {
             value == .null ? nil : value
@@ -159,13 +156,10 @@ public enum UserMessageEncoder {
             permission = permission ?? defaults.permissionMode
             model = model ?? defaults.modelMode
             effort = effort ?? defaults.effortLevel
-        } else if model == nil, !resuming, AgentDefaults.isClaude(flavor: m["flavor"]?.stringValue),
-                  AgentDefaults.sendsDefaultClaudeModel(reported: m["currentModelCode"]?.stringValue) {
-            // The chip shows Claude's code default while its CLI reports no
-            // model; left out, Claude Code would run its own account default
-            // (Sonnet on some plans) under that chip. Once the CLI reports the
-            // model it runs, nothing is sent and that one stays.
-            model = AgentDefaults.resolve(overrides, agent, cliVersion: version).modelMode
+        } else if model == nil, AgentDefaults.isClaude(flavor: m["flavor"]?.stringValue) {
+            // Claude always gets the model its chip shows: left out, Claude Code
+            // would run its own account default (Sonnet on some plans) under it.
+            model = AgentDefaults.unpickedClaudeModel(overrides, cliVersion: version, reported: m["currentModelCode"]?.stringValue)
         }
         if let selected = permission {
             let retired = AgentDefaults.retirePermissionMode(selected)

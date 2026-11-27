@@ -113,7 +113,7 @@ public struct SessionDetailActions: Sendable {
         }
         let meta: [String: JSONValue]
         do {
-            meta = try UserMessageEncoder.modeMeta(metadata: session.metadata ?? .object([:]), composer: composer, settings: settings, resuming: true)
+            meta = try UserMessageEncoder.modeMeta(metadata: session.metadata ?? .object([:]), composer: composer, settings: settings)
         } catch let error as UnsupportedPermissionModeError {
             // Refused rather than swapped for a default, as happy-app does.
             throw Failure(error.errorDescription ?? "")

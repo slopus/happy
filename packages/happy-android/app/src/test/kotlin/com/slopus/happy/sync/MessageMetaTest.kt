@@ -162,17 +162,13 @@ class MessageMetaTest {
     fun claudeModelPicks() {
         // An explicit default is a reset: model null on the wire.
         assertEquals(MessageModeMeta(model = Present(null)), mode(metadata("claude"), modelMode = "default"))
-        // With no pick and no model reported by the CLI, the default the chip shows goes out:
-        // left out, Claude Code would run its own account default under that chip.
+        // With no pick, the model the chip shows always goes out: left out,
+        // Claude Code would run its own account default under that chip.
         assertEquals(meta(model = "claude-opus-5-5"), mode(metadata("claude", "1.2.7"), overrides = overrides("{}")))
         assertEquals(meta(model = "claude-opus-5"), mode(metadata(null, "1.2.5")))
-        // Once the CLI reports the model it runs, a running session is never re-modeled.
-        assertEquals(MessageModeMeta(), mode(metadata("claude", "1.2.7", currentModelCode = "claude-sonnet-5-5")))
-        assertEquals(MessageModeMeta(), mode(metadata("claude", currentModelCode = "claude-opus-5[1m]")))
-        // A resume leaves the default out, so the new process can report its configured model first.
-        assertEquals(MessageModeMeta(), MessageMetaResolver.mode(metadata("claude", "1.2.7"), ComposerMirror(), null, resuming = true))
-        assertEquals(meta(model = "claude-haiku-5-5"), MessageMetaResolver.mode(metadata("claude", "1.2.7"), ComposerMirror(), overrides("""{"claude":{"modelMode":"claude-haiku-5-5"}}"""), resuming = true))
-        assertEquals(meta(model = "claude-fable-5-2"), MessageMetaResolver.mode(metadata("claude", "1.2.7"), ComposerMirror(modelMode = "claude-fable-5-2"), null, resuming = true))
+        // The model the CLI reports, as it reports it: the same model, so a no-op for the running session.
+        assertEquals(meta(model = "claude-sonnet-5-5"), mode(metadata("claude", "1.2.7", currentModelCode = "claude-sonnet-5-5")))
+        assertEquals(meta(model = "claude-opus-5[1m]"), mode(metadata("claude", currentModelCode = "claude-opus-5[1m]")))
         // Other harnesses that send nothing by default still send nothing.
         assertEquals(MessageModeMeta(), mode(metadata("gemini")))
         assertEquals(MessageModeMeta(), mode(metadata("openclaw")))
