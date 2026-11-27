@@ -141,7 +141,11 @@ class OnboardingFlowTest {
         assertArrayEquals(account.credentials.secretBytes(), decryptBox(decodeBase64(response), terminal.secretKey))
     }
 
-    /** A terminal link that can't be approved keeps no account: the first screen stays, with the error. */
+    /**
+     * A terminal link that can't be approved keeps no account: the first
+     * screen stays, with the error. One whose key isn't a key never asks
+     * the server for an account at all.
+     */
     @Test
     fun aFailedTerminalApprovalOnTheFirstScreenKeepsNoAccount() {
         // Start's ways in are the next screen's ⋮.
@@ -150,7 +154,8 @@ class OnboardingFlowTest {
         rule.onNodeWithText("Enter link manually").performClick()
         rule.onNodeWithTag(PromptTags.INPUT).performTextInput("happy://terminal?abc")
         rule.onNodeWithTag(PromptTags.CONFIRM).performClick()
-        rule.waitUntilAtLeastOneExists(hasText("Failed to connect terminal"), 5_000)
+        rule.waitUntilAtLeastOneExists(hasText("Invalid authentication URL"), 5_000)
+        assertTrue(server.requestsTo("/v1/auth").isEmpty())
         assertEquals(AuthState.SignedOut, graph.auth.state.value)
         assertTrue(graph.accountStore.registry.value.entries.isEmpty())
         rule.onNodeWithText("Scan QR code").assertExists()

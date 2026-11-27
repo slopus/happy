@@ -167,6 +167,34 @@ class AccountLinkingTest {
         assertEquals(1, server.requestsTo("/v1/auth/response").size)
     }
 
+    /** Only a 32-byte base64url key is a terminal's; anything else is refused before a request is made. */
+    @Test
+    fun aTerminalLinkWhoseKeyIsNotOneIsRefused() = runBlocking {
+        val (keyPair, url) = terminal(supportsV2 = true)
+        val key = encodeBase64(keyPair.publicKey, Base64Variant.Url)
+        // As iOS reads it: base64url, standard base64, and a wrapped line copied from a terminal.
+        for (same in listOf(url, TERMINAL_URL_PREFIX + encodeBase64(keyPair.publicKey), TERMINAL_URL_PREFIX + key.substring(0, 20) + "\n " + key.substring(20))) {
+            assertArrayEquals(same, keyPair.publicKey, terminalPublicKey(same))
+        }
+        for (broken in listOf(
+            "happy://terminal?abc",
+            TERMINAL_URL_PREFIX,
+            TERMINAL_URL_PREFIX + key.dropLast(4),
+            TERMINAL_URL_PREFIX + encodeBase64(keyPair.publicKey + byteArrayOf(0), Base64Variant.Url),
+            TERMINAL_URL_PREFIX + "not a key at all, not even base64!!!!!!!!",
+            AccountLink.linkUrl(keyPair.publicKey),
+        )) {
+            assertEquals(broken, null, terminalPublicKey(broken))
+            try {
+                approveTerminal(api, credentials, server.encryption, broken)
+                fail("accepted $broken")
+            } catch (_: InvalidLinkException) {
+            }
+        }
+        assertTrue(server.requestsTo("/v1/auth/request/status").isEmpty())
+        assertTrue(server.requestsTo("/v1/auth/response").isEmpty())
+    }
+
     @Test
     fun aTerminalLinkMustHaveTheTerminalPrefix() = runBlocking {
         val (keyPair, _) = terminal(supportsV2 = true)
