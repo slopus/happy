@@ -364,7 +364,7 @@ a { color: inherit; text-underline-offset: 3px; }
 }
 
 .download-all { padding: 6px 11px; }
-.card-download:hover { background: var(--soft); }
+.card-download:hover, .card-download:active { background: var(--soft); }
 
 .download-feedback {
   max-width: 185px;
@@ -394,11 +394,10 @@ a { color: inherit; text-underline-offset: 3px; }
 
 .card-heading {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  padding: 10px 13px;
+  gap: 4px 8px;
+  padding: 4px 8px 4px 13px;
 }
 
 .card-index { font-size: 13px; }
@@ -409,9 +408,23 @@ a { color: inherit; text-underline-offset: 3px; }
   aspect-ratio: 16 / 10;
   overflow: hidden;
   background: var(--soft);
+  cursor: zoom-in;
 }
 
+.card-preview::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .card-preview:hover::after { box-shadow: inset 0 0 0 2px var(--accent); }
+}
+
+.card-preview:active::after { box-shadow: inset 0 0 0 2px var(--accent); }
 .card-preview:focus-visible { outline-offset: -4px; }
+.card-preview:focus-visible::after { box-shadow: inset 0 0 0 3px var(--focus); }
 
 .card img {
   display: block;
@@ -427,8 +440,7 @@ a { color: inherit; text-underline-offset: 3px; }
   display: flex;
   flex: 1;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   padding: 13px;
 }
 
@@ -440,27 +452,24 @@ a { color: inherit; text-underline-offset: 3px; }
   font-size: 14px;
 }
 
-.card-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding-top: 9px;
-  border-top: 1px solid var(--line);
-  font-size: 13px;
-}
-
-.card-time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.card-original { color: var(--accent); font-weight: 650; }
+.card-time { margin-inline-start: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .card-download {
-  display: inline-flex;
-  align-items: center;
-  min-height: 40px;
-  padding: 5px 9px;
-  border-radius: 6px;
+  display: inline-grid;
+  flex: 0 0 44px;
+  place-items: center;
+  min-height: 44px;
   text-decoration: none;
+}
+
+.card-download svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 footer {

@@ -71,6 +71,16 @@ async function downloadCard(event, link, feedback) {
 }
 function el(tag, className, text) { const value = document.createElement(tag); if (className) value.className = className; if (text !== undefined) value.textContent = text; return value; }
 function link(text, href, className) { const a = el('a', className, text); a.href = href; return a; }
+function saveIcon() {
+  const namespace = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(namespace, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(namespace, 'path');
+  path.setAttribute('d', 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2ZM7 3v6h10V3M7 21v-7h10v7');
+  svg.append(path);
+  return svg;
+}
 function time(seconds) { return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`; }
 function requestId() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -184,7 +194,15 @@ function renderGallery(finished) {
       const figure = el('figure', 'card');
       const cardHeading = el('div', 'card-heading');
       const sourceTime = link(`${time(card.start)}–${time(card.end)}`, `${job.url}?t=${Math.floor(card.start)}`, 'card-time'); sourceTime.target = '_blank'; sourceTime.rel = 'noopener noreferrer';
-      cardHeading.append(el('strong', 'card-index', `第 ${number} 张`), sourceTime);
+      const download = link('', url, 'card-download');
+      download.download = `${job.bvid}-${card.file}`;
+      download.setAttribute('aria-label', `下载第 ${number} 张 PNG`);
+      download.title = '下载 PNG';
+      download.append(saveIcon());
+      const cardFeedback = el('p', 'download-feedback');
+      cardFeedback.setAttribute('role', 'status');
+      download.onclick = event => void downloadCard(event, download, cardFeedback);
+      cardHeading.append(el('strong', 'card-index', `第 ${number} 张`), sourceTime, download);
 
       const preview = link('', url, 'card-preview');
       preview.target = '_blank'; preview.rel = 'noopener';
@@ -194,18 +212,7 @@ function renderGallery(finished) {
       preview.append(img);
 
       const caption = el('figcaption');
-      const actions = el('div', 'card-actions');
-      const original = link('查看原图', url, 'card-original');
-      original.target = '_blank'; original.rel = 'noopener';
-      original.setAttribute('aria-label', `查看第 ${number} 张原图`);
-      const download = link('下载 PNG', url, 'card-download');
-      download.download = `${job.bvid}-${card.file}`;
-      download.setAttribute('aria-label', `下载第 ${number} 张 PNG`);
-      const cardFeedback = el('p', 'download-feedback');
-      cardFeedback.setAttribute('role', 'status');
-      download.onclick = event => void downloadCard(event, download, cardFeedback);
-      actions.append(original, download);
-      caption.append(el('p', 'card-quote', card.quote), actions, cardFeedback);
+      caption.append(el('p', 'card-quote', card.quote), cardFeedback);
       figure.append(cardHeading, preview, caption);
       cards.append(figure);
     }

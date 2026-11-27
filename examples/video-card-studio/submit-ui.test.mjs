@@ -75,7 +75,11 @@ function setup({ crypto, fetchImpl, hash = '' } = {}) {
   const history = { replaceState(_state, _unused, value) { location.hash = new URL(value, 'https://cards.example/').hash; } };
   const window = { location, history, addEventListener(name, fn) { windowEvents.set(name, fn); } };
   const context = vm.createContext({
-    document: { getElementById: element, createElement: tag => new Element(tag) },
+    document: {
+      getElementById: element,
+      createElement: tag => new Element(tag),
+      createElementNS: (_namespace, tag) => new Element(tag),
+    },
     window, location, history,
     crypto: crypto ?? { randomUUID: () => job.id },
     EventSource, AbortController, URL, setTimeout, clearTimeout,
@@ -209,9 +213,17 @@ test('three result images render as individually numbered PNG cards', () => {
   for (const [index, figure] of figures.entries()) {
     const url = `/api/jobs/${job.id}/${files[index]}`;
     assert.equal(figure.querySelector('.card-index').textContent, `第 ${index + 1} 张`);
-    assert.equal(figure.querySelector('img').src, url);
-    assert.equal(figure.querySelector('.card-original').href, url);
-    assert.equal(figure.querySelector('.card-download').href, url);
-    assert.equal(figure.querySelector('.card-download').download, `${job.bvid}-${files[index]}`);
+    const preview = figure.querySelector('.card-preview');
+    assert.equal(preview.querySelector('img').src, url);
+    assert.equal(preview.href, url);
+    assert.equal(preview.target, '_blank');
+    assert.equal(preview.getAttribute('aria-label'), `查看第 ${index + 1} 张原图`);
+    assert.deepEqual(figure.querySelectorAll('a').filter(link => link.href === url && !link.download), [preview]);
+    const download = figure.querySelector('.card-download');
+    assert.equal(download.href, url);
+    assert.equal(download.download, `${job.bvid}-${files[index]}`);
+    assert.equal(download.textContent, '');
+    assert.equal(download.getAttribute('aria-label'), `下载第 ${index + 1} 张 PNG`);
+    assert.equal(download.querySelector('svg').getAttribute('aria-hidden'), 'true');
   }
 });
