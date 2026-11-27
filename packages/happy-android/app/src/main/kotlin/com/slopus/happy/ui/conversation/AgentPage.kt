@@ -150,6 +150,8 @@ object AgentPageTags {
     /** The chat's controls under the tiles: its permission mode. */
     const val CONTROLS = "agentPage.controls"
     const val PERMISSION = "agentPage.controls.permission"
+    /** An editable bot's settings, under the tiles. */
+    const val BOT_SETTINGS = "agentPage.botSettings"
     const val DETAILS = "agentPage.details"
     const val DETAILS_ROW = "agentPage.details.row"
     const val CHANGES = "agentPage.details.changes"
@@ -261,6 +263,8 @@ data class AgentPageState(
     val lineChanges: com.slopus.happy.agent.WorkspaceLineChanges? = null,
     /** The mode of the chat this page was opened over, whose permission mode it shows and picks; null opened from anywhere else. */
     val chatMode: Mode? = null,
+    /** It is a bot the person may change (its `editable`): a row opens its settings. */
+    val botSettings: Boolean = false,
 )
 
 class AgentPageActions(
@@ -287,6 +291,8 @@ class AgentPageActions(
      * daemon reports no instance id.
      */
     val link: String? = null,
+    /** The bot's settings ([com.slopus.happy.ui.bots.BotSettingsRoute]), where [AgentPageState.botSettings]. */
+    val onOpenBotSettings: () -> Unit = {},
 )
 
 /**
@@ -305,7 +311,7 @@ class AgentPageActions(
  * more" reading further back; desktop's Activity (children at work and
  * terminals running, then the settled children under a fold); opened
  * over its chat, that chat's permission mode under the tiles (iOS
- * da5fda505); and its details (provider, permission mode, context, project, workspace, the
+ * da5fda505); an editable bot's settings row; and its details (provider, permission mode, context, project, workspace, the
  * agent that started it, its ID). A section with nothing in it isn't drawn.
  * While a value is read it shimmers in its place. Every row of a family or
  * activity opens its conversation.
@@ -370,6 +376,10 @@ private fun Page(state: AgentPageState, name: String?, actions: AgentPageActions
     }
     Tiles(state, now)
     Spacer(Modifier.height(AgentPageSpec.cardGap))
+    if (state.botSettings) {
+        BotSettingsCard(actions.onOpenBotSettings)
+        Spacer(Modifier.height(AgentPageSpec.cardGap))
+    }
     state.chatMode?.let {
         Controls(it, actions)
         Spacer(Modifier.height(AgentPageSpec.cardGap))
@@ -1026,6 +1036,26 @@ private fun Controls(mode: Mode, actions: AgentPageActions) {
                 anchorCenterY = 0,
                 belowAnchor = true,
             )
+        }
+    }
+}
+
+/** One row, as [Controls]' is, opening an editable bot's settings: its name, picture and instructions. */
+@Composable
+private fun BotSettingsCard(onClick: () -> Unit) {
+    val colors = HappyTheme.colors
+    Card(AgentPageTags.BOT_SETTINGS) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = AgentPageSpec.row)
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.width(AgentPageSpec.textX), contentAlignment = Alignment.Center) { GlyphTile(Ionicon.CreateOutline, RowTile.Purple) }
+            Text(stringResource(R.string.bot_settings_title), style = AgentPageSpec.title, color = colors.text, maxLines = 1, modifier = Modifier.weight(1f))
+            Icon(Ionicon.ChevronForward, 18.dp, colors.textSecondary, Modifier.padding(start = 6.dp))
         }
     }
 }

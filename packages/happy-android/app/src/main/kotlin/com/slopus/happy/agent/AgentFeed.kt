@@ -155,8 +155,9 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
 
         /**
          * iOS's home (SidebarRows.swift), in the agent's own orders, never
-         * by activity, so nothing moves while nothing is done: Artifacts and
-         * the Surfaces the person joined (in their own order), the bots
+         * by activity, so nothing moves while nothing is done: Happy Cloud's
+         * shared bot ([BotKind.Shared]), Artifacts and
+         * the Surfaces the person joined (in their own order), the other bots
          * (catalog order), then the tasks in the person's list (their
          * order), then the projects, each a folder over its root
          * workspace's conversations, then each worktree's folder over its
@@ -263,7 +264,25 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
             }
             (bots + tasks).forEach { owner -> (owner["agent"] as? JsonObject)?.string("id")?.let(::collect) }
 
+            /** A bot's row and its subtasks', as the Bots list draws it. */
+            fun botRows(bot: JsonObject) {
+                val agentId = (bot["agent"] as? JsonObject)?.string("id") ?: return
+                val id = bot.string("id") ?: return
+                // Hidden or muted on the desktop, as its sidebar has it (desktop 731c8bbc, 1dc8b566).
+                if (DesktopSettings.botHidden(catalog.settingValues, id) || id in removed) return
+                val avatar = bot["avatar"] as? JsonObject
+                val picture = avatar?.let { "/v0/bots/${AgentClient.escape(id)}/avatar" }
+                val happy = bot.string("systemKey") == "chief_of_staff"
+                agentRows(
+                    agentId, intents.titles[id] ?: bot.string("name"), ConversationKind.Bot, 0, picture, avatar?.string("thumbhash"), seed = id, happy = happy,
+                    muted = DesktopSettings.botMuted(catalog.settingValues, id),
+                )
+            }
+
+            // Happy Cloud's shared bot is a place of its own, first among them; only owners are sent one.
+            val (shared, listed) = bots.partition { BotKind.of(it) == BotKind.Shared }
             section(AgentFeedSection.Places) {
+                shared.forEach(::botRows)
                 rows += AgentFeedRow.Artifacts
                 if (plugins) rows += AgentFeedRow.Plugins
                 if (pipelines) rows += AgentFeedRow.Pipelines
@@ -285,21 +304,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                         rows += AgentFeedRow.Surface(id, surface.string("name").orEmpty(), type, locked)
                     }
             }
-            section(AgentFeedSection.Bots) {
-                bots.forEach { bot ->
-                    val agentId = (bot["agent"] as? JsonObject)?.string("id") ?: return@forEach
-                    val id = bot.string("id") ?: return@forEach
-                    // Hidden or muted on the desktop, as its sidebar has it (desktop 731c8bbc, 1dc8b566).
-                    if (DesktopSettings.botHidden(catalog.settingValues, id) || id in removed) return@forEach
-                    val avatar = bot["avatar"] as? JsonObject
-                    val picture = avatar?.let { "/v0/bots/${AgentClient.escape(id)}/avatar" }
-                    val happy = bot.string("systemKey") == "chief_of_staff"
-                    agentRows(
-                        agentId, intents.titles[id] ?: bot.string("name"), ConversationKind.Bot, 0, picture, avatar?.string("thumbhash"), seed = id, happy = happy,
-                        muted = DesktopSettings.botMuted(catalog.settingValues, id),
-                    )
-                }
-            }
+            section(AgentFeedSection.Bots) { listed.forEach(::botRows) }
             section(AgentFeedSection.Tasks) {
                 tasks.forEach { task ->
                     val agentId = (task["agent"] as? JsonObject)?.string("id") ?: return@forEach

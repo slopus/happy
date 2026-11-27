@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bot_settings_title">ボットの設定</string>
+    <string name="bot_settings_instructions">指示</string>
+    <string name="bot_settings_instructions_placeholder">このボットの目的と働き方</string>
+    <string name="bot_settings_instructions_footer">保存した変更は、次のターンからこのボットとの全員の会話に反映されます。</string>
+    <string name="bot_settings_name_blank">ボットには名前が必要です。</string>
+    <string name="bot_settings_name_too_long">名前は%1$d文字までです。</string>
+    <string name="bot_settings_name_control">名前に制御文字は使えません。</string>
+    <string name="bot_settings_could_not_save">ボットを保存できませんでした</string>
+</resources>

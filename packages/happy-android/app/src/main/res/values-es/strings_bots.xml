@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bot_settings_title">Ajustes del bot</string>
+    <string name="bot_settings_instructions">Instrucciones</string>
+    <string name="bot_settings_instructions_placeholder">Para qué sirve este bot y cómo debe trabajar</string>
+    <string name="bot_settings_instructions_footer">Los cambios guardados llegan a la conversación de todos con este bot en su siguiente turno.</string>
+    <string name="bot_settings_name_blank">El bot necesita un nombre.</string>
+    <string name="bot_settings_name_too_long">El nombre puede tener como máximo %1$d caracteres.</string>
+    <string name="bot_settings_name_control">El nombre no puede contener caracteres de control.</string>
+    <string name="bot_settings_could_not_save">No se pudo guardar el bot</string>
+</resources>

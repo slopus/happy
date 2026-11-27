@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bot_settings_title">Bot Settings</string>
+    <string name="bot_settings_instructions">Instructions</string>
+    <string name="bot_settings_instructions_placeholder">What this bot is for and how it should work</string>
+    <string name="bot_settings_instructions_footer">Saved changes reach everyone’s conversation with this bot at its next turn.</string>
+    <string name="bot_settings_name_blank">A bot needs a name.</string>
+    <string name="bot_settings_name_too_long">A name can be at most %1$d characters.</string>
+    <string name="bot_settings_name_control">A name can’t contain control characters.</string>
+    <string name="bot_settings_could_not_save">Couldn’t save the bot</string>
+</resources>

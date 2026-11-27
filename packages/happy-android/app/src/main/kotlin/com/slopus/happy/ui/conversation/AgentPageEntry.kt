@@ -20,6 +20,7 @@ import com.slopus.happy.agent.HappyLink
 import com.slopus.happy.agent.HappyReferenceKind
 import com.slopus.happy.agent.HappyShareLinks
 import com.slopus.happy.agent.HappyUrls
+import com.slopus.happy.agent.botEditable
 import com.slopus.happy.agent.string
 import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.conversation.AgentDetail
@@ -167,6 +168,9 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
     val choice = mode?.let { (warm?.catalog ?: readCatalog)?.model(it.providerId, it.modelId) }
     val workspace = agent?.workspaceId?.let(catalog.workspaces::get)
     val projectId = workspace?.string("projectId") ?: agent?.workspaceId?.takeIf { it in catalog.projects }
+    // The bot this is the conversation of, the person's own one with a personal bot included.
+    val bot = remember(catalog, route.agentId) { catalog.bots.values.firstOrNull { (it["agent"] as? kotlinx.serialization.json.JsonObject)?.string("id") == route.agentId } }
+    val editableBot = bot?.takeIf(::botEditable)?.string("id")
     val state = AgentPageState(
         agentId = route.agentId,
         name = row?.title ?: agent?.title?.takeIf { it.isNotBlank() } ?: warm?.title,
@@ -193,12 +197,13 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
         lineChanges = row?.lineChanges,
         // The chat beneath picks it, once it knows its mode or the catalog's default, as its header did.
         chatMode = held?.let { warm?.mode ?: warm?.catalog?.defaults },
+        botSettings = editableBot != null,
     )
     val kept = rememberKeptMedia(graph, session, route.agentId)
     val connections by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     val instanceId = connections.firstOrNull { it.id == route.connectionId }?.instanceId?.takeIf(HappyUrls::isInstanceId)
     val kind = state.kind
-    val actions = remember(nav, model, session, route, kept, held, instanceId, kind) {
+    val actions = remember(nav, model, session, route, kept, held, instanceId, kind, editableBot) {
         AgentPageActions(
             onBack = { nav.popBackStack() },
             onOpenConversation = { id -> if (id == route.agentId) nav.popBackStack() else nav.openConversation(route.connectionId, id) },
@@ -217,6 +222,7 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
             kept = kept,
             onModeChange = { mode -> held?.setMode(mode) },
             link = HappyShareLinks.format(HappyLink.Reference(HappyReferenceKind.Agent, route.agentId), instanceId, kind?.shareRole()),
+            onOpenBotSettings = { editableBot?.let { nav.navigate(com.slopus.happy.ui.bots.BotSettingsRoute(route.connectionId, it)) } },
         )
     }
     // A link opens as one in the chat does: through this agent's workspace.

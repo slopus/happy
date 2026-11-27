@@ -59,9 +59,12 @@ sealed interface ConversationSignal {
 @Immutable
 data class ComposerFocus(val serial: Int, val cursor: Int)
 
-/** A new chat before its first send has made it: what it will be, and whether a first message has fixed it ([locked]). */
+/**
+ * A new chat before its first send has made it: what it will be, and whether a first message has fixed it ([locked]).
+ * [bots] is false where people make no bots (Happy Cloud's come from its admin bot): it is a task, with no choice.
+ */
 @Immutable
-data class NewWork(val choice: WorkChoice, val locked: Boolean = false)
+data class NewWork(val choice: WorkChoice, val locked: Boolean = false, val bots: Boolean = true)
 
 /** A run's status, when it began and ended, and why it ended (`run.*` metadata). */
 internal data class RunInfo(val status: String, val startedAt: Long?, val endedAt: Long? = null, val reason: String? = null, val standalone: Boolean = false) {
@@ -159,6 +162,8 @@ class Conversation(
     knownTitle: String? = null,
     /** A new chat's Task or Bot and name, as last left. */
     initialChoice: WorkChoice = WorkChoice(),
+    /** A new chat may be a bot; false makes it a task ([NewWork.bots]). */
+    private val makesBots: Boolean = true,
     /** The answer to `POST /v0/tasks` or `/v0/bots`, so home lists it at once. */
     private val onTaskCreated: (JsonObject) -> Unit = {},
     private val lane: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
@@ -258,7 +263,7 @@ class Conversation(
             loaded = newTask != null,
             draft = initialDraft,
             knownTitle = knownTitle,
-            newWork = newTask?.let { NewWork(initialChoice) },
+            newWork = newTask?.let { NewWork(initialChoice.takeIf { makesBots || it.kind != WorkKind.Bot } ?: WorkChoice(), bots = makesBots) },
             // New work opens with the keyboard up, in its composer (iOS's focus with the push).
             composerFocus = newTask?.let { ComposerFocus(1, initialDraft.length) },
         ),
@@ -317,7 +322,7 @@ class Conversation(
     /** Each outgoing picture's way to the computer, for the ring on its tile. */
     val uploads = UploadBoard()
     private var creating: Deferred<Unit>? = null
-    private var choice = initialChoice
+    private var choice = initialChoice.takeIf { makesBots || it.kind != WorkKind.Bot } ?: WorkChoice()
     /** A first message is in: the new work's choice is fixed. */
     private var locked = false
     /** Events that came while history was read, applied after it. */
@@ -1075,7 +1080,7 @@ class Conversation(
     /** A new chat's Task or Bot and name, as picked; fixed once its first message is in. */
     fun setChoice(next: WorkChoice) {
         scope.launch(lane) {
-            if (created || locked || next == choice) return@launch
+            if (created || locked || next == choice || (!makesBots && next.kind == WorkKind.Bot)) return@launch
             choice = next
             publish()
         }
@@ -1844,7 +1849,7 @@ class Conversation(
         typesetter?.prepare(newestFirst)
         return base.copy(
             created = created,
-            newWork = if (created) null else NewWork(choice, locked),
+            newWork = if (created) null else NewWork(choice, locked, makesBots),
             rows = newestFirst,
             agent = agent,
             mode = mode,
