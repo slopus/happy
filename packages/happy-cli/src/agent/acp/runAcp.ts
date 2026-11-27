@@ -696,7 +696,7 @@ export async function runAcp(opts: {
   const mcpServers = {
     happy: {
       command: join(projectPath(), 'bin', 'happy-mcp.mjs'),
-      args: ['--url', happyServer.url],
+      args: ['--url', happyServer.url, ...(opts.agentName === 'antigravity' ? ['--schema-profile', 'antigravity'] : [])],
     },
   };
 

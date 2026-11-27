@@ -17,22 +17,28 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 import { registerHappyBridgeTools } from './happyMcpBridgeTools';
+import { withHappyMcpSchemaProfile, type HappyMcpSchemaProfile } from './happyMcpSchemaProfile';
 
-function parseArgs(argv: string[]): { url: string | null } {
+function parseArgs(argv: string[]): { url: string | null; schemaProfile?: HappyMcpSchemaProfile } {
   let url: string | null = null;
+  let schemaProfile: HappyMcpSchemaProfile | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--url' && i + 1 < argv.length) {
       url = argv[i + 1];
       i++;
+    } else if (a === '--schema-profile' || a.startsWith('--schema-profile=')) {
+      const value = a === '--schema-profile' ? argv[++i] : a.slice('--schema-profile='.length);
+      if (value !== 'antigravity') throw new Error('Unknown or missing MCP schema profile');
+      schemaProfile = value;
     }
   }
-  return { url };
+  return { url, schemaProfile };
 }
 
 async function main() {
   // Resolve target HTTP MCP URL
-  const { url: urlFromArgs } = parseArgs(process.argv.slice(2));
+  const { url: urlFromArgs, schemaProfile } = parseArgs(process.argv.slice(2));
   const baseUrl = urlFromArgs || process.env.HAPPY_HTTP_MCP_URL || '';
 
   if (!baseUrl) {
@@ -68,7 +74,7 @@ async function main() {
 
   // Start STDIO transport
   const stdio = new StdioServerTransport();
-  await server.connect(stdio);
+  await server.connect(withHappyMcpSchemaProfile(stdio, schemaProfile));
 }
 
 // Start and surface fatal errors to stderr only

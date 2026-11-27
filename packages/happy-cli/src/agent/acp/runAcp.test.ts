@@ -323,6 +323,18 @@ describe('runAcp', () => {
     await runPromise;
   });
 
+  it.each(['antigravity', 'opencode', 'gemini'])('selects the AGY schema profile only for the injected antigravity bridge: %s', async agentName => {
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName, command: '/test/agent', args: ['acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+      expect(mocks.backendState.constructorArgs.mcpServers).toEqual({ happy: {
+        command: '/tmp/happy/bin/happy-mcp.mjs',
+        args: ['--url', 'http://127.0.0.1:9876', ...(agentName === 'antigravity' ? ['--schema-profile', 'antigravity'] : [])],
+      } });
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
   it('publishes the native ACP options and returns the exact persistent scope chosen by the client', async () => {
     const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
       agentName: 'antigravity', command: '/test/agy', args: ['acp'] });
