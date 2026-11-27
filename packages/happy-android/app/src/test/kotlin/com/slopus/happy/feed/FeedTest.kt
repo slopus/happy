@@ -530,9 +530,9 @@ class FeedTest {
     }
 
     @Test
-    fun homesFeedRowSitsUnderArtifactsWhileTheComputerKeepsAFeed() {
+    fun homesFeedRowLeadsThePlacesWhileTheComputerKeepsAFeed() {
         val with = AgentFeed.derive(synced, feedUnread = 4).rows.map { it.key }
-        assertEquals(listOf("section-places", "artifacts", "feed"), with.take(3))
+        assertEquals(listOf("section-places", "feed", "artifacts"), with.take(3))
         assertEquals(AgentFeedRow.Feed(4), AgentFeed.derive(synced, feedUnread = 4).rows.first { it is AgentFeedRow.Feed })
         assertTrue(AgentFeed.derive(synced).rows.none { it is AgentFeedRow.Feed })
     }
