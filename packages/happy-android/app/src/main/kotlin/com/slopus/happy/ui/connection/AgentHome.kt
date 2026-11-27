@@ -110,7 +110,9 @@ import androidx.compose.ui.platform.LocalDensity
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.homePage
-import com.slopus.happy.ui.tablet.DrawerButton
+import com.slopus.happy.ui.home.AccountAvatarButton
+import com.slopus.happy.ui.home.AccountMenuSpec
+import com.slopus.happy.ui.tablet.MainPanelTags
 import com.slopus.happy.ui.tablet.LocalMainPanel
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.TeamUser
@@ -401,7 +403,15 @@ fun AgentHomeScreen(
                         tag = AgentHomeTags.BAR,
                         container = ground,
                         navigationIcon = {
-                            if (drawer) DrawerButton(colors.text) else AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd)
+                            // With the drawer the account's picture stays, and opens the drawer, whose header switches.
+                            if (drawer) {
+                                val panel = LocalMainPanel.current
+                                Box(Modifier.padding(horizontal = AccountMenuSpec.buttonInset)) {
+                                    AccountAvatarButton(accounts, stringResource(R.string.drawer_open), MainPanelTags.DRAWER) { panel?.openDrawer() }
+                                }
+                            } else {
+                                AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd)
+                            }
                         },
                         title = { BarTitle(name, link, AgentHomeTags.TITLE, AgentHomeTags.STATUS) },
                         actions = {

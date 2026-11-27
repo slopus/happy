@@ -22,6 +22,7 @@ import com.slopus.happy.ui.connection.AgentDrawerItems
 import com.slopus.happy.ui.connection.AgentDrawerTags
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.navigation.NavGraph
 import androidx.navigation.NavHostController
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -89,6 +90,8 @@ class AgentPhoneDrawerTest {
         rule.setContent { HappyApp(graph, onNavigationReady = { nav = it }) }
         rule.waitUntilAtLeastOneExists(hasTestTag(AgentHomeTags.BAR), 10_000)
         rule.node(AgentHomeTags.SEARCH).assertExists()
+        // The instance's picture stays at the bar's start, and opens the drawer.
+        rule.node(MainPanelTags.DRAWER).assertContentDescriptionEquals("Open menu, Studio")
         for (tag in listOf(AccountMenuTags.BUTTON, AgentHomeTags.SETTINGS)) {
             assertEquals(tag, 0, rule.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().size)
         }

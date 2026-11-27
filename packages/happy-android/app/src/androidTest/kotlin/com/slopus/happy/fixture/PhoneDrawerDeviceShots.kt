@@ -65,7 +65,7 @@ import java.io.File
 
 /**
  * An agent connection's phone drawer on a device: home (bots and tasks
- * alone, ☰ at the bar's start), the drawer open over it, Documents picked
+ * alone, the account's picture at the bar's start, which opens the drawer), the drawer open over it, Documents picked
  * from it (the stack's new root, its back the drawer's button), and the
  * drawer again with Documents lit. The real drawer, home, list and
  * [MainPanel] drawer opener as `TabletShell` and `AgentDrawerHost` put

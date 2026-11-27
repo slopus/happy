@@ -159,33 +159,42 @@ fun AccountMenuButton(
     onCloud: (() -> Unit)? = LocalCloudConnect.current,
     inset: Dp = AccountMenuSpec.buttonInset,
 ) {
-    val colors = HappyTheme.colors
     var open by remember { mutableStateOf(false) }
-    val active = menu.active
-    val label = stringResource(R.string.account_menu_title)
-    val interaction = remember { MutableInteractionSource() }
     Box(Modifier.padding(horizontal = inset)) {
+        AccountAvatarButton(menu, stringResource(R.string.account_menu_title), AccountMenuTags.BUTTON) { open = true }
+        AccountMenuDropdown(menu, open, { open = false }, onSwitch, onAdd, onCloud)
+    }
+}
+
+/**
+ * The open account's 32 avatar in a 48 target, the account menu's button
+ * and, on a phone with the drawer, home's way into it (Steve: the
+ * instance's picture stays on the bar). Read as [label], then the name.
+ */
+@Composable
+fun AccountAvatarButton(menu: AccountMenu, label: String, tag: String, onClick: () -> Unit) {
+    val colors = HappyTheme.colors
+    val active = menu.active
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .size(AccountMenuSpec.button)
+            .clickable(interaction, indication = null, role = Role.Button, onClickLabel = label, onClick = onClick)
+            .semantics { contentDescription = active?.name?.let { "$label, $it" } ?: label }
+            .testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
         Box(
-            modifier = Modifier
-                .size(AccountMenuSpec.button)
-                .clickable(interaction, indication = null, role = Role.Button, onClickLabel = label) { open = true }
-                .semantics { contentDescription = active?.name?.let { "$label, $it" } ?: label }
-                .testTag(AccountMenuTags.BUTTON),
+            Modifier.size(AccountMenuSpec.ripple).clip(CircleShape).indication(interaction, ripple()),
             contentAlignment = Alignment.Center,
         ) {
-            Box(
-                Modifier.size(AccountMenuSpec.ripple).clip(CircleShape).indication(interaction, ripple()),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (active != null) {
-                    // The button moves; the menu's rows stay still, as happy-ios's system menu does.
-                    Avatar(active.seed, AccountMenuSpec.avatar, imageUri = active.imageUrl, thumbhash = active.thumbhash, animated = active.liveSeed != null)
-                } else {
-                    Icon(Ionicon.PersonCircleOutline, AccountMenuSpec.avatar, colors.header.tint)
-                }
+            if (active != null) {
+                // The button moves; the menu's rows stay still, as happy-ios's system menu does.
+                Avatar(active.seed, AccountMenuSpec.avatar, imageUri = active.imageUrl, thumbhash = active.thumbhash, animated = active.liveSeed != null)
+            } else {
+                Icon(Ionicon.PersonCircleOutline, AccountMenuSpec.avatar, colors.header.tint)
             }
         }
-        AccountMenuDropdown(menu, open, { open = false }, onSwitch, onAdd, onCloud)
     }
 }
 

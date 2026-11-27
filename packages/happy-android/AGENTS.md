@@ -249,9 +249,9 @@ win:
   its kind, and TalkBack hears the kind after each row's name
   (`ui/home/AccountMenu.kt`); picking one switches
   (`AppGraph.open`). Settings on the right. On a phone an agent
-  connection's home has the drawer's ☰ there instead and search alone on
-  the right: the account menu and Settings are the drawer's (see "Phone
-  drawer"). The legacy home and agent
+  connection's avatar opens the drawer instead (Steve: the instance's
+  picture stays), with search alone on the right: the account menu and
+  Settings are the drawer's (see "Phone drawer"). The legacy home and agent
   home share one bar (`AgentTopBar`, `BarTitle`): the account's name as
   the title. While the link is on its way (iOS 7aee3a9b8, Telegram's
   title) "Waiting for network…", "Connecting…" or "Updating…" stands in
@@ -2816,10 +2816,13 @@ anything opened from home lights Home. A pick is the stack's new root over
 home at once (`MainPanel.drawerOpener`, the sidebar's `showRoot`), Home
 pops to home alone (`showHome`), and the drawer closes. Such a root's back
 is the drawer's ☰ (`BackOrSidebarToggle`, `DrawerButton`); system back
-goes to home. Home's bar is ☰, the name and search; home lists the shared
+goes to home. Home's bar is the account's avatar, which opens the drawer
+(`AccountAvatarButton`; Steve wants the instance's picture kept), the
+name and search; home lists the shared
 bot, bots and tasks alone (`AgentFeed.withoutPlaces`; projects' chats are
 found by search), as iOS's does. The drawer
-opens from ☰ and by a swipe while home or a drawer root is on top. The
+opens from that avatar, a root's ☰, and by a swipe while home or a drawer
+root is on top. The
 tablet's sidebar is home as before, its places card in the drawer's
 order. Happy CLI accounts have no drawer.
 
