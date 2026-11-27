@@ -143,7 +143,7 @@ final class HostedSettingsUnifiedTests: XCTestCase {
         XCTAssertEqual(settings.shownRowIDs, [
             ["account:\(id)", SettingsIndex.connectAgent.id],
             ["account", "backup-restore"],
-            ["appearance", "language", "agents", "data-storage"],
+            ["appearance", "language", "agent-voice", "agents", "data-storage"],
             ["scan-terminal", "enter-terminal"],
             ["support-us"],
             [SettingsIndex.privacySettings.id],

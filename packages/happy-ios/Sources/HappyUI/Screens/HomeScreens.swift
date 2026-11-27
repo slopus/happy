@@ -181,6 +181,9 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
 
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        #if DEBUG
+        launchCall()
+        #endif
         standing = true
         // The bar and the toolbar are where home rests: the list's room is
         // read from them again.
@@ -276,6 +279,9 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
             rows = state.list?.rows.count ?? 0
         }
         if update.kindChanged { updateNavigation(animated: previous != nil) }
+        #if DEBUG
+        if standing { launchCall() }
+        #endif
         return rows
     }
 
@@ -345,7 +351,9 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         if floating {
             let sidebar = traitCollection.isSidebarColumn
             navigationItem.leftBarButtonItem = switcher?.barItem
-            let items: [HeaderBar.Trailing: UIBarButtonItem] = sidebar ? [.filter: filterItem] : [.filter: filterItem, .settings: settingsItem]
+            var items: [HeaderBar.Trailing: UIBarButtonItem] = sidebar ? [.filter: filterItem] : [.filter: filterItem, .settings: settingsItem]
+            // Voice, as on an agent's home: once a computer is linked.
+            if !sidebar, mayCall { items[.call] = callItem }
             bottomBar.isHidden = !sidebar
             bottomBar.showsCompose = canCompose
             // The same items each time: a button rebuilt under a finger
@@ -426,6 +434,44 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     private var networkWatch: NetworkPathWatch?
 
     private lazy var settingsItem = HeaderBar.settingsItem { [weak self] in self?.openSettings() }
+    private lazy var callItem = HeaderBar.callItem { [weak self] in self?.startCall() }
+
+    /// A call has something to talk about once a computer is linked.
+    private var mayCall: Bool {
+        switch state {
+        case nil, .link?: false
+        default: true
+        }
+    }
+
+    private func startCall() {
+        CallController.shared.start(account: session, from: self)
+    }
+
+    #if DEBUG
+    /// Screenshots, as on an agent's home: `HAPPY_CALL_FIXTURE` draws the
+    /// bar from a script, `HAPPY_CALL_TAP` presses the voice button once.
+    private static var launchedCall = false
+    private func launchCall() {
+        guard !Self.launchedCall, mayCall else { return }
+        defer { Self.launchedCall = true }
+        let environment = ProcessInfo.processInfo.environment
+        CallController.shared.applyTestEnvironment { [weak self] in self?.startCall() }
+        let delay = environment["HAPPY_CALL_DELAY"].flatMap(Double.init) ?? 0
+        if let fixture = environment["HAPPY_CALL_FIXTURE"] {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self else { return }
+                CallController.shared.showFixture(fixture, from: self)
+            }
+        } else if environment["HAPPY_CALL_TAP"] == "1" {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                self?.startCall()
+            }
+        }
+    }
+    #endif
 
     private lazy var composeItems: [UIBarButtonItem] = {
         let item = HeaderBar.composeItem { [weak self] in self?.compose() }

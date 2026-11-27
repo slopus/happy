@@ -29,9 +29,9 @@ import UIKit
 /// account's, in the same places: Account and Backup & Restore where the
 /// computer has Profile; Language, Voice and Agents beside Appearance;
 /// connecting a terminal before Support us. Those pages write to that
-/// account's synced settings, so they are on its page alone. Voice is
-/// a Happy account's only: the assistant runs on its server's credentials
-/// and its sessions, and a computer has neither.
+/// account's synced settings, so they are on its page alone. Voice is on
+/// both: its time is this device's (`CallAllowance`), whichever profile
+/// spends it.
 final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISearchResultsUpdating, UISearchControllerDelegate {
     /// Pushes settings over `controller`, on `computer`'s page (the active
     /// profile's when nil), showing the row `reveal` names if there is one.
@@ -560,6 +560,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             [
                 Row(Index.appearance, action: { [weak self] in self?.push(.settingsAppearance, for: id) }),
                 Row(Index.language, action: { [weak self] in self?.open(.language) }),
+                Row(Index.agentVoice, value: voiceValue(), action: { [weak self] in self?.open(.agentVoice) }),
                 Row(Index.agents, action: { [weak self] in self?.push(.settingsAgents, for: id) }),
                 Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
             ],
@@ -609,7 +610,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     /// account's own pages, once that account is the active one.
     private func has(_ page: Page, _ profile: Profile) -> Bool {
         switch page {
-        case .appearance, .agents, .agentVoice: profile.isAgentConnection
+        case .appearance, .agents: profile.isAgentConnection
+        case .agentVoice: profile.isAgentConnection || activeSession != nil
         case .privacy: true
         // An agent connection's is Support Happy, the boba row.
         case .supportUs: !profile.isAgentConnection

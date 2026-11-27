@@ -325,7 +325,8 @@ public final class AppCoordinator {
         let identity = session.map(ObjectIdentifier.init)
         let pending = context.account.pendingServerConfirmation
         let agentConnectionID = context.account.agentConnections.activeID
-        CallController.shared.connectionDidChange(to: agentConnectionID)
+        // A call is bound to the connection on screen, else to the signed-in Happy account.
+        CallController.shared.connectionDidChange(to: agentConnectionID ?? session.map(CallController.binding))
         if let shownSession, shownSession == identity, shownServerConfirmationID == pending?.id, shownAgentConnectionID == agentConnectionID { return }
         let animated = shownSession != nil
         shownSession = .some(identity)

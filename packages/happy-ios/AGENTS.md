@@ -153,13 +153,18 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   - artifacts and the recent-sessions screen, which have no entry point;
   - web and desktop-only UI (command palette, shortcut hints, sidebar
     navigator, web tab bar), purchases and analytics.
-- **A Happy account's sessions have no voice** (Kirill): the relay's
-  ElevenLabs voice, its composer microphone, status screen, Settings' Voice
-  Assistant page, grant, usage and client tools, is deleted. Its synced
-  settings (`voiceAssistantLanguage`, `voiceCustomAgentId`,
-  `voiceBypassToken`) stay in the account's settings, unread.
+- **The relay's old voice is deleted** (Kirill): its ElevenLabs voice,
+  composer microphone, status screen, Settings' Voice Assistant page,
+  grant, usage and client tools. Its synced settings
+  (`voiceAssistantLanguage`, `voiceCustomAgentId`, `voiceBypassToken`) stay
+  in the account's settings, unread. A Happy account's sessions have the
+  agent connection's call instead (below; `CallAccount.happyCLI`,
+  `LegacyCallTargets` over the account's home feed, chats, outbox, composer
+  chips and `SessionStarter`; the button in `LegacyHomeViewController`'s
+  header beside Settings; docs/agent-voice-call.md "Happy CLI sessions").
+  It never reads or writes the server's voice usage.
 - **An agent connection's voice call** (`HappyCore/Call`, `HappyUI/Call`) is
-  the app's only voice: home's three-bar button beside compose starts
+  the app's only voice, on a Happy account too: home's three-bar button beside compose starts
   it, and Telegram's in-call bar (`CallBarLayout`, `CallWaves`, adapted with
   Steve's permission) sits above the navigation bar and pushes the window
   down by its height. It talks to a hosted ElevenLabs agent of its own

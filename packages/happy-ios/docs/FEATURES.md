@@ -234,7 +234,8 @@ accident.
 
 ### Voice
 
-- **Deleted** (Kirill): a Happy account's sessions have no voice. The relay's ElevenLabs conversation, its composer microphone, status screen, Settings' Voice Assistant page, server grant and usage, and client tools are gone; the account's synced voice settings stay, unread. An agent connection's call (`HappyCore/Call`, `HappyUI/Call`, see AGENTS.md) is the app's voice.
+- **Deleted** (Kirill): the relay's old voice. Its ElevenLabs conversation, composer microphone, status screen, Settings' Voice Assistant page, server grant and usage, and client tools are gone; the account's synced voice settings stay, unread. An agent connection's call (`HappyCore/Call`, `HappyUI/Call`, see AGENTS.md) is the app's voice.
+- [x] A Happy account's sessions in that same call (`CallAccount.happyCLI`, `LegacyCallTargets`): the button in home's header beside Settings, Settings' Voice row, the same bar, tools, prompt and device-local free time; Happy CLI and Happy Agent sessions listed, read, messaged (`source: voice`), switched between models where the computer allows, and new tasks and named bots started on Happy Agent. docs/agent-voice-call.md "Happy CLI sessions".
 
 ## Platform
 

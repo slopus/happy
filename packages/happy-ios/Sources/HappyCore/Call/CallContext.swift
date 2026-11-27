@@ -111,6 +111,29 @@ public actor CallContext {
     public static let restartURL = "happy://call/restart"
     static let destinations = [homeURL, backURL, conversationURL + "<ref>"]
 
+    /// What a call over a Happy account's sessions says where the relay
+    /// can't do what an agent connection's call does (`CallAccount.happyCLI`).
+    /// Android says the same words.
+    public enum HappyCLI {
+        /// No computer on the account can start the new work now.
+        public static let noNewWork = "New work can't be started by voice on Happy CLI; start a session in the app."
+        /// More than one could, and compose has picked none of them.
+        public static let severalComputers = "More than one computer can start it; start it in the app."
+        /// The relay's Happy Agent makes no bot without a name.
+        public static let botNeedsName = "A new bot needs a name here; ask what to call it."
+        /// The session's computer doesn't let its model or effort change.
+        public static let locked = "This session's model can't be changed (it's locked on the computer)."
+        /// The first context's new work, where a computer can start it.
+        static let newWorkText = """
+        New work (message's to; listed nowhere until its first message makes it):
+        - \(newTaskRef) — a new task, the message its first
+        - \(newBotRef):<name> — a new bot, named, the message its first
+        A name after a colon names it: \(newTaskRef):Release notes.
+        """
+        /// The first context's new work, where none can.
+        static let noNewWorkText = "New work: can't be started by voice on Happy CLI; the person starts sessions in the app."
+    }
+
     private let targets: any CallTargets
     private let now: @Sendable () -> Double
     private let timeZone: TimeZone
@@ -271,6 +294,10 @@ public actor CallContext {
                 if heard[focus] == nil { listen(state) }
             }
         }
+        let newWork = switch targets.account {
+        case .agent: Self.newWorkText
+        case .happyCLI: await targets.newWorkRefusal(nil) == nil ? HappyCLI.newWorkText : HappyCLI.noNewWorkText
+        }
         let header = "Now: \(Self.local(now(), in: timeZone)) (the person's local time)\nfocusRevision: \(focusRevision)"
             + (person.map { "\n" + Self.personText($0) } ?? "")
         var turns = focused.map(Self.recent) ?? []
@@ -279,7 +306,7 @@ public actor CallContext {
         let at = now()
         func text(telling: Bool = false) -> String {
             [header, Self.recap(previous, now: at, bytes: recapBudget), screen(focused, turns: turns), directoryText(bytes: budget, telling: telling),
-             Self.newWorkText, Self.destinationsText].compactMap { $0 }.joined(separator: "\n\n")
+             newWork, Self.destinationsText].compactMap { $0 }.joined(separator: "\n\n")
         }
         while text().utf8.count > Limits.totalBytes, turns.count > 1 { turns.removeFirst() }
         while text().utf8.count > Limits.totalBytes, budget > 512 { budget /= 2 }
@@ -1014,7 +1041,7 @@ public actor CallContext {
     }
 
     /// `task`'s value if it comes within `limit`, else nil, leaving it to go on.
-    static func within<T: Sendable>(_ limit: Duration, _ task: Task<T, Never>) async -> T? {
+    public static func within<T: Sendable>(_ limit: Duration, _ task: Task<T, Never>) async -> T? {
         let first = First<T?>()
         return await withCheckedContinuation { continuation in
             Task { first.resume(continuation, with: await task.value) }
@@ -1080,7 +1107,13 @@ public actor CallContext {
         guard text.utf8.count <= Limits.textBytes else { return .refused("That message is too long to send by voice.") }
         guard let model = Self.optionalString(arguments["model"]) else { return .refused("model must be a string.") }
         guard let effort = Self.optionalString(arguments["effort"]) else { return .refused("effort must be a string.") }
-        if let fresh { return await start(fresh.kind, name: fresh.name, text: text, model: model, effort: effort, call: call) }
+        if let fresh {
+            if targets.account == .happyCLI {
+                if fresh.kind == .bot, fresh.name.isEmpty { return .refused(HappyCLI.botNeedsName) }
+                if let reason = await targets.newWorkRefusal(fresh.kind) { return .refused(reason) }
+            }
+            return await start(fresh.kind, name: fresh.name, text: text, model: model, effort: effort, call: call)
+        }
         guard let id = resolved else { return .refused("No such conversation.") }
         guard let state = await targets.state(of: id) else { return .refused("That conversation can't be read now.") }
         guard state.writable else { return .refused("That conversation can't take a message now.") }
@@ -1207,6 +1240,9 @@ public actor CallContext {
         let model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         let effort = effort.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !model.isEmpty || !effort.isEmpty else { return AskedMode() }
+        if !model.isEmpty && state.modelLocked || !effort.isEmpty && state.effortLocked {
+            return AskedMode(refusal: .refused(HappyCLI.locked))
+        }
         func refused(_ reason: String, _ listed: [CallModel]) -> AskedMode {
             var value: [String: Any] = ["ok": false, "reason": reason + " Nothing was sent."]
             if !listed.isEmpty { value["models"] = Self.models(listed) }

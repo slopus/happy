@@ -66,8 +66,8 @@ public struct CallTarget: Equatable, Sendable {
 
     /// The labels the sidebar shows for work nobody has named yet: the
     /// computer's, until the first message names it (`AgentClient.createTask`,
-    /// `createBot`), and the rows' own for none.
-    public static let placeholders: Set<String> = ["", "New Task", "New Bot", "Untitled"]
+    /// `createBot`), and the rows' own for none (a Happy account's: "New chat").
+    public static let placeholders: Set<String> = ["", "New Task", "New Bot", "Untitled", "New chat"]
 
     /// Longest a title goes into the call, in UTF-8.
     static let titleBytes = 200
@@ -287,6 +287,10 @@ public struct CallTargetState: Equatable, Sendable {
     public var fresh: Bool
     /// When this phone last read it from the computer (ms since 1970); nil if never.
     public var checkedAt: Double?
+    /// Its computer doesn't let a message switch its model, or its effort
+    /// (a Happy CLI session's composer chips, locked).
+    public var modelLocked = false
+    public var effortLocked = false
 
     public init(target: CallTarget, messages: [CallMessage] = [], turns: [CallTurn] = [], unanswered: CallMessage? = nil,
                 working: Bool = false, needsInput: Bool = false, writable: Bool = true, hasDraft: Bool = false, hasMore: Bool = false,
@@ -497,10 +501,22 @@ public enum CallSendOutcome: Equatable, Sendable {
     case refused(String)
 }
 
+/// What a call's account is: an agent connection, or a Happy account's
+/// Happy CLI sessions (`LegacyCallTargets`). Android names it the same.
+public enum CallAccount: Equatable, Sendable {
+    case agent
+    case happyCLI
+}
+
 /// The account a call is bound to, as the call's tools reach it. The UI
 /// implements it over the connection's sidebar and conversations; nothing
 /// here can name another account, an endpoint or a credential.
 public protocol CallTargets: Sendable {
+    /// What it is; an agent connection unless it says otherwise.
+    var account: CallAccount { get }
+    /// Why `message` can't start new work of `kind` now (nil: any kind),
+    /// as the person is told; nil when it can.
+    func newWorkRefusal(_ kind: CallTarget.Kind?) async -> String?
     /// Every conversation the sidebar lists, in its order.
     func directory() async -> [CallTarget]
     /// One conversation, read if it must be (a bounded page); nil if the
@@ -536,6 +552,11 @@ public protocol CallTargets: Sendable {
     func back() async -> CallScreenMove
     /// Home, with nothing over it.
     func home() async -> CallScreenMove
+}
+
+extension CallTargets {
+    public var account: CallAccount { .agent }
+    public func newWorkRefusal(_ kind: CallTarget.Kind?) async -> String? { nil }
 }
 
 /// Where going back or home left the screen.
