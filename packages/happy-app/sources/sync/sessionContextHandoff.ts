@@ -1,5 +1,5 @@
 import { digestStringAsync, CryptoDigestAlgorithm, randomUUID } from 'expo-crypto';
-import { PortableContextArchiveSchema, PortableContextDescriptorSchema, type PortableContextArchive, type PortableContextDescriptor } from '@slopus/happy-wire';
+import { PortableContextArchiveSchema, PortableContextDescriptorSchema, type PortableContextArchive, type PortableContextDescriptor, type PortableContextHead } from '@slopus/happy-wire';
 import { assertAccountRuntime } from '@/auth/accountRuntime';
 import { storage } from './storage';
 import { sync } from './sync';
@@ -14,6 +14,14 @@ export type PreparedSessionContinuationContext = {
     context: string; archive: PortableContextArchive; sha256: string;
     assertCurrent: () => void; assertIdentityCurrent: () => void; verifyCurrent: () => Promise<void>;
 };
+
+/** Wire parsing may reorder object properties; segment identity and bounds must match. */
+function sameHistoryHeads(actual: PortableContextHead[], expected: PortableContextHead[]): boolean {
+    return actual.length === expected.length && actual.every((head, index) => {
+        const other = expected[index];
+        return head.sessionId === other.sessionId && head.afterSeq === other.afterSeq && head.throughSeq === other.throughSeq;
+    });
+}
 
 /** Read the immutable inherited prefix, not the parent's later live history. */
 async function readFrozenPrefix(machineId: string, rootId: string, predecessor: string, assertCurrent: () => void): Promise<PortableContextArchive> {
@@ -42,7 +50,7 @@ async function readFrozenPrefix(machineId: string, rootId: string, predecessor: 
     const parsed = PortableContextArchiveSchema.safeParse(value);
     if (!parsed.success || sha256 !== descriptor!.sha256 || parsed.data.snapshot.id !== descriptor!.id
         || parsed.data.snapshot.sourceSessionId !== predecessor
-        || JSON.stringify(parsed.data.snapshot.heads) !== JSON.stringify(descriptor!.heads)) throw new Error('portable-context-invalid-inherited-history');
+        || !sameHistoryHeads(parsed.data.snapshot.heads, descriptor!.heads)) throw new Error('portable-context-invalid-inherited-history');
     return parsed.data;
 }
 
@@ -155,7 +163,7 @@ export async function attachSessionContinuationContext(targetId: string, sourceI
     const descriptor = PortableContextDescriptorSchema.parse(result?.descriptor);
     if (!result.success || descriptor.id !== snapshotId || descriptor.sha256 !== prepared.sha256
         || descriptor.rootSessionId !== prepared.archive.snapshot.rootSessionId || descriptor.sourceSessionId !== sourceId
-        || JSON.stringify(descriptor.heads) !== JSON.stringify(prepared.archive.snapshot.heads)) throw new Error('portable-context-commit-unconfirmed');
+        || !sameHistoryHeads(descriptor.heads, prepared.archive.snapshot.heads)) throw new Error('portable-context-commit-unconfirmed');
     await prepared.verifyCurrent();
     const target = storage.getState().sessions[targetId];
     if (!target?.metadata) throw new Error('portable-context-target-unavailable');

@@ -56,6 +56,39 @@ function source(id = `source-${sourceCounter++}`, text = 'Remember ORCHID and fi
 }
 
 describe('complete continuation installation', () => {
+    it('confirms real detached history heads despite schema property order', async () => {
+        const id = source();
+        // readPortableContextSegment constructs heads in this order. The
+        // descriptor's wire schema normalizes throughSeq before afterSeq.
+        mock.segments[id].head = { sessionId: id, afterSeq: 0, throughSeq: 1 };
+        mock.sessions.target = { id: 'target', metadataVersion: 1, metadata: {
+            path: '/project', machineId: 'machine', portableContextProtocol: 1,
+        } };
+        const { prepareSessionContinuationContext, attachSessionContinuationContext } = await import('./sessionContextHandoff');
+        const prepared = await prepareSessionContinuationContext(id);
+        await attachSessionContinuationContext('target', id, prepared);
+        expect(mock.sessions.target.metadata.portableContext.heads).toEqual([mock.segments[id].head]);
+    });
+
+    it.each([
+        ['sessionId', 'other-source'], ['afterSeq', 1], ['throughSeq', 2],
+    ])('rejects a changed committed history head %s', async (field, value) => {
+        const id = source();
+        mock.sessions.target = { id: 'target', metadataVersion: 1, metadata: {
+            path: '/project', machineId: 'machine', portableContextProtocol: 1,
+        } };
+        const originalRpc = mock.rpc.getMockImplementation()!;
+        mock.rpc.mockImplementation(async (...args) => {
+            const result = await originalRpc(...args);
+            if (args[2].action === 'commit') result.descriptor.heads[0][field] = value;
+            return result;
+        });
+        const { prepareSessionContinuationContext, attachSessionContinuationContext } = await import('./sessionContextHandoff');
+        const prepared = await prepareSessionContinuationContext(id);
+        await expect(attachSessionContinuationContext('target', id, prepared)).rejects.toThrow('portable-context-commit-unconfirmed');
+        expect(mock.update).not.toHaveBeenCalled();
+    });
+
     it('installs a verified archive without copying source model, permissions or provider identity', async () => {
         const id = source();
         mock.sessions.target = { id: 'target', metadataVersion: 4, metadata: { flavor: 'antigravity', portableContextProtocol: 1,
