@@ -22,6 +22,47 @@ let downloadingBundle = false;
 const downloadControllers = new Set();
 const downloadURLs = new Map();
 const cardDownloads = new WeakMap();
+const previewSources = new WeakMap();
+const visiblePreviews = new Map();
+const MAX_PREVIEWS_LOADING = 3;
+let previewsLoading = 0;
+const previewObserver = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
+  for (const { target, isIntersecting } of entries) {
+    if (!isIntersecting || !previewSources.has(target)) continue;
+    previewObserver.unobserve(target);
+    visiblePreviews.set(target, previewSources.get(target));
+  }
+  loadVisiblePreviews();
+}) : null;
+function loadVisiblePreviews() {
+  for (const [image, source] of visiblePreviews) {
+    if (previewsLoading >= MAX_PREVIEWS_LOADING) break;
+    visiblePreviews.delete(image);
+    if (!image.isConnected || previewSources.get(image) !== source) continue;
+    previewsLoading++;
+    image.src = source;
+    // The next previews start only when a visible image finishes decoding or fails.
+    void image.decode().catch(() => {}).finally(() => {
+      previewsLoading--;
+      loadVisiblePreviews();
+    });
+  }
+}
+function setPreviewSource(image, source) {
+  if (!previewObserver || typeof image.decode !== 'function') {
+    image.loading = 'lazy';
+    image.src = source;
+    return;
+  }
+  previewSources.set(image, source);
+  previewObserver.observe(image);
+}
+function clearPreviewSource(image) {
+  previewObserver?.unobserve(image);
+  previewSources.delete(image);
+  visiblePreviews.delete(image);
+  image.removeAttribute('src');
+}
 window.addEventListener('pagehide', () => {
   for (const controller of downloadControllers) controller.abort();
   for (const [url, timer] of downloadURLs) { clearTimeout(timer); URL.revokeObjectURL(url); }
@@ -327,7 +368,7 @@ function renderFeatured(finished) {
   if (!job) {
     figure.hidden = true;
     featuredSource = undefined;
-    image.removeAttribute('src');
+    clearPreviewSource(image);
     return;
   }
   const source = `/api/jobs/${job.id}/${job.manifest.cards[0].file}`;
@@ -336,15 +377,21 @@ function renderFeatured(finished) {
   action.href = `#result-${job.id}`;
   action.setAttribute('aria-label', `查看《${job.manifest.title}》的成品`);
   if (featuredSource === source) return;
+  if (featuredSource) clearPreviewSource(image);
   featuredSource = source;
   figure.hidden = false;
-  image.onerror = () => { if (featuredSource === source) figure.hidden = true; };
-  image.src = source;
+  image.onerror = () => {
+    if (featuredSource === source && image.getAttribute('src') === source) figure.hidden = true;
+  };
+  setPreviewSource(image, source);
 }
 function renderGallery(finished) {
   const fingerprint = JSON.stringify(finished);
   if (fingerprint === galleryFingerprint) return;
-  galleryFingerprint = fingerprint; const gallery = $('gallery'); gallery.replaceChildren();
+  galleryFingerprint = fingerprint;
+  const gallery = $('gallery');
+  if (previewObserver) gallery.querySelectorAll('.card-preview img').forEach(clearPreviewSource);
+  gallery.replaceChildren();
   renderFeatured(finished);
   if (!finished.length) gallery.append(el('p', 'empty', '卡片制作完成后会显示在这里。'));
   for (const job of finished) {
@@ -383,8 +430,9 @@ function renderGallery(finished) {
       preview.setAttribute('aria-label', `查看第 ${number} 张原图`);
       preview.onclick = event => openReader(event, preview, job, index);
       const img = el('img');
-      img.src = url; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
+      img.alt = ''; img.decoding = 'async';
       preview.append(img);
+      setPreviewSource(img, url);
 
       const caption = el('figcaption');
       caption.append(el('p', 'card-quote', card.quote), cardFeedback);

@@ -65,7 +65,7 @@ function matches(node, selector) {
   return true;
 }
 
-function setup({ crypto, fetchImpl, hash = '' } = {}) {
+function setup({ crypto, fetchImpl, hash = '', IntersectionObserver, decodePreview } = {}) {
   const elements = new Map();
   const element = id => {
     const dynamic = [...elements.values()].flatMap(root => descendants(root)).find(node => node.id === id);
@@ -79,6 +79,7 @@ function setup({ crypto, fetchImpl, hash = '' } = {}) {
   reader.showModal = () => { reader.open = true; };
   reader.close = () => { reader.open = false; reader.listeners.get('close')(); };
   element('reader-image').decode = async () => {};
+  if (decodePreview) element('hero-work-image').decode = decodePreview;
   class EventSource {
     listeners = new Map();
     closed = false;
@@ -94,10 +95,10 @@ function setup({ crypto, fetchImpl, hash = '' } = {}) {
   const context = vm.createContext({
     document: {
       getElementById: element,
-      createElement: tag => new Element(tag),
+      createElement: tag => Object.assign(new Element(tag), tag === 'img' && decodePreview ? { decode: decodePreview } : {}),
       createElementNS: (_namespace, tag) => new Element(tag),
     },
-    window, location, history, innerWidth: 1200, innerHeight: 800,
+    window, location, history, innerWidth: 1200, innerHeight: 800, IntersectionObserver,
     crypto: crypto ?? { randomUUID: () => job.id },
     EventSource, AbortController, URL, setTimeout, clearTimeout,
     fetch: async (...args) => {
@@ -300,4 +301,29 @@ test('original reader switches exact frames, ignores an obsolete image failure a
   reader.listeners.get('cancel')({ preventDefault() {} });
   assert.equal(reader.open, false);
   assert.equal(ui.element('gallery').querySelector('.card-preview').focused, true);
+});
+
+test('visible previews wait for a decode slot without blocking direct original links', async () => {
+  const observed = new Set(), pending = [];
+  let onIntersection;
+  class IntersectionObserver {
+    constructor(listener) { onIntersection = listener; }
+    observe(image) { observed.add(image); }
+    unobserve(image) { observed.delete(image); }
+  }
+  const ui = setup({ IntersectionObserver, decodePreview: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) });
+  const cards = [1, 2, 3, 4].map(number => ({ file: `card-00${number}.png`, quote: `Quote ${number}`, start: 0, end: 5 }));
+  ui.stream.state({ connection: 'connected', jobs: [{ ...job, state: 'completed', manifest: { title: 'Result cards', author: 'Author', cards } }] });
+  assert.equal(observed.size, 5, 'a hero and four thumbnails are observed');
+  const previews = ui.element('gallery').querySelectorAll('.card-preview');
+  assert.match(previews[3].href, /\/original\/card-004\.png$/);
+  assert.equal(previews[3].querySelector('img').src, undefined);
+  onIntersection([...observed].map(target => ({ target, isIntersecting: true })));
+  assert.equal(pending.length, 3);
+  assert.equal(previews[3].querySelector('img').src, undefined);
+  pending[0].reject(new Error('first image failed'));
+  pending[1].resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(pending.length, 5);
+  assert.match(previews[3].querySelector('img').src, /\/card-004\.png$/);
 });
