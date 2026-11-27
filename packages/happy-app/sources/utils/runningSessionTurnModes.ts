@@ -2,6 +2,7 @@ import { isRetiredAgentFlavor } from '@/sync/retiredSessions';
 import {
     getSuggestedModelModes,
     normalizeModelEffortKey,
+    resolveSessionModelKey,
     getEffortLevelsForModel,
     type EffortLevel,
     type ModeOption,
@@ -66,13 +67,10 @@ export function resolveRunningSessionTurnModes(args: {
         : getSuggestedModelModes(flavor, metadata, translate);
     // A reset is resolved by native configuration at send time, not necessarily
     // to the previous thread model. Never label it as a guaranteed model ID.
-    const modelMode = flavor === 'codex' && session.modelMode === 'default'
+    const modelKey = resolveSessionModelKey(session, defaults.modelMode);
+    const modelMode = flavor === 'codex' && modelKey === 'default'
         ? { key: 'default', name: translate('agentInput.model.cliAutomatic') }
-        : resolvePreferredOption(availableModels, [
-        session.modelMode,
-        metadata?.currentModelCode,
-        defaults.modelMode,
-    ]);
+        : resolvePreferredOption(availableModels, [modelKey]);
     const availableEffortLevels = getEffortLevelsForModel(flavor, modelMode?.key ?? 'default', metadata);
     const preferredEffort = availableEffortLevels.length > 0
         ? resolvePreferredOption(availableEffortLevels, [

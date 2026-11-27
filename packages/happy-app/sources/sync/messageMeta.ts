@@ -1,4 +1,4 @@
-import { normalizeModelEffortKey } from '@/components/modelModeOptions';
+import { normalizeModelEffortKey, resolveSessionModelKey } from '@/components/modelModeOptions';
 import type { Session } from './storageTypes';
 import type { Settings } from './settings';
 import { getAgentDefaultOverride, getCodeAgentDefaults } from './agentDefaults';
@@ -44,10 +44,7 @@ export function resolveMessageModeMeta(
         meta.permissionMode = permissionDefaults.permissionMode;
     }
 
-    const modelMode = session.modelMode
-        ?? session.metadata?.currentModelCode
-        ?? agentOverrides.modelMode
-        ?? codeDefaults.modelMode;
+    const modelMode = resolveSessionModelKey(session, agentOverrides.modelMode ?? codeDefaults.modelMode);
     if (modelMode !== undefined) {
         meta.model = modelMode === 'default' ? null : modelMode;
     }

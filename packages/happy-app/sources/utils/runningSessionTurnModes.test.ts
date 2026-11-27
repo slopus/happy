@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveRunningSessionTurnModes } from './runningSessionTurnModes';
+import { resolveMessageModeMeta } from '@/sync/messageMeta';
 
 const translate = (key: string) => key;
 
@@ -28,10 +29,67 @@ describe('resolveRunningSessionTurnModes', () => {
             const selected = resolveRunningSessionTurnModes({
                 session: { ...session, modelMode }, agentDefaultOverrides: {}, translate,
             });
-            expect(selected.modelMode?.key).toBe(modelMode);
+            expect(selected.modelMode?.key).toBe('gpt-6-astra');
             expect(selected.effortLevel?.key).toBe('medium');
             expect(selected.availableEffortLevels.at(-1)?.key).toBe('ultra');
         }
+    });
+
+    it.each([
+        { name: 'stale local model', modelMode: 'gpt-6.2-astra', current: 'gpt-6.1-sol', expected: 'gpt-6.1-sol' },
+        { name: 'foreign gateway alias', modelMode: 'group/daily-auto', current: 'gpt-6.1-sol', expected: 'gpt-6.1-sol' },
+        { name: 'supported local override', modelMode: 'gpt-6-astra', current: 'gpt-6.1-sol', expected: 'gpt-6-astra' },
+        { name: 'stale default with valid current', current: 'gpt-6.1-sol', defaultModel: 'gpt-6.2-astra', expected: 'gpt-6.1-sol' },
+        { name: 'stale current with valid default', current: 'gpt-retired', expected: 'gpt-6.1-sol' },
+        { name: 'all preferences unavailable', modelMode: 'gpt-6.2-astra', current: 'gpt-retired', defaultModel: 'group/daily-auto', expected: 'default' },
+        { name: 'explicit native reset', modelMode: 'default', current: 'gpt-6.1-sol', expected: 'default' },
+    ])('uses one effective model for display and sending: $name', ({ modelMode, current, defaultModel, expected }) => {
+        const session = { modelMode: modelMode ?? null, metadata: {
+            flavor: 'codex', codexAccountProfileId: 'account-a', currentModelCode: current,
+            models: [
+                { code: 'gpt-6-astra', value: 'Astra' },
+                { code: 'gpt-6.1-sol', value: 'Sol' },
+            ],
+        } } as any;
+        const agentDefaultOverrides = { codex: { modelMode: defaultModel ?? 'gpt-6.1-sol' } };
+        const result = resolveRunningSessionTurnModes({ session, agentDefaultOverrides, translate });
+        const message = resolveMessageModeMeta(session, { agentDefaultOverrides });
+        expect(result.modelMode?.key).toBe(expected);
+        expect(message.model).toBe(expected === 'default' ? null : expected);
+    });
+
+    it.each([
+        { code: 'gpt-6.2-astra', codexAccountProfileId: 'account-with-new-model' },
+        { code: 'group/daily-auto', codexAccountProfileId: undefined },
+    ])('accepts $code when this exact connection advertises it', ({ code, codexAccountProfileId }) => {
+        const session = { modelMode: code, metadata: {
+            flavor: 'codex', codexAccountProfileId, currentModelCode: 'other',
+            models: [{ code, value: code }],
+        } } as any;
+        expect(resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate }).modelMode?.key).toBe(code);
+        expect(resolveMessageModeMeta(session).model).toBe(code);
+    });
+
+    it.each([undefined, []])('preserves an explicit new model while its catalog is pending (%j)', models => {
+        const session = { modelMode: 'gpt-6.2-astra', metadata: {
+            flavor: 'codex', currentModelCode: 'gpt-6.1-sol', models,
+        } } as any;
+        expect(resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate }).modelMode?.key).toBe('gpt-6.2-astra');
+        expect(resolveMessageModeMeta(session).model).toBe('gpt-6.2-astra');
+    });
+
+    it('normalizes effort and Fast against the recovered model instead of the stale selection', () => {
+        const session = { modelMode: 'gpt-6.2-astra', effortLevel: 'ultra', fastMode: true, metadata: {
+            flavor: 'codex', currentModelCode: 'gpt-6.1-sol',
+            models: [{ code: 'gpt-6.1-sol', value: 'Sol', supportedEffortLevels: ['low', 'high'] }],
+        } } as any;
+        const result = resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate });
+        const message = resolveMessageModeMeta(session);
+        expect(result.modelMode?.key).toBe('gpt-6.1-sol');
+        expect(result.effortLevel?.key).toBe('low');
+        expect(result.supportsFast).toBe(false);
+        expect(message).toMatchObject({ model: 'gpt-6.1-sol', effort: 'low' });
+        expect(message).not.toHaveProperty('fast');
     });
 
     it('labels a native reset honestly without exposing it as a model choice', async () => {

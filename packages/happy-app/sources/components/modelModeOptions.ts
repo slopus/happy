@@ -1,4 +1,4 @@
-import type { Metadata } from '@/sync/storageTypes';
+import type { Metadata, Session } from '@/sync/storageTypes';
 import { hackModes } from '@/sync/modeHacks';
 import { getCodeAgentDefaults } from '@/sync/agentDefaults';
 import { isRetiredAgentFlavor } from '@/sync/retiredSessions';
@@ -245,6 +245,25 @@ export function resolveCurrentOption<T extends ModeOption>(
 
 export function getDefaultModelKey(flavor: AgentFlavor): string {
     return getCodeAgentDefaults(flavor).modelMode;
+}
+
+/** Resolve the next-turn model against this session's own connection catalog. */
+export function resolveSessionModelKey(
+    session: Pick<Session, 'modelMode' | 'metadata'>,
+    defaultModelKey: string,
+): string {
+    const metadata = session.metadata;
+    const preferred = [session.modelMode, metadata?.currentModelCode, defaultModelKey];
+    const models = metadata?.models;
+    // A newly created session may not have published its catalog yet. Preserve
+    // an explicit selection until the executor's catalog can validate it.
+    if (metadata?.flavor !== 'codex' || !models?.length) {
+        return session.modelMode ?? metadata?.currentModelCode ?? defaultModelKey;
+    }
+    // Local overrides and account-wide defaults can outlive a connection or a
+    // model. Prefer its still-supported current model; never borrow a gateway
+    // alias or guess the first catalog entry. Native reset stays explicit.
+    return preferred.find(key => key === 'default' || models.some(model => model.code === key)) ?? 'default';
 }
 
 export function getDefaultPermissionModeKey(flavor: AgentFlavor): string {
