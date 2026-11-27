@@ -219,7 +219,9 @@ enum class RowTile(private val light: Pair<Long, Long>, private val dark: Pair<L
     Indigo(0xFF5856D6 to 0x1F5856D6, 0xFF7D7AFF to 0x3D5E5CE6),
     Purple(0xFFA347D6 to 0x1FAF52DE, 0xFFBF5AF2 to 0x33BF5AF2),
     Red(0xFFFF3B30 to 0x1CFF3B30, 0xFFFF453A to 0x33FF453A),
-    Teal(0xFF1C9FB8 to 0x2430B0C7, 0xFF40C8E0 to 0x3340C8E0);
+    Teal(0xFF1C9FB8 to 0x2430B0C7, 0xFF40C8E0 to 0x3340C8E0),
+    /** iOS's systemGray: the drawer's Home. */
+    Gray(0xFF8E8E93 to 0x1F8E8E93, 0xFF98989D to 0x3398989D);
 
     fun ink(dark: Boolean) = Color(if (dark) this.dark.first else light.first)
     fun fill(dark: Boolean) = Color(if (dark) this.dark.second else light.second)
@@ -234,6 +236,21 @@ enum class RowTile(private val light: Pair<Long, Long>, private val dark: Pair<L
             "chat" -> Ionicon.PeopleOutline to Teal
             else -> Ionicon.DocumentTextOutline to Blue
         }
+    }
+}
+
+/** A place's mark, on home's row and in the drawer: its glyph on its kind's tile. */
+@Composable
+internal fun PlaceMark(row: AgentFeedRow) {
+    when (row) {
+        is AgentFeedRow.Feed -> TileMark(Octicon.Pulse, RowTile.Red)
+        AgentFeedRow.Artifacts -> TileMark(Ionicon.DocumentTextOutline, RowTile.Purple)
+        AgentFeedRow.Plugins -> TileMark(Ionicon.ExtensionPuzzleOutline, RowTile.Orange)
+        AgentFeedRow.Pipelines -> TileMark(Ionicon.GitNetworkOutline, RowTile.Teal)
+        AgentFeedRow.Documents -> TileMark(Ionicon.DocumentTextOutline, RowTile.Blue)
+        AgentFeedRow.Todos -> TileMark(Ionicon.CheckboxOutline, RowTile.Green)
+        is AgentFeedRow.Surface -> RowTile.surface(row.type).let { (glyph, tile) -> TileMark(if (row.locked) Ionicon.LockClosedOutline else glyph, tile) }
+        else -> Unit
     }
 }
 
@@ -436,12 +453,12 @@ internal fun AgentHomeCardRow(
         when (val row = item.row) {
             is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold)
             is AgentFeedRow.Folder -> FolderRow(row)
-            AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), { TileMark(Ionicon.DocumentTextOutline, RowTile.Purple) }, onOpenArtifacts)
-            AgentFeedRow.Plugins -> PlaceRow(stringResource(R.string.plugins_title), { TileMark(Ionicon.ExtensionPuzzleOutline, RowTile.Orange) }, onOpenPlugins)
-            AgentFeedRow.Pipelines -> PlaceRow(stringResource(R.string.pipelines_title), { TileMark(Ionicon.GitNetworkOutline, RowTile.Teal) }, onOpenPipelines)
+            AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), { PlaceMark(row) }, onOpenArtifacts)
+            AgentFeedRow.Plugins -> PlaceRow(stringResource(R.string.plugins_title), { PlaceMark(row) }, onOpenPlugins)
+            AgentFeedRow.Pipelines -> PlaceRow(stringResource(R.string.pipelines_title), { PlaceMark(row) }, onOpenPipelines)
             is AgentFeedRow.Feed -> FeedPlaceRow(row.unread, onOpenFeed)
-            AgentFeedRow.Documents -> PlaceRow(stringResource(R.string.surface_lists_documents), { TileMark(Ionicon.DocumentTextOutline, RowTile.Blue) }, onOpenDocuments)
-            AgentFeedRow.Todos -> PlaceRow(stringResource(R.string.surface_lists_todos), { TileMark(Ionicon.CheckboxOutline, RowTile.Green) }, onOpenTodos)
+            AgentFeedRow.Documents -> PlaceRow(stringResource(R.string.surface_lists_documents), { PlaceMark(row) }, onOpenDocuments)
+            AgentFeedRow.Todos -> PlaceRow(stringResource(R.string.surface_lists_todos), { PlaceMark(row) }, onOpenTodos)
             is AgentFeedRow.Surface -> SurfaceRow(row, { onOpenSurface(row) }, onLeaveSurface)
             is AgentFeedRow.Section -> Unit
         }
@@ -626,7 +643,7 @@ private fun SurfaceRow(row: AgentFeedRow.Surface, onOpen: () -> Unit, onLeave: (
 private fun FeedPlaceRow(unread: Int, onClick: () -> Unit) {
     val count = unread.takeIf { it > 0 }
     val label = count?.let { pluralStringResource(R.plurals.feed_unread, it, it) }
-    PlaceRow(stringResource(R.string.feed_title), { TileMark(Octicon.Pulse, RowTile.Red) }, onClick, count = count, countLabel = label)
+    PlaceRow(stringResource(R.string.feed_title), { PlaceMark(AgentFeedRow.Feed(unread)) }, onClick, count = count, countLabel = label)
 }
 
 /** Artifacts, the Feed, or a Surface: its [mark] (a glyph on its tile), and its name, its end fading where it runs out of room ([com.slopus.happy.ui.components.TitleFade]); bold with a [count] after it while something in it is unread. */

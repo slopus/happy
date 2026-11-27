@@ -78,23 +78,23 @@ class AgentFeedTest {
     }
 
     @Test
-    fun aConnectionWithPluginsListsThemUnderArtifacts() {
+    fun aConnectionWithPluginsListsThemUnderTodos() {
         val places = { plugins: Boolean -> AgentFeed.derive(catalog(sample), plugins = plugins).rows.map { it.key }.take(5) }
-        assertEquals(listOf("section-places", "artifacts", "plugins", "documents", "todos"), places(true))
+        assertEquals(listOf("section-places", "artifacts", "documents", "todos", "plugins"), places(true))
         assertEquals(listOf("section-places", "artifacts", "documents", "todos", "section-bots"), places(false))
     }
 
     @Test
-    fun thePlacesComeInDesktopsOrderActivityThenArtifacts() {
+    fun thePlacesComeInTheDrawersOrder() {
         val keys = AgentFeed.derive(catalog(sample), feedUnread = 2, plugins = true, pipelines = true).rows.map { it.key }.take(7)
-        assertEquals(listOf("section-places", "feed", "artifacts", "plugins", "pipelines", "documents", "todos"), keys)
+        assertEquals(listOf("section-places", "feed", "artifacts", "documents", "todos", "plugins", "pipelines"), keys)
     }
 
     @Test
     fun aServerWithPipelinesListsThemUnderPlugins() {
         val places = { plugins: Boolean, pipelines: Boolean -> AgentFeed.derive(catalog(sample), plugins = plugins, pipelines = pipelines).rows.map { it.key }.take(6) }
-        assertEquals(listOf("section-places", "artifacts", "plugins", "pipelines", "documents", "todos"), places(true, true))
-        assertEquals(listOf("section-places", "artifacts", "pipelines", "documents", "todos", "section-bots"), places(false, true))
+        assertEquals(listOf("section-places", "artifacts", "documents", "todos", "plugins", "pipelines"), places(true, true))
+        assertEquals(listOf("section-places", "artifacts", "documents", "todos", "pipelines", "section-bots"), places(false, true))
     }
 
     @Test

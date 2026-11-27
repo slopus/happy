@@ -110,6 +110,8 @@ import androidx.compose.ui.platform.LocalDensity
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.homePage
+import com.slopus.happy.ui.tablet.DrawerButton
+import com.slopus.happy.ui.tablet.LocalMainPanel
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.TeamUser
 import com.slopus.happy.connection.LinkState
@@ -274,6 +276,10 @@ fun AgentHomeScreen(
     // As the tablet's sidebar, home wears its chrome (iOS f3ac778cb): search is a field at the top of the list,
     // settings and compose a bar at its foot, and the bar holds the account and its name alone.
     val sidebar = LocalSidebarHome.current
+    // On a phone with the drawer (an agent connection's), the account, Settings and home's places are the drawer's:
+    // home is its bots, tasks and projects, and its bar's start is the drawer's button.
+    val drawer = sidebar == null && LocalMainPanel.current?.drawer == true
+    val shownFeed = remember(feed, drawer) { if (drawer) feed.withoutPlaces() else feed }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
@@ -297,7 +303,7 @@ fun AgentHomeScreen(
         if (atStart) listState.scrollToItem(0)
     }
 
-    val items = remember(feed) { agentHomeItems(feed) }
+    val items = remember(shownFeed) { agentHomeItems(shownFeed) }
     // New work takes the screen, so the search gives it back first (iOS); everything else leaves it for coming back.
     val compose = {
         closeSearch()
@@ -365,7 +371,7 @@ fun AgentHomeScreen(
         !feed.loaded && !status.needsAction -> HomePhase.Loading
         !feed.loaded -> HomePhase.Unavailable
         // Fixed places alone are no home yet: the first chat is.
-        feed.rows.all { it is AgentFeedRow.Section || it.homePage } -> HomePhase.Empty
+        shownFeed.rows.all { it is AgentFeedRow.Section || it.homePage } -> HomePhase.Empty
         else -> HomePhase.List
     }
     val chatPreview = remember { ChatPreview() }
@@ -394,12 +400,14 @@ fun AgentHomeScreen(
                     AgentTopBar(
                         tag = AgentHomeTags.BAR,
                         container = ground,
-                        navigationIcon = { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) },
+                        navigationIcon = {
+                            if (drawer) DrawerButton(colors.text) else AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd)
+                        },
                         title = { BarTitle(name, link, AgentHomeTags.TITLE, AgentHomeTags.STATUS) },
                         actions = {
                             if (sidebar == null) {
                                 BarIconButton(Ionicon.SearchOutline, stringResource(R.string.tools_names_search), { searching = true }, Modifier.testTag(AgentHomeTags.SEARCH))
-                                BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
+                                if (!drawer) BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
                             }
                         },
                         inset = HomeCardSpec.inset,

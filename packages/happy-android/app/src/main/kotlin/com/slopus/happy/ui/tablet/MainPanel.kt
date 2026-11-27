@@ -68,6 +68,7 @@ import com.slopus.happy.ui.theme.HappyTheme
 object MainPanelTags {
     const val PLACEHOLDER = "mainPanel.placeholder"
     const val TOGGLE = "mainPanel.sidebarToggle"
+    const val DRAWER = "mainPanel.drawerButton"
 }
 
 /**
@@ -142,9 +143,35 @@ class MainPanel internal constructor(internal val nav: NavHostController) {
 
     fun toggleSidebar() = onToggleSidebar()
 
+    /**
+     * The phone's drawer is beside this stack ([com.slopus.happy.ui.connection.AgentDrawer], an
+     * agent connection's): what it opens becomes the stack's new root over
+     * home ([drawerOpener]), whose back is the drawer's button.
+     */
+    var drawer by mutableStateOf(false)
+        internal set
+    internal var onOpenDrawer: () -> Unit = {}
+
+    fun openDrawer() = onOpenDrawer()
+
     /** The sidebar's [MainPanelOpener]. Off the split it is a push. */
     val opener = MainPanelOpener { key, navigate ->
         if (!split) return@MainPanelOpener navigate()
+        showRoot(key, navigate)
+    }
+
+    /** The drawer's [MainPanelOpener]: as the sidebar's, the stack's new root over home, at once. */
+    val drawerOpener = MainPanelOpener { key, navigate -> showRoot(key, navigate) }
+
+    /** Home alone, as the drawer's Home opens it: everything over it goes, at once. */
+    fun showHome() {
+        val from = nav.currentBackStackEntry?.id
+        nav.popBackStack<HomeRoute>(inclusive = false)
+        val to = nav.currentBackStackEntry?.id
+        if (from != null && to != null && from != to) cut = from to to
+    }
+
+    private fun showRoot(key: String?, navigate: () -> Unit) {
         val from = nav.currentBackStackEntry?.id
         val root = root(nav.screens())
         if (key != null && root != null && MainPanelKey.of(root) == key) {
@@ -235,22 +262,27 @@ object MainPanelKey {
     }
 }
 
-/** True on the page that is the split main panel's root the sidebar opened, whose back is the sidebar's toggle. */
+/**
+ * True on the page that is the split main panel's root the sidebar opened,
+ * whose back is the sidebar's toggle, or the phone's root the drawer opened,
+ * whose back is the drawer's button.
+ */
 @Composable
 fun rememberMainPanelRoot(): Boolean {
     val panel = LocalMainPanel.current ?: return false
     val entry = LocalViewModelStoreOwner.current as? NavBackStackEntry ?: return false
     val stack by panel.nav.backStackEntries.collectAsState()
-    return panel.split && MainPanel.root(stack.filter { it.destination !is NavGraph })?.id == entry.id && panel.opened(entry)
+    return (panel.split || panel.drawer) && MainPanel.root(stack.filter { it.destination !is NavGraph })?.id == entry.id && panel.opened(entry)
 }
 
 /**
  * A screen's back where it may be the main panel's root (iOS
- * `placeToggle`): [back] everywhere else, the sidebar's toggle there.
+ * `placeToggle`): [back] everywhere else, the sidebar's toggle there, or
+ * on a phone the drawer's button.
  */
 @Composable
 fun BackOrSidebarToggle(tint: Color = LocalContentColor.current, back: @Composable () -> Unit) {
-    if (rememberMainPanelRoot()) return SidebarToggle(tint)
+    if (rememberMainPanelRoot()) return if (LocalMainPanel.current?.split == true) SidebarToggle(tint) else DrawerButton(tint)
     // The call's back, pressed as a finger would ([VoiceTouch]): lit and rippled as the icon button's own state layer.
     val source = rememberVoiceTouchSource()
     Box(Modifier.voiceTouch(CallControl.Back, IconButtonStateLayer, source).indication(source, ripple(bounded = false, radius = 20.dp))) { back() }
@@ -272,6 +304,15 @@ fun SidebarToggle(tint: Color = LocalContentColor.current, modifier: Modifier = 
             stringResource(if (panel.sidebarHidden) R.string.tablet_show_sidebar else R.string.tablet_hide_sidebar),
             tint = tint,
         )
+    }
+}
+
+/** The phone's ☰ where a root's back would be: opens the drawer. A 48 target, its 24 glyph [tint]. */
+@Composable
+fun DrawerButton(tint: Color = LocalContentColor.current, modifier: Modifier = Modifier) {
+    val panel = LocalMainPanel.current ?: return
+    IconButton(onClick = panel::openDrawer, modifier = modifier.testTag(MainPanelTags.DRAWER)) {
+        androidx.compose.material3.Icon(MaterialSymbols.Menu, stringResource(R.string.drawer_open), tint = tint)
     }
 }
 

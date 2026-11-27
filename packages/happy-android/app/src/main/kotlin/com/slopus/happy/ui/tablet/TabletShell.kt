@@ -13,6 +13,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
+import com.slopus.happy.ui.HomeRoute
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -92,6 +99,12 @@ object TabletShellRule {
  * old shell's, so a hidden sidebar stays hidden). The stack keeps its place
  * in the tree whichever way the shell goes, so crossing 840 (rotation, a
  * fold, a resized window) keeps every screen's state.
+ *
+ * Off the split, an account with a [drawer] (an agent connection's) has it
+ * as a modal navigation drawer from the start edge over the stack: the
+ * root screens' ☰ ([DrawerButton]) opens it, and so does a swipe while a
+ * root is on top (home, or a root the drawer opened); [drawer] gets the
+ * panel, whose drawer opener its picks go through, and what closes it.
  */
 @Composable
 fun TabletShell(
@@ -99,6 +112,7 @@ fun TabletShell(
     nav: NavHostController,
     hasHome: Boolean,
     sidebar: @Composable (MainPanelOpener) -> Unit,
+    drawer: (@Composable (panel: MainPanel, close: () -> Unit) -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     ProvideWindowLayout {
@@ -115,6 +129,15 @@ fun TabletShell(
         // Read by the pages below in this same pass.
         if (panel.split != shows) panel.split = shows
         if (panel.sidebarHidden != hidden) panel.sidebarHidden = hidden
+        val drawing = drawer != null && !shows
+        if (panel.drawer != drawing) panel.drawer = drawing
+        val drawerState = rememberDrawerState(DrawerValue.Closed)
+        val scope = rememberCoroutineScope()
+        panel.onOpenDrawer = { if (panel.drawer) scope.launch { drawerState.open() } }
+        LaunchedEffect(drawing) { if (!drawing) drawerState.snapTo(DrawerValue.Closed) }
+        val screens by nav.backStackEntries.collectAsState()
+        val top = screens.lastOrNull { it.destination !is NavGraph }
+        val atRoot = top != null && (top.destination.hasRoute<HomeRoute>() || (MainPanel.root(screens.filter { it.destination !is NavGraph })?.id == top.id && panel.opened(top)))
 
         Row(Modifier.fillMaxSize()) {
             if (shows && !hidden) {
@@ -137,12 +160,19 @@ fun TabletShell(
             Box(Modifier.weight(1f).fillMaxHeight().testTag(TabletShellTags.DETAIL)) {
                 // Beside the sidebar, the main panel's inner side is no edge of the window.
                 val detail = if (shows && !hidden) window.besideSidebar(direction) else window
-                CompositionLocalProvider(
-                    LocalWindowLayout provides detail,
-                    LocalHomeInSidebar provides shows,
-                    LocalMainPanel provides panel,
-                    content = content,
-                )
+                // Always in the tree, so the stack keeps its place as the drawer comes and goes.
+                ModalNavigationDrawer(
+                    drawerContent = { if (drawing && drawer != null) drawer(panel) { scope.launch { drawerState.close() } } },
+                    drawerState = drawerState,
+                    gesturesEnabled = drawing && (atRoot || drawerState.isOpen),
+                ) {
+                    CompositionLocalProvider(
+                        LocalWindowLayout provides detail,
+                        LocalHomeInSidebar provides shows,
+                        LocalMainPanel provides panel,
+                        content = content,
+                    )
+                }
             }
         }
     }

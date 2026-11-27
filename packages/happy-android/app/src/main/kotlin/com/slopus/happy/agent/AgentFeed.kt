@@ -19,7 +19,7 @@ sealed interface AgentFeedRow {
         override val key get() = "artifacts"
     }
 
-    /** Desktop's Plugins row under Artifacts, where the connection has plugins: those installed and the rest it offers. */
+    /** Desktop's Plugins row under TODOs, where the connection has plugins: those installed and the rest it offers. */
     data object Plugins : AgentFeedRow {
         override val key get() = "plugins"
     }
@@ -170,7 +170,8 @@ data class AgentFeed(
         /**
          * iOS's home (SidebarRows.swift), in the agent's own orders, never
          * by activity, so nothing moves while nothing is done: desktop's places
-         * (Activity, Artifacts, Plugins, Pipelines, Documents, TODOs), the
+         * (Activity, Artifacts, Documents, TODOs, Plugins, Pipelines; the
+         * phone's drawer's order), the
          * other Surfaces the person joined (in their own order; documents and
          * todo lists go to [lists]) and Happy Cloud's shared bot
          * ([BotKind.Shared]), then the other bots
@@ -197,7 +198,7 @@ data class AgentFeed(
             feedUnread: Int? = null,
             /** Team members read so far ([TeamDirectory]), whose faces their tasks wear. */
             users: Map<String, TeamUser> = emptyMap(),
-            /** The connection has plugins: a Plugins row under Artifacts. */
+            /** The connection has plugins: a Plugins row under TODOs. */
             plugins: Boolean = false,
             /** The server runs pipelines: a Pipelines row under Plugins. */
             pipelines: Boolean = false,
@@ -298,14 +299,14 @@ data class AgentFeed(
 
             // Happy Cloud's shared bot is a place of its own, the last of them; only owners are sent one.
             val (shared, listed) = bots.partition { BotKind.of(it) == BotKind.Shared }
-            // Desktop's order: Activity, Artifacts, then the rest.
+            // The drawer's order (Steve): Activity, Artifacts, Documents, TODOs, then Plugins and Pipelines.
             section(AgentFeedSection.Places) {
                 feedUnread?.let { rows += AgentFeedRow.Feed(it) }
                 rows += AgentFeedRow.Artifacts
-                if (plugins) rows += AgentFeedRow.Plugins
-                if (pipelines) rows += AgentFeedRow.Pipelines
                 rows += AgentFeedRow.Documents
                 rows += AgentFeedRow.Todos
+                if (plugins) rows += AgentFeedRow.Plugins
+                if (pipelines) rows += AgentFeedRow.Pipelines
                 catalog.surfaces.values
                     .filter { it.string("status") != "archived" && it["archivedAt"].isNullish() }
                     .mapNotNull { surface ->

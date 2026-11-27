@@ -67,6 +67,8 @@ import com.slopus.happy.ui.connection.rememberCloudConnect
 import com.slopus.happy.ui.connect.rememberAddFlow
 import com.slopus.happy.ui.start.rememberCustomServerLabel
 import com.slopus.happy.ui.tablet.TabletShell
+import com.slopus.happy.ui.tablet.MainPanel
+import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.ui.tablet.MainPanelKey
 import com.slopus.happy.ui.tablet.MainPanelOpener
 import com.slopus.happy.ui.tablet.MainPanelPlaceholder
@@ -211,7 +213,13 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                     }
                 }
                 // The tablet shell (home in a sidebar beside the stack) or, on a phone, just the stack.
-                TabletShell(graph, nav, hasHome = open != OpenAccount.None, sidebar = home) {
+                // An agent connection's drawer on a phone: Home, its places and Settings, each the stack's new root.
+                val drawer: (@Composable (MainPanel, () -> Unit) -> Unit)? = agent?.let { id ->
+                    { panel, close ->
+                        com.slopus.happy.ui.connection.AgentDrawerHost(graph, id, nav, panel, close, route = { row -> agentPlaceRoute(id, row) }, onSettings = { nav.navigate(SettingsRoute()) })
+                    }
+                }
+                TabletShell(graph, nav, hasHome = open != OpenAccount.None, sidebar = home, drawer = drawer) {
                     // Inside the shell: on the split, what the call opens is the main panel's new root.
                     CallScreenEffect(graph.calls, nav, open)
                     // An account picked that can't be unlocked: its page, not a switch.
@@ -267,6 +275,17 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
         } }
         }
     } } } }
+}
+
+/** Where one of an agent connection's home places opens, as home's own rows open it; a Surface opens through `openSurface`. */
+private fun agentPlaceRoute(connectionId: String, row: AgentFeedRow): Any? = when (row) {
+    is AgentFeedRow.Feed -> AgentFeedRoute(connectionId)
+    AgentFeedRow.Artifacts -> AgentArtifactsRoute(connectionId)
+    AgentFeedRow.Plugins -> com.slopus.happy.ui.plugins.PluginsRoute(connectionId)
+    AgentFeedRow.Pipelines -> com.slopus.happy.ui.pipelines.PipelinesRoute(connectionId)
+    AgentFeedRow.Documents -> com.slopus.happy.ui.todos.DocumentListsRoute(connectionId)
+    AgentFeedRow.Todos -> com.slopus.happy.ui.todos.TodoListsRoute(connectionId)
+    else -> null
 }
 
 /** Settings on top of home and nothing else in the stack: a switch made there keeps both. */

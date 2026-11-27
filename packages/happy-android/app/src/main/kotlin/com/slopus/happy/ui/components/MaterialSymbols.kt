@@ -26,6 +26,8 @@ object MaterialSymbols {
     val Sidebar: ImageVector by lazy {
         icon("Sidebar", "M19,4H5C3.9,4 3,4.9 3,6v12c0,1.1 0.9,2 2,2h14c1.1,0 2,-0.9 2,-2V6c0,-1.1 -0.9,-2 -2,-2zM5,18V6h3v12H5zM19,18h-9V6h9v12z", mirrored = true)
     }
+    /** The navigation drawer's button. */
+    val Menu: ImageVector by lazy { icon("Menu", "M3,18h18v-2H3v2zM3,13h18v-2H3v2zM3,6v2h18V6H3z") }
     val Send: ImageVector by lazy { icon("Send", "M2.01,21L23,12 2.01,3 2,10l15,2 -15,2z", mirrored = true) }
     val Stop: ImageVector by lazy { icon("Stop", "M6,6h12v12H6z") }
     val Close: ImageVector by lazy {
