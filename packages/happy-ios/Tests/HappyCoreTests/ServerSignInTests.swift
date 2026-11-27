@@ -464,13 +464,15 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertNil(HappyCloud.connection(to: HappyCloud.server(named: "other"), in: [cloud]))
     }
 
-    /// Settings' Happy Cloud switch: until changed, on in the preview app
-    /// only; then what the person chose, in every build.
+    /// Settings' Happy Cloud switch: until turned, the build's default (on
+    /// in development and preview, off in the App Store app), with nothing
+    /// kept; then what the person chose, in every build.
     func testHappyCloudIsOfferedByItsSwitch() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "HappyCloudSwitchTests"))
         defaults.removePersistentDomain(forName: "HappyCloudSwitchTests")
         defer { defaults.removePersistentDomain(forName: "HappyCloudSwitchTests") }
-        XCTAssertEqual(AppVariant.allCases.filter { HappyCloud.isOffered(in: $0, defaults: defaults) }, [.preview])
+        XCTAssertEqual(AppVariant.allCases.filter { HappyCloud.isOffered(in: $0, defaults: defaults) }, [.development, .preview])
+        XCTAssertNil(defaults.object(forKey: HappyCloud.offeredKey), "nothing kept until the switch is turned")
         HappyCloud.setOffered(true, defaults: defaults)
         XCTAssertEqual(AppVariant.allCases.filter { HappyCloud.isOffered(in: $0, defaults: defaults) }, AppVariant.allCases)
         HappyCloud.setOffered(false, defaults: defaults)

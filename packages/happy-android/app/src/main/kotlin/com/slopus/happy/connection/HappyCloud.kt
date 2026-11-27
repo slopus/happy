@@ -52,6 +52,9 @@ object HappyCloud {
     fun webApp(server: String?, base: String? = this.base, web: String = this.web): String? =
         handle(server, base)?.let { "https://${it.removePrefix("@")}.$web/" }
 
+    /** Settings' Happy Cloud switch until it is turned: on in the dev (`debug`) and `preview` builds, off in the store's (`release`, `bench`). */
+    fun offeredByDefault(buildType: String): Boolean = buildType == "debug" || buildType == "preview"
+
     internal fun originOf(url: String): AgentOrigin? = try {
         ServerAuthClient.parseAddress(url)
     } catch (_: ServerAuthException) {

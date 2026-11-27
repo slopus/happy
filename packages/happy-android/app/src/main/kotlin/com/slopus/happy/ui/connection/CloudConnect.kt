@@ -95,7 +95,8 @@ object HappyCloudSwitchTags {
 
 /**
  * Settings' Happy Cloud switch, a card of its own above Privacy on both
- * kinds of account's Settings ([com.slopus.happy.config.HappyCloudSetting]);
+ * kinds of account's Settings ([com.slopus.happy.config.HappyCloudSetting]),
+ * its one place;
  * null where the build has no Happy Cloud, and the card is left out.
  */
 @Composable

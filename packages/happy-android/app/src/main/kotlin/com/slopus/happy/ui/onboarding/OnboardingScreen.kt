@@ -245,25 +245,20 @@ fun GetHelpButton() {
 /**
  * "Get help": the public places to ask, iOS's `Strings.helpLinks` in its
  * order (Discord, the two X accounts, known issues), then Cancel; more
- * than three, so they stack. On the first screen, where Settings can't be
- * reached yet, [cloud] adds Settings' Happy Cloud switch above Cancel:
- * Turn on Happy Cloud while it's off ([cloud] false), Turn off while on.
+ * than three, so they stack.
  */
 @Composable
-fun GetHelpAlert(onDismiss: () -> Unit, cloud: Boolean? = null, onCloud: (Boolean) -> Unit = {}) {
+fun GetHelpAlert(onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
     HappyAlert(
         alert = Alert(
             title = stringResource(R.string.onboarding_get_help),
             message = stringResource(R.string.onboarding_help_message),
-            buttons = listOfNotNull(
+            buttons = listOf(
                 AlertButton(stringResource(R.string.onboarding_help_discord)) { uriHandler.openUri(OnboardingSpec.HELP_DISCORD_URL) },
                 AlertButton(stringResource(R.string.onboarding_help_bra1n_dump)) { uriHandler.openUri(OnboardingSpec.HELP_BRA1N_DUMP_URL) },
                 AlertButton(stringResource(R.string.onboarding_help_ex3ndr)) { uriHandler.openUri(OnboardingSpec.HELP_EX3NDR_URL) },
                 AlertButton(stringResource(R.string.onboarding_help_issues)) { uriHandler.openUri(OnboardingSpec.HELP_ISSUES_URL) },
-                cloud?.let { on ->
-                    AlertButton(stringResource(if (on) R.string.cloud_turn_off else R.string.cloud_turn_on)) { onCloud(!on) }
-                },
                 AlertButton(stringResource(R.string.common_cancel)),
             ),
         ),

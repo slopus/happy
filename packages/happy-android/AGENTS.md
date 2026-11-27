@@ -1357,10 +1357,12 @@ change its wire behaviour on Android alone.
   `-Phappy.cloudBase`): the server named `acme` is `https://acme.BASE`.
   Every build has it, and offers its ways in (Use Happy Cloud, the account
   menu's +, invite links) only while Settings' Happy Cloud switch is on
-  (`config/HappyCloudSetting`, prefs `happy-cloud`, kept for every account,
-  off on every build until turned on). The switch is a card above Privacy
-  on both kinds of Settings, and in the first screen's Get help (Turn on /
-  Turn off Happy Cloud), as Settings can't be reached before an account.
+  (`config/HappyCloudSetting`, Kirill): this phone's own, never synced. Its
+  value is an override over the build's default (`HappyCloud.offeredByDefault`:
+  on in `debug` and `preview`, off in `release` and `bench`), kept in prefs
+  `happy-cloud` only once the switch is turned, so a phone that never turns
+  it follows each build's default. The switch is a card above Privacy on
+  both kinds of Settings, and nowhere else: never on Start or in onboarding.
   Its invite links' intent filters sit on the main manifest's disabled
   `HappyCloudLinks` alias, which the switch enables; servers already added
   keep working either way.

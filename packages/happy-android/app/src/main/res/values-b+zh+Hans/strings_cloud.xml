@@ -89,7 +89,5 @@
     <string name="cloud_invite_other_account">使用其他账号登录</string>
     <string name="cloud_invite_not_now">暂不</string>
     <string name="cloud_invite_inviter">%1$s 邀请了你</string>
-    <string name="cloud_turn_on">开启 Happy Cloud</string>
-    <string name="cloud_turn_off">关闭 Happy Cloud</string>
     <string name="cloud_switch_footer">在首屏和账户菜单中提供 Happy Cloud，并在应用中打开其邀请链接。已在此手机上的服务器始终可用。</string>
 </resources>

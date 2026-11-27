@@ -8,7 +8,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Settings' Happy Cloud switch: off on every build until turned on, and kept on the phone. */
+/**
+ * Settings' Happy Cloud switch: the build's default, nothing kept, until
+ * it is turned; then the person's choice, whatever the build's default.
+ */
 @RunWith(AndroidJUnit4::class)
 class HappyCloudSettingTest {
     private val prefs = ApplicationProvider.getApplicationContext<Context>()
@@ -16,13 +19,17 @@ class HappyCloudSettingTest {
         .also { it.edit().clear().commit() }
 
     @Test
-    fun offUntilTurnedOnAndKept() {
-        val setting = HappyCloudSetting(prefs)
-        assertFalse(setting.enabled.value)
-        setting.set(true)
-        assertTrue(setting.enabled.value)
-        assertTrue(HappyCloudSetting(prefs).enabled.value)
-        setting.set(false)
-        assertFalse(HappyCloudSetting(prefs).enabled.value)
+    fun theBuildsDefaultUntilTurned() {
+        assertTrue(HappyCloudSetting(prefs, default = true).enabled.value)
+        assertFalse(HappyCloudSetting(prefs, default = false).enabled.value)
+        assertTrue("nothing kept until the switch is turned", prefs.all.isEmpty())
+    }
+
+    @Test
+    fun aTurnIsKeptOverEveryDefault() {
+        HappyCloudSetting(prefs, default = true).set(false)
+        assertFalse(HappyCloudSetting(prefs, default = true).enabled.value)
+        HappyCloudSetting(prefs, default = false).set(true)
+        assertTrue(HappyCloudSetting(prefs, default = false).enabled.value)
     }
 }

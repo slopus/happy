@@ -99,12 +99,14 @@ split contract (v1, frozen 2026-11-15).
   (`AccountAdding.connectToCloud`). Not in any ⋯: the first screen has
   none, and the next screens' and the scanner's ⋯ hold the self-hosted
   ways in only. Only while Settings' Happy Cloud switch is on
-  (`HappyCloud.isOffered`; UserDefaults `happy-cloud`, kept for every
-  account): until changed it is on in the preview app and off in
-  development and production, which then show none of these entries, open
-  no invite link, and `connectToCloud` does nothing. The switch is a card
-  above Privacy in Settings, and in the first screen's Get help (Turn On /
-  Turn Off Happy Cloud), as Settings can't be reached before an account.
+  (`HappyCloud.isOffered`, Kirill): this phone's own, never synced. Its
+  value is an override over the build's default (`isOfferedByDefault`: on
+  in development and preview, off in production), kept in UserDefaults
+  `happy-cloud` only once the switch is turned, so a phone that never turns
+  it follows each build's default. While off, none of these entries show,
+  no invite link opens, and `connectToCloud` does nothing. The switch is a
+  card above Privacy in Settings, and nowhere else: never on Start or in
+  onboarding.
 - **Screens.** Desktop's steps and words (happy-desktop
   `CloudConnectScreen.tsx`), every one a full-screen page on the first
   screen's grain gradient, under the standard bar with Back: Welcome, Sign

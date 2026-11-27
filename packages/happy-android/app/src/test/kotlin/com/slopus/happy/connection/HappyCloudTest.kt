@@ -24,6 +24,14 @@ class HappyCloudTest {
     }
 
     @Test
+    fun onlyDevAndPreviewBuildsOfferItByDefault() {
+        assertTrue(HappyCloud.offeredByDefault("debug"))
+        assertTrue(HappyCloud.offeredByDefault("preview"))
+        assertFalse(HappyCloud.offeredByDefault("release"))
+        assertFalse(HappyCloud.offeredByDefault("bench"))
+    }
+
+    @Test
     fun aServerIsOneNameDirectlyUnderBase() {
         val base = "happy.computer"
         assertTrue(HappyCloud.isServer("https://acme.happy.computer", base))
