@@ -24,6 +24,8 @@ enum SettingsIndex {
     static var groupToolCalls: Entry { Entry(id: "group-tool-calls", title: Strings.ToolSections.title, glyph: "layers-outline", tile: .indigo) }
     static var connection: Entry { Entry(id: "connection", title: Strings.Connection.title, glyph: "pulse-outline", tile: .teal) }
     static var computes: Entry { Entry(id: "computes", title: Strings.Compute.title, glyph: "server-outline", tile: .blue) }
+    static var zones: Entry { Entry(id: "zones", title: Strings.CloudMetadata.zones, glyph: "shield-checkmark-outline", tile: .purple) }
+    static var secrets: Entry { Entry(id: "secrets", title: Strings.CloudMetadata.secrets, glyph: "key-outline", tile: .indigo) }
     static var account: Entry { Entry(id: "account", title: Strings.Settings.account, glyph: "person-circle-outline", tile: .blue) }
     static var backupRestore: Entry { Entry(id: "backup-restore", title: Strings.BackupRestore.title, glyph: "key-outline", tile: .green) }
     static var language: Entry { Entry(id: "language", title: Strings.SettingsLanguage.title, glyph: "language-outline", tile: .green) }
@@ -78,8 +80,11 @@ enum SettingsIndex {
     }
 
     /// Cloud has no project settings; paired and self-hosted agents keep them.
-    static func computer(isCloud: Bool) -> [Entry] {
-        computer.filter { !isCloud || $0.id != hideProjects.id }
+    static func computer(isCloud: Bool, computeAvailable: Bool = false) -> [Entry] {
+        guard isCloud else { return computer }
+        return computer.filter { $0.id != hideProjects.id }.flatMap { entry in
+            entry.id == usage.id ? (computeAvailable ? [computes] : []) + [zones, secrets, entry] : [entry]
+        }
     }
 
     /// What a Happy account's settings show under its accounts card, in

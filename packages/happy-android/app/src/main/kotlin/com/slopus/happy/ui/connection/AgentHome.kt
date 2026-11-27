@@ -187,6 +187,7 @@ class AgentHomeActions(
     val notificationsAvailable: Boolean = false,
     /** The agent signs provider accounts in (health's `capabilities.providerSignIn`), so search finds Inference. */
     val providerAccountsAvailable: Boolean = false,
+    val cloudSettingsAvailable: Boolean = false,
     /** Opens a team member's profile; null where there are none (any server but Happy Cloud's), and search finds no people. */
     val onOpenPerson: ((userId: String) -> Unit)? = null,
 )
@@ -701,7 +702,7 @@ private fun rememberSearchEntries(actions: AgentHomeActions, endSearch: () -> Un
     val connect = stringResource(R.string.agent_search_connect_agent)
     val scan = stringResource(R.string.onboarding_scan_button)
     val openSettings = stringResource(R.string.agent_search_open_settings)
-    val index = agentSettingsIndex(projectsAvailable = actions.projectsAvailable, notificationsAvailable = actions.notificationsAvailable, providerAccountsAvailable = actions.providerAccountsAvailable)
+    val index = agentSettingsIndex(projectsAvailable = actions.projectsAvailable, notificationsAvailable = actions.notificationsAvailable, providerAccountsAvailable = actions.providerAccountsAvailable, cloud = actions.cloudSettingsAvailable)
     return remember(actions, newTask, newTaskPicture, connect, scan, openSettings, index) {
         // happy-ios HomeViewController.quickActions (7a605f6ce). Connect and Scan both open the
         // scanner here: Android's one Add scanner takes a computer's, a terminal's or an agent's code.
@@ -979,6 +980,7 @@ private fun SignedInAgentHome(
             projectsAvailable = !session.client.cloud,
             notificationsAvailable = session.client.cloud,
             providerAccountsAvailable = providerSignIn && !session.client.cloud,
+            cloudSettingsAvailable = session.client.cloud,
             onOpenPerson = onOpenPerson.takeIf { session.client.cloud },
         )
     }

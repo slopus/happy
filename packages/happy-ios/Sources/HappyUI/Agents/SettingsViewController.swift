@@ -513,17 +513,27 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             let removal: [[SettingsRow]] = [[
                 Row(id: "disconnect", title: server == nil ? Strings.disconnect : Strings.ServerSignIn.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) }),
             ]]
-            // Compute follows Inference, as desktop's Agents group has it.
+            // Compute, Zones and Secrets follow Inference and policy, as on desktop.
+            let session = Session.session(for: id, context: context)
             let computeRows: [SettingsRow]
-            if let session = Session.session(for: id, context: context), ComputeViewController.offered(session) {
+            if let session, ComputeViewController.offered(session) {
                 computeRows = [Row(Index.computes, action: { [weak self] in
                     guard let self, ComputeViewController.offered(session) else { return }
                     navigationController?.pushViewController(ComputeViewController(session: session), animated: true)
                 })]
             } else { computeRows = [] }
+            let metadataRows: [SettingsRow] = session.flatMap { session in
+                guard session.isCloud else { return nil }
+                return [CloudMetadataViewController.Page.zones, .secrets].map { page in
+                    Row(page.entry, action: { [weak self] in
+                        guard let self else { return }
+                        CloudMetadataViewController.open(page, session: session, from: self)
+                    })
+                }
+            } ?? []
             // Usage closes the group, as desktop's Agents group has it; every
             // agent connection has one.
-            let usageRows: [SettingsRow] = Session.session(for: id, context: context).map { session in
+            let usageRows: [SettingsRow] = session.map { session in
                 [Row(Index.usage, action: { [weak self] in
                     self?.navigationController?.pushViewController(UsageViewController(session: session), animated: true)
                 })]
@@ -531,7 +541,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             // Desktop's sidebar, group for group: its unheaded first group
             // (General, here Appearance; Account, here Profile; Voice; and
             // the phone's Data and Storage), then Agents (what new sessions
-            // start on, Inference, Compute). The phone's own cards keep their
+            // start on, Inference, Compute, Zones, Secrets, Usage). The phone's own cards keep their
             // places: the accounts and the server at the top, Support
             // Happy under the first group, Privacy and About at the end.
             let groups: [[SettingsRow]] = [
@@ -542,7 +552,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
                 [supportRow()],
-                ([Row(Index.agents, action: { [weak self] in self?.open(.agents) })] + providersRows(id) + providerAccountRows(id) + computeRows + usageRows).withHeader(Strings.SettingsGroups.agents),
+                ([Row(Index.agents, action: { [weak self] in self?.open(.agents) })] + providersRows(id) + providerAccountRows(id) + computeRows + metadataRows + usageRows).withHeader(Strings.SettingsGroups.agents),
             ]
             return ([
                 accountRows(),

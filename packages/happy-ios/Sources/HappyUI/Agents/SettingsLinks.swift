@@ -23,6 +23,10 @@ enum SettingsLinks {
         case .computes:
             guard ComputeViewController.offered(session) else { return }
             controller.navigationController?.pushViewController(ComputeViewController(session: session), animated: true)
+        case .zones:
+            CloudMetadataViewController.open(.zones, session: session, from: controller)
+        case .secrets:
+            CloudMetadataViewController.open(.secrets, session: session, from: controller)
         case .web(let url):
             UIApplication.shared.open(url)
         case .providers(let page):

@@ -429,7 +429,7 @@ class AgentConnectionSettingsTest {
             AgentConnectionSettingsScreen(
                 profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
                 accounts = accounts,
-                actions = AgentSettingsActions(onAgents = {}, onProviders = {}, onPolicy = { opened = it }, onCompute = {}, onUsage = {}),
+                actions = AgentSettingsActions(onAgents = {}, onProviders = {}, onPolicy = { opened = it }, onCompute = {}, onZones = {}, onSecrets = {}, onUsage = {}),
                 about = AboutInfo("1.8.0 (412)"),
             )
         }
@@ -439,6 +439,9 @@ class AgentConnectionSettingsTest {
         fun y(tag: String) = rule.onNode(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y
         assertTrue(y(PolicyDocumentTags.row(com.slopus.happy.agent.PolicyDocument.Instructions)) > y(CloudProvidersTags.ROW))
         assertTrue(y(ComputeTags.ROW) > y(PolicyDocumentTags.row(com.slopus.happy.agent.PolicyDocument.Security)))
+        assertTrue(y(AgentSettingsTags.ZONES) > y(ComputeTags.ROW))
+        assertTrue(y(AgentSettingsTags.SECRETS) > y(AgentSettingsTags.ZONES))
+        assertTrue(y(AgentUsageTags.ROW) > y(AgentSettingsTags.SECRETS))
         rule.onNodeWithText("Instructions").performScrollTo().performClick()
         assertEquals(com.slopus.happy.agent.PolicyDocument.Instructions, opened)
     }

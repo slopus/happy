@@ -629,8 +629,7 @@ final class HomeViewController: UIViewController {
         }
         let actions = HappyCore.Search.ranked(quickActions().filter { !$0.id.hasPrefix("new-work") || session?.gate.allows(.contentWrite) ?? true }, query: query) { $0.title }
         let computer = session?.accountID
-        let entries = SettingsIndex.computer(isCloud: session?.isCloud == true)
-            + (session.map(ComputeViewController.offered) == true ? [SettingsIndex.computes] : [])
+        let entries = SettingsIndex.computer(isCloud: session?.isCloud == true, computeAvailable: session.map(ComputeViewController.offered) == true)
         let settings = HappyCore.Search.ranked(entries, query: query) { $0.title }
         return [
             section("actions", Strings.quickActions, actions.map { ($0.id, $0.title, $0.glyph, $0.run) }),
