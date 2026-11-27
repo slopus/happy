@@ -164,6 +164,16 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let response: ApiSession | null;
     if (reconnectSessionId && reconnectKeyBase64 && reconnectVariant) {
         logger.debug(`[START] Reconnecting to existing session ${reconnectSessionId}`);
+        // The metadata above is rebuilt from scratch and replaces the server copy on
+        // the first update, while claudeSessionId only returns once the SessionStart
+        // hook fires. A resume killed before that hook (a large transcript can take
+        // half a minute to load) would leave the session with no resumable ID, so
+        // carry over the ID we were told to resume.
+        const resumeIndex = options.claudeArgs?.indexOf('--resume') ?? -1;
+        const resumeClaudeSessionId = resumeIndex >= 0 ? options.claudeArgs?.[resumeIndex + 1] : undefined;
+        if (resumeClaudeSessionId && !resumeClaudeSessionId.startsWith('-')) {
+            metadata = { ...metadata, claudeSessionId: resumeClaudeSessionId };
+        }
         response = {
             id: reconnectSessionId,
             seq: parseInt(reconnectSeq || '0', 10),

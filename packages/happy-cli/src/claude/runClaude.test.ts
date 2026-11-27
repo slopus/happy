@@ -113,6 +113,7 @@ async function startRemoteRunClaudeHarness(opts: {
     metadata?: Record<string, unknown>;
     updateAgentState?: ReturnType<typeof vi.fn>;
     registerHandler?: ReturnType<typeof vi.fn>;
+    claudeArgs?: string[];
 } = {}) {
     let metadata = opts.metadata ?? {
         claudeSessionId: 'claude-session-1',
@@ -170,6 +171,7 @@ async function startRemoteRunClaudeHarness(opts: {
     } as any, {
         startingMode: 'remote',
         shouldStartDaemon: false,
+        claudeArgs: opts.claudeArgs,
     });
 
     await vi.waitFor(() => {
@@ -279,6 +281,25 @@ describe('runClaude remote JSONL scanner', () => {
             }
         }
         originalListeners.clear();
+    });
+
+    it('keeps the resumed Claude session ID in metadata when reconnecting to a Happy session', async () => {
+        process.env.HAPPY_RECONNECT_SESSION_ID = 'happy-session-1';
+        process.env.HAPPY_RECONNECT_ENCRYPTION_KEY = Buffer.alloc(32).toString('base64');
+        process.env.HAPPY_RECONNECT_ENCRYPTION_VARIANT = 'dataKey';
+
+        const harness = await startRemoteRunClaudeHarness({
+            claudeArgs: ['--resume', '7f616dd4-5047-44c1-86ca-609a96f420b7'],
+        });
+
+        // The rebuilt metadata replaces the server copy, so a resume killed before
+        // the SessionStart hook must not leave the session without its Claude ID.
+        expect(harness.api.getOrCreateSession).not.toHaveBeenCalled();
+        expect(harness.api.sessionSyncClient).toHaveBeenCalledWith(expect.objectContaining({
+            metadata: expect.objectContaining({ claudeSessionId: '7f616dd4-5047-44c1-86ca-609a96f420b7' }),
+        }));
+
+        await harness.finish();
     });
 
     it('does not forward terminal JSONL messages while local mode owns the transcript', async () => {
