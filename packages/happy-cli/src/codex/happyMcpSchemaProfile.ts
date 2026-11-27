@@ -23,8 +23,13 @@ function nullableStringType(schema: unknown): unknown {
   return { ...string, type: ['string', 'null'] };
 }
 
-function normalizeRoleTool(tool: unknown): unknown {
+function normalizeProfileTool(tool: unknown): unknown {
   const entry = record(tool);
+  if (entry?.name === 'delegate_task') return { ...entry, inputSchema: {
+    type: 'object', properties: { payload: { type: 'string',
+      description: 'JSON object containing the canonical delegate_task arguments (requestId,intent,prompt and exactly one roleId/taskId/route); model/effort optional.',
+    } }, required: ['payload'], additionalProperties: false,
+  } };
   if (entry?.name !== 'agent_roles') return tool;
   const input = record(entry.inputSchema);
   const properties = record(input?.properties);
@@ -43,11 +48,29 @@ function normalizeToolList(message: JSONRPCMessage): JSONRPCMessage {
   if (!('result' in message)) return message;
   const result = record(message.result);
   if (!result || !Array.isArray(result.tools)) return message;
-  return { ...message, result: { ...result, tools: result.tools.map(normalizeRoleTool) } };
+  return { ...message, result: { ...result, tools: result.tools.map(normalizeProfileTool) } };
 }
 
-/** Decorates only the AGY STDIO connection. Registration, tools/call inputs and
- * runtime Zod validators stay untouched; HTTP and default bridges use no wrapper. */
+function unwrapDelegatePayload(message: JSONRPCMessage): JSONRPCMessage {
+  if (!('method' in message) || message.method !== 'tools/call' || !('id' in message)
+    || (typeof message.id !== 'string' && typeof message.id !== 'number')) return message;
+  const params = record(message.params);
+  const args = record(params?.arguments);
+  if (params?.name !== 'delegate_task' || !args || Reflect.ownKeys(args).length !== 1
+    || !Object.hasOwn(args, 'payload') || typeof args.payload !== 'string'
+    || Buffer.byteLength(args.payload, 'utf8') > 2 * 1024 * 1024) return message;
+  try {
+    const canonical = record(JSON.parse(args.payload));
+    return canonical ? { ...message, params: { ...params, arguments: canonical } } : message;
+  } catch {
+    // Malformed wrappers reach the original strict validator unchanged. Its
+    // normal error response keeps the connection alive; no defaults or merging.
+    return message;
+  }
+}
+
+/** Decorates only AGY STDIO. The payload adapter precedes the unchanged SDK/Zod
+ * validators; registration, HTTP and default bridges use the canonical contract. */
 export function withHappyMcpSchemaProfile(inner: Transport, profile?: HappyMcpSchemaProfile): Transport {
   if (profile === undefined) return inner;
   if (profile !== 'antigravity') throw new Error('Unknown MCP schema profile');
@@ -76,7 +99,7 @@ export function withHappyMcpSchemaProfile(inner: Transport, profile?: HappyMcpSc
             if (typeof id === 'string' || typeof id === 'number') pending.delete(id);
           }
         }
-        wrapper.onmessage?.(message, extra);
+        wrapper.onmessage?.(unwrapDelegatePayload(message), extra);
       };
       inner.onerror = error => wrapper.onerror?.(error);
       inner.onclose = () => { pending.clear(); wrapper.onclose?.(); };

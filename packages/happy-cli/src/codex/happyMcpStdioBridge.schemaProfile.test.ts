@@ -22,7 +22,7 @@ function bridge(args: string[] = []) {
 }
 
 describe('Happy MCP schema profiles through real STDIO', () => {
-  it('exports AGY-compatible nullable role fields while leaving the default catalog and every other tool unchanged', async () => {
+  it('exports AGY role fields and the delegation payload schema while leaving other tools and the default catalog unchanged', async () => {
     const ordinary = bridge();
     await ordinary.client.connect(ordinary.transport);
     const original = await ordinary.client.listTools();
@@ -40,7 +40,14 @@ describe('Happy MCP schema profiles through real STDIO', () => {
     (unchangedRole.inputSchema.properties as any).patch.properties.model = { type: ['string', 'null'], minLength: 1, maxLength: 256 };
     (unchangedRole.inputSchema.properties as any).patch.properties.effort = { type: ['string', 'null'], minLength: 1, maxLength: 100 };
     expect(role(compatible)).toEqual(unchangedRole);
-    expect(compatible.tools.filter(tool => tool.name !== 'agent_roles')).toEqual(original.tools.filter(tool => tool.name !== 'agent_roles'));
+    const delegate = (catalog: typeof original) => catalog.tools.find(tool => tool.name === 'delegate_task')!;
+    expect(delegate(original).inputSchema.properties).toHaveProperty('requestId');
+    expect(delegate(original).inputSchema.properties).not.toHaveProperty('payload');
+    expect(delegate(compatible)).toEqual({ ...delegate(original), inputSchema: { type: 'object', properties: { payload: { type: 'string',
+      description: 'JSON object containing the canonical delegate_task arguments (requestId,intent,prompt and exactly one roleId/taskId/route); model/effort optional.',
+    } }, required: ['payload'], additionalProperties: false } });
+    const otherTools = (catalog: typeof original) => catalog.tools.filter(tool => !['agent_roles', 'delegate_task'].includes(tool.name));
+    expect(otherTools(compatible)).toEqual(otherTools(original));
   });
 
   it.each([{ args: ['--schema-profile', 'unknown'] }, { args: ['--schema-profile'] }])('rejects an unsupported or missing profile before accepting a connection: %j', async ({ args }) => {
