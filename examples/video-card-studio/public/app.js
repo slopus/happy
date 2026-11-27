@@ -15,10 +15,13 @@ let stream, request = null, galleryFingerprint = '[]';
 let currentId = trackedJob();
 let initialAnchor = currentId ? window.location.hash.slice(1) : '';
 const unobservedJobs = new Map();
+const jobPhases = new Map();
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 let pageState = { connection: 'disconnected', jobs: [] };
 let downloadingBundle = false;
 const downloadControllers = new Set();
 const downloadURLs = new Map();
+const cardDownloads = new WeakMap();
 window.addEventListener('pagehide', () => {
   for (const controller of downloadControllers) controller.abort();
   for (const [url, timer] of downloadURLs) { clearTimeout(timer); URL.revokeObjectURL(url); }
@@ -55,18 +58,25 @@ async function downloadBundle(job, button, feedback) {
 async function downloadCard(event, link, feedback) {
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
-  if (link.getAttribute('aria-disabled') === 'true') return;
+  if (cardDownloads.has(link)) return;
+  const ticket = {};
+  cardDownloads.set(link, ticket);
   link.setAttribute('aria-disabled', 'true');
-  feedback.className = 'download-feedback';
+  feedback.classList.remove('error');
   feedback.textContent = '正在读取完整图片…';
   try {
     await saveDownload(readPngBlob, link.href, link.download, 60000);
-    feedback.textContent = '已交给浏览器保存，请查看下载记录。';
+    if (cardDownloads.get(link) === ticket) feedback.textContent = '已交给浏览器保存，请查看下载记录。';
   } catch {
-    feedback.className = 'download-feedback error';
-    feedback.textContent = '图片下载未完成，请重新点击。';
+    if (cardDownloads.get(link) === ticket) {
+      feedback.classList.add('error');
+      feedback.textContent = '图片下载未完成，请重新点击。';
+    }
   } finally {
-    link.removeAttribute('aria-disabled');
+    if (cardDownloads.get(link) === ticket) {
+      cardDownloads.delete(link);
+      link.removeAttribute('aria-disabled');
+    }
   }
 }
 function el(tag, className, text) { const value = document.createElement(tag); if (className) value.className = className; if (text !== undefined) value.textContent = text; return value; }
@@ -81,6 +91,139 @@ function saveIcon() {
   svg.append(path);
   return svg;
 }
+const originalURL = (job, card) => `/api/jobs/${job.id}/original/${card.file}`;
+function configureDownload(action, job, card, number) {
+  action.href = originalURL(job, card);
+  action.download = `${job.bvid}-${card.file}`;
+  action.setAttribute('aria-label', `下载第 ${number} 张 PNG`);
+  action.title = '下载 PNG';
+}
+
+const reader = $('card-reader');
+const readerImage = $('reader-image');
+const readerSave = $('reader-save');
+const readerFeedback = $('reader-feedback');
+const readerLoading = $('reader-loading');
+const readerOpen = $('reader-open');
+const readerClose = $('reader-close');
+const readerPrev = $('reader-prev');
+const readerNext = $('reader-next');
+let reading;
+readerSave.textContent = '';
+readerSave.append(saveIcon());
+readerSave.onclick = event => void downloadCard(event, readerSave, readerFeedback);
+async function showCard(index, switching = false) {
+  if (!reading || reading.closing || !reading.job.manifest.cards[index]) return;
+  const { job } = reading;
+  const card = job.manifest.cards[index];
+  const count = job.manifest.cards.length;
+  const frame = {};
+  reading.index = index;
+  reading.frame = frame;
+  $('reader-title').textContent = job.manifest.title;
+  $('reader-position').textContent = `${index + 1} / ${count}`;
+  readerPrev.disabled = index === 0;
+  readerNext.disabled = index === count - 1;
+  if (readerPrev.disabled && document.activeElement === readerPrev) readerNext.focus();
+  if (readerNext.disabled && document.activeElement === readerNext) readerPrev.focus();
+  cardDownloads.delete(readerSave);
+  readerSave.removeAttribute('aria-disabled');
+  configureDownload(readerSave, job, card, index + 1);
+  readerFeedback.textContent = '';
+  readerFeedback.classList.remove('error');
+  readerOpen.href = originalURL(job, card);
+  readerOpen.hidden = true;
+  readerLoading.textContent = '正在加载原图…';
+  readerLoading.hidden = false;
+  readerImage.hidden = true;
+  readerImage.alt = card.quote;
+  readerImage.src = readerOpen.href;
+  reader.querySelector('.reader-scroll').scrollTop = 0;
+  reader.classList.remove('reader-switch');
+  try {
+    await readerImage.decode();
+    if (reading?.frame !== frame || reading.closing) return;
+    readerImage.hidden = false;
+    readerLoading.hidden = true;
+    if (switching && !reducedMotion()) reader.classList.add('reader-switch');
+  } catch {
+    if (reading?.frame !== frame || reading.closing) return;
+    readerLoading.textContent = '原图未能加载。';
+    readerOpen.hidden = false;
+  }
+}
+function openReader(event, trigger, job, index) {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey ||
+      typeof reader.showModal !== 'function' || reading) return;
+  const bounds = trigger.getBoundingClientRect();
+  reader.style.setProperty('--reader-origin-x', `${(bounds.left + bounds.width / 2) / innerWidth * 100}%`);
+  reader.style.setProperty('--reader-origin-y', `${(bounds.top + bounds.height / 2) / innerHeight * 100}%`);
+  event.preventDefault();
+  reading = { job, trigger, openedIndex: index, index, closing: false };
+  reader.classList.add('reader-enter');
+  reader.showModal();
+  void showCard(index);
+  readerClose.focus();
+}
+function closeReader() {
+  if (!reading || reading.closing) return;
+  const session = reading;
+  session.closing = true;
+  reader.classList.remove('reader-enter', 'reader-switch');
+  reader.classList.add('reader-exit');
+  const animation = reader.getAnimations?.({ subtree: true }).find(item => item.animationName === 'reader-out');
+  const finish = () => { if (reading === session && reader.open) reader.close(); };
+  if (animation && !reducedMotion()) void animation.finished.then(finish, finish);
+  else finish();
+}
+readerClose.onclick = closeReader;
+const changeReaderCard = offset => reading && void showCard(reading.index + offset, true);
+readerPrev.onclick = () => changeReaderCard(-1);
+readerNext.onclick = () => changeReaderCard(1);
+reader.addEventListener('keydown', event => {
+  if (!reading || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault();
+    changeReaderCard(event.key === 'ArrowLeft' ? -1 : 1);
+  }
+});
+reader.addEventListener('cancel', event => { event.preventDefault(); closeReader(); });
+let backdropDown;
+reader.addEventListener('pointerdown', event => {
+  backdropDown = event.isPrimary && event.button === 0 && event.target === reader;
+});
+reader.addEventListener('pointerup', event => {
+  if (event.target !== reader) backdropDown = false;
+});
+reader.addEventListener('pointercancel', () => { backdropDown = false; });
+reader.addEventListener('click', event => {
+  if (backdropDown && event.target === reader) closeReader();
+  backdropDown = false;
+});
+reader.addEventListener('close', () => {
+  if (!reading) return;
+  const { job, openedIndex, trigger } = reading;
+  reading = undefined;
+  backdropDown = false;
+  reader.classList.remove('reader-enter', 'reader-exit', 'reader-switch');
+  readerImage.removeAttribute('src');
+  const result = $(`result-${job.id}`);
+  const focus = trigger.isConnected ? trigger : result?.querySelectorAll('.card-preview')[openedIndex] ?? result?.querySelector('h3');
+  if (!trigger.isConnected) focus?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  focus?.focus({ preventScroll: true });
+});
+
+const inputGlow = $('video-url').parentElement;
+inputGlow?.addEventListener('pointermove', event => {
+  if (event.pointerType !== 'mouse' || reducedMotion()) return;
+  const bounds = inputGlow.getBoundingClientRect();
+  inputGlow.style.setProperty('--glow-x', `${(event.clientX - bounds.left) / bounds.width * 100}%`);
+  inputGlow.style.setProperty('--glow-y', `${(event.clientY - bounds.top) / bounds.height * 100}%`);
+});
+inputGlow?.addEventListener('pointerleave', () => {
+  inputGlow.style.removeProperty('--glow-x');
+  inputGlow.style.removeProperty('--glow-y');
+});
 function time(seconds) { return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`; }
 function requestId() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -106,6 +249,8 @@ function sourceLink(job, style) {
 function renderJob(job, knownTitles) {
   const row = el('article', `job-row${job.id === currentId ? ' selected' : ''}${needsAttention(job) ? ' job-error' : ''}`);
   row.id = `job-${job.id}`; row.dataset.jobId = job.id;
+  const phase = `${job.state}:${job.phase}`;
+  if (jobPhases.has(job.id) && jobPhases.get(job.id) !== phase) row.classList.add('job-phase-change');
   const heading = el('div', 'job-heading'), identity = el('div');
   const title = job.manifest?.title ?? knownTitles.get(job.bvid);
   identity.append(el('h3', 'job-title', title ?? job.bvid));
@@ -152,6 +297,7 @@ function render(state) {
   const jobs = [...Array.from(unobservedJobs.values()).reverse().filter(job => !incomingIds.has(job.id)), ...state.jobs];
   $('connection-label').textContent = state.connection === 'closed' ? '页面连接已断开，制作记录仍会保留'
     : state.connection === 'connected' ? '制作通道已连接' : '制作通道暂未连接，提交会保留';
+  $('connection-label').dataset.state = state.connection;
   const current = jobs.find(job => job.id === currentId);
   if (current && !request) {
     const feedback = $('form-feedback');
@@ -167,20 +313,49 @@ function render(state) {
   const queue = $('queue'); queue.replaceChildren();
   if (!visible.length) queue.append(el('p', 'muted', '当前没有制作中的任务。'));
   for (const job of visible) queue.append(renderJob(job, titles));
+  jobPhases.clear();
+  for (const job of jobs) jobPhases.set(job.id, `${job.state}:${job.phase}`);
   renderHistory(jobs.filter(job => terminal(job) && job.id !== currentId), titles);
   renderGallery(finished);
   const anchor = initialAnchor && $(initialAnchor);
   if (anchor) { initialAnchor = ''; anchor.scrollIntoView(); }
 }
+let featuredSource;
+function renderFeatured(finished) {
+  const job = finished.find(item => item.manifest.cards.length);
+  const figure = $('hero-work'), image = $('hero-work-image'), action = $('hero-work-link');
+  if (!job) {
+    figure.hidden = true;
+    featuredSource = undefined;
+    image.removeAttribute('src');
+    return;
+  }
+  const source = `/api/jobs/${job.id}/${job.manifest.cards[0].file}`;
+  $('hero-work-title').textContent = job.manifest.title;
+  $('hero-work-credit').textContent = job.manifest.author;
+  action.href = `#result-${job.id}`;
+  action.setAttribute('aria-label', `查看《${job.manifest.title}》的成品`);
+  if (featuredSource === source) return;
+  featuredSource = source;
+  figure.hidden = false;
+  image.onerror = () => { if (featuredSource === source) figure.hidden = true; };
+  image.src = source;
+}
 function renderGallery(finished) {
   const fingerprint = JSON.stringify(finished);
   if (fingerprint === galleryFingerprint) return;
   galleryFingerprint = fingerprint; const gallery = $('gallery'); gallery.replaceChildren();
+  renderFeatured(finished);
   if (!finished.length) gallery.append(el('p', 'empty', '卡片制作完成后会显示在这里。'));
   for (const job of finished) {
     const group = el('section', 'result'), heading = el('div', 'result-heading'), title = el('div');
     group.id = `result-${job.id}`;
-    title.append(el('h3', '', job.manifest.title));
+    const resultTitle = el('h3', '', job.manifest.title);
+    resultTitle.tabIndex = -1;
+    title.append(resultTitle);
+    group.addEventListener('animationend', event => {
+      if (event.target === group) group.classList.remove('result-arrival');
+    });
     const source = link(`${job.manifest.author} · ${job.bvid} · 自动转写，待核对`, job.url, 'result-source'); source.target = '_blank'; source.rel = 'noopener noreferrer'; title.append(source);
     title.append(el('p', 'result-meta', submittedAt(job)));
     const downloadArea = el('div', 'download-area'), bundle = el('button', 'download-all', `整组下载 · ${job.manifest.cards.length} 张`), feedback = el('p', 'download-feedback');
@@ -191,14 +366,12 @@ function renderGallery(finished) {
     for (const [index, card] of job.manifest.cards.entries()) {
       const number = index + 1;
       const url = `/api/jobs/${job.id}/${card.file}`;
-      const original = `/api/jobs/${job.id}/original/${card.file}`;
+      const original = originalURL(job, card);
       const figure = el('figure', 'card');
       const cardHeading = el('div', 'card-heading');
       const sourceTime = link(`${time(card.start)}–${time(card.end)}`, `${job.url}?t=${Math.floor(card.start)}`, 'card-time'); sourceTime.target = '_blank'; sourceTime.rel = 'noopener noreferrer';
       const download = link('', original, 'card-download');
-      download.download = `${job.bvid}-${card.file}`;
-      download.setAttribute('aria-label', `下载第 ${number} 张 PNG`);
-      download.title = '下载 PNG';
+      configureDownload(download, job, card, number);
       download.append(saveIcon());
       const cardFeedback = el('p', 'download-feedback');
       cardFeedback.setAttribute('role', 'status');
@@ -208,6 +381,7 @@ function renderGallery(finished) {
       const preview = link('', original, 'card-preview');
       preview.target = '_blank'; preview.rel = 'noopener';
       preview.setAttribute('aria-label', `查看第 ${number} 张原图`);
+      preview.onclick = event => openReader(event, preview, job, index);
       const img = el('img');
       img.src = url; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
       preview.append(img);
@@ -231,8 +405,15 @@ function connect() {
 }
 $('reconnect').onclick = connect;
 window.addEventListener('hashchange', () => {
+  if (`#${initialAnchor}` !== window.location.hash) initialAnchor = '';
   const id = trackedJob();
-  if (id !== currentId) { currentId = id; render(pageState); }
+  if (id && id !== currentId) { currentId = id; render(pageState); }
+  if (!id || !window.location.hash.startsWith('#result-')) return;
+  const result = $(`result-${id}`);
+  if (!result) return;
+  if (!reducedMotion()) result.classList.add('result-arrival');
+  result.querySelector('h3')?.focus({ preventScroll: true });
+  result.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'instant' : 'smooth' });
 });
 $('submit-form').onsubmit = async event => {
   event.preventDefault(); const url = $('video-url').value.trim(), feedback = $('form-feedback');

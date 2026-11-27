@@ -10,11 +10,17 @@
 </head>
 <body>
   <div class="shell">
-    <header class="site-header"><a class="brand" href="/">原话卡片</a></header>
+    <header class="site-header">
+      <a class="brand" href="/">原话卡片</a>
+      <nav class="site-nav" aria-label="站内导航">
+        <a href="#create">制作</a>
+        <a href="#works">作品</a>
+      </nav>
+    </header>
     <main>
-      <section class="intro" aria-labelledby="intro-title">
+      <section id="create" class="intro" aria-labelledby="intro-title">
         <div class="intro-copy">
-          <h1 id="intro-title">把 B 站视频<br>做成原话卡片</h1>
+          <h1 id="intro-title">把 B 站视频<br><span class="intro-accent">做成原话卡片</span></h1>
           <p class="lede">从原视频选取画面和对白，制作可下载的长图。</p>
         </div>
         <div class="submission">
@@ -28,29 +34,65 @@
           </form>
           <p class="public-note">支持 60 分钟以内的公开单 P 视频。提交记录与卡片会公开展示。</p>
         </div>
+        <figure id="hero-work" class="hero-work" hidden>
+          <a id="hero-work-link" class="hero-work-link">
+            <img id="hero-work-image" class="hero-work-image" alt="" decoding="async">
+          </a>
+          <figcaption class="hero-work-caption">
+            <span id="hero-work-title" class="hero-work-title"></span>
+            <span id="hero-work-credit" class="hero-work-credit"></span>
+          </figcaption>
+        </figure>
       </section>
 
-      <section class="task-section" aria-labelledby="task-title">
-        <div class="section-heading">
-          <h2 id="task-title">制作进度 <span id="queue-count" hidden></span></h2>
-          <div class="connection">
-            <span id="connection-label">正在连接</span>
-            <button id="reconnect" class="quiet" type="button" hidden>重新连接</button>
+      <div class="workspace">
+        <section class="task-section" aria-labelledby="task-title">
+          <div class="section-heading">
+            <h2 id="task-title">制作进度 <span id="queue-count" hidden></span></h2>
+            <div class="connection">
+              <span id="connection-label">正在连接</span>
+              <button id="reconnect" class="quiet" type="button" hidden>重新连接</button>
+            </div>
           </div>
-        </div>
-        <div id="queue" class="task-list"><p class="muted">正在读取制作记录…</p></div>
-        <details id="history" class="history" hidden>
-          <summary id="history-label">历史任务</summary>
-          <div id="history-list"></div>
-        </details>
-      </section>
+          <div id="queue" class="task-list"><p class="muted">正在读取制作记录…</p></div>
+          <details id="history" class="history" hidden>
+            <summary id="history-label">历史任务</summary>
+            <div id="history-list"></div>
+          </details>
+        </section>
 
-      <section class="gallery-section" aria-labelledby="gallery-title">
-        <div class="section-heading"><h2 id="gallery-title">已完成作品</h2></div>
-        <div id="gallery"><p class="empty">卡片制作完成后会显示在这里。</p></div>
-      </section>
+        <section id="works" class="gallery-section" aria-labelledby="gallery-title">
+          <div class="section-heading"><h2 id="gallery-title">已完成作品</h2></div>
+          <div id="gallery"><p class="empty">卡片制作完成后会显示在这里。</p></div>
+        </section>
+      </div>
     </main>
     <footer><p>卡片文字来自自动转写。每张图保留原视频和时间点，便于核对。</p></footer>
   </div>
+
+  <dialog id="card-reader" class="card-reader" aria-labelledby="reader-title">
+    <div class="reader-shell">
+      <header class="reader-header">
+        <h2 id="reader-title" class="reader-title">原图</h2>
+        <div class="reader-actions">
+          <a id="reader-save" class="reader-save">保存原图</a>
+          <button id="reader-close" class="reader-close" type="button" aria-label="关闭原图" autofocus>×</button>
+        </div>
+      </header>
+      <div class="reader-scroll" tabindex="0" role="region" aria-label="原图内容">
+        <figure class="reader-figure">
+          <img id="reader-image" class="reader-image" alt="" decoding="async">
+        </figure>
+        <p id="reader-loading" class="reader-loading" role="status" hidden>正在加载原图…</p>
+        <a id="reader-open" class="reader-open" target="_blank" rel="noopener noreferrer" hidden>在新标签页打开原图</a>
+      </div>
+      <footer class="reader-footer">
+        <button id="reader-prev" class="reader-prev" type="button">上一张</button>
+        <output id="reader-position" class="reader-position" aria-label="卡片位置"></output>
+        <button id="reader-next" class="reader-next" type="button">下一张</button>
+        <p id="reader-feedback" class="reader-feedback download-feedback" role="status"></p>
+      </footer>
+    </div>
+  </dialog>
 </body>
 </html>

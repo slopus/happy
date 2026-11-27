@@ -21,6 +21,7 @@ class Element {
   value = '';
   disabled = false;
   hidden = false;
+  isConnected = true;
   className = '';
   ownText = '';
   set textContent(value) { this.ownText = String(value); this.children = []; }
@@ -32,14 +33,25 @@ class Element {
     if (key.startsWith('data-')) this.dataset[key.slice(5).replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = String(value);
   }
   getAttribute(key) { return this.attributes.get(key) ?? null; }
+  removeAttribute(key) {
+    this.attributes.delete(key);
+    if (key === 'src') this.src = '';
+  }
+  classList = {
+    add: (...names) => { this.className = [...new Set([...this.className.split(' ').filter(Boolean), ...names])].join(' '); },
+    remove: (...names) => { this.className = this.className.split(' ').filter(name => !names.includes(name)).join(' '); },
+  };
+  style = { setProperty() {} };
   addEventListener(name, fn) { this.listeners.set(name, fn); }
   querySelectorAll(selector) { return descendants(this).filter(node => matches(node, selector)); }
   querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
-  scrollIntoView() {}
+  scrollIntoView(options) { this.scrolled = options ?? true; }
+  getBoundingClientRect() { return { width: 240, height: 180, top: 100, left: 80 }; }
+  focus() { this.focused = true; }
 }
 function descendants(node) { return node.children.flatMap(child => [child, ...descendants(child)]); }
 function matches(node, selector) {
-  const tag = selector.match(/^[a-z]+/i)?.[0];
+  const tag = selector.match(/^[a-z][a-z0-9-]*/i)?.[0];
   const cls = selector.match(/\.([a-z-]+)/)?.[1];
   const attribute = selector.match(/\[([^=\]]+)(?:=["']?([^"'\]]+)["']?)?\]/);
   if (tag && node.tagName !== tag.toUpperCase()) return false;
@@ -62,6 +74,11 @@ function setup({ crypto, fetchImpl, hash = '' } = {}) {
     return elements.get(id);
   };
   const streams = [], requests = [];
+  const reader = element('card-reader');
+  reader.append(Object.assign(new Element(), { className: 'reader-scroll' }));
+  reader.showModal = () => { reader.open = true; };
+  reader.close = () => { reader.open = false; reader.listeners.get('close')(); };
+  element('reader-image').decode = async () => {};
   class EventSource {
     listeners = new Map();
     closed = false;
@@ -80,7 +97,7 @@ function setup({ crypto, fetchImpl, hash = '' } = {}) {
       createElement: tag => new Element(tag),
       createElementNS: (_namespace, tag) => new Element(tag),
     },
-    window, location, history,
+    window, location, history, innerWidth: 1200, innerHeight: 800,
     crypto: crypto ?? { randomUUID: () => job.id },
     EventSource, AbortController, URL, setTimeout, clearTimeout,
     fetch: async (...args) => {
@@ -227,4 +244,60 @@ test('three result images render as individually numbered PNG cards', () => {
     assert.equal(download.getAttribute('aria-label'), `下载第 ${index + 1} 张 PNG`);
     assert.equal(download.querySelector('svg').getAttribute('aria-hidden'), 'true');
   }
+});
+
+test('same-run result navigation moves focus to the exact title and keeps the tracked run across section links', () => {
+  const ui = setup({ hash: '#job-' + job.id });
+  const completed = { ...job, state: 'completed', phase: 'complete',
+    manifest: { title: 'Current result', author: 'Author', cards: [] } };
+  ui.stream.state({ connection: 'connected', jobs: [completed] });
+  ui.location.hash = '#result-' + job.id;
+  ui.windowEvents.get('hashchange')();
+  const result = ui.element('result-' + job.id);
+  assert.equal(result.querySelector('h3').focused, true);
+  assert.equal(result.scrolled.behavior, 'smooth');
+  ui.location.hash = '#works';
+  ui.windowEvents.get('hashchange')();
+  ui.stream.state({ connection: 'connected', jobs: [completed] });
+  assert.equal(ui.element('queue').children[0].dataset.jobId, job.id);
+});
+
+test('original reader switches exact frames, ignores an obsolete image failure and restores focus after a gallery update', async () => {
+  const ui = setup();
+  const cards = [1, 2].map(number => ({ file: `card-00${number}.png`, quote: `Quote ${number}`, start: 0, end: 5 }));
+  const completed = { ...job, state: 'completed', manifest: { title: 'Result cards', author: 'Author', cards } };
+  ui.stream.state({ connection: 'connected', jobs: [completed] });
+  const reader = ui.element('card-reader'), image = ui.element('reader-image');
+  const pending = [];
+  image.decode = () => new Promise((resolve, reject) => pending.push({ resolve, reject }));
+  const firstPreview = ui.element('gallery').querySelector('.card-preview');
+  let defaultPrevented = false;
+  const click = { button: 0, preventDefault() { defaultPrevented = true; } };
+  firstPreview.onclick({ ...click, metaKey: true });
+  assert.equal(defaultPrevented, false);
+  assert.notEqual(reader.open, true);
+  firstPreview.onclick(click);
+  assert.equal(defaultPrevented, true);
+  assert.equal(reader.open, true);
+  assert.equal(ui.element('reader-position').textContent, '1 / 2');
+  assert.equal(ui.element('reader-prev').disabled, true);
+  ui.element('reader-next').onclick();
+  assert.equal(ui.element('reader-position').textContent, '2 / 2');
+  assert.equal(ui.element('reader-next').disabled, true);
+  assert.match(image.src, /\/original\/card-002\.png$/);
+  assert.equal(ui.element('reader-save').download, `${job.bvid}-card-002.png`);
+  pending[1].resolve();
+  pending[0].reject(new Error('An obsolete read failed'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(image.hidden, false);
+  assert.equal(ui.element('reader-open').hidden, true);
+  assert.equal(ui.element('hero-work-link').href, '#result-' + job.id);
+  assert.match(ui.element('hero-work-image').src, /\/card-001\.png$/);
+
+  firstPreview.isConnected = false;
+  ui.stream.state({ connection: 'connected', jobs: [{ ...completed, manifest: { ...completed.manifest, title: 'Updated gallery' } }] });
+  assert.equal(ui.element('reader-position').textContent, '2 / 2');
+  reader.listeners.get('cancel')({ preventDefault() {} });
+  assert.equal(reader.open, false);
+  assert.equal(ui.element('gallery').querySelector('.card-preview').focused, true);
 });
