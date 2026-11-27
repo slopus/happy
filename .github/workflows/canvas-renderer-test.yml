@@ -1,0 +1,48 @@
+name: Project Canvas renderer
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/paws-dsh-canvas/**'
+      - '.github/workflows/canvas-renderer-test.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.npmrc'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canvas-renderer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  renderer:
+    name: Renderer regressions and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install renderer dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter @paws/dsh-canvas...
+      - name: Check renderer host regressions
+        run: >-
+          node --test
+          packages/paws-dsh-canvas/src/host/editor*.test.mjs
+          packages/paws-dsh-canvas/src/host/bridge.test.mjs
+          packages/paws-dsh-canvas/src/host/previewFailures.test.mjs
+      - name: Check editable scene preservation
+        run: |
+          pnpm --filter @paws/dsh-canvas exec esbuild src/host/projectScene.test.ts --bundle --platform=node --format=esm --packages=external --outfile=node_modules/.cache/paws-canvas-tests/projectScene.test.mjs
+          NODE_ENV=test node --test --test-force-exit "$GITHUB_WORKSPACE/packages/paws-dsh-canvas/node_modules/.cache/paws-canvas-tests/projectScene.test.mjs"
+      - name: Build renderer
+        run: pnpm --filter @paws/dsh-canvas build

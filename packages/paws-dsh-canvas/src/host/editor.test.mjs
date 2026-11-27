@@ -140,6 +140,56 @@ test('all 126 visible previews advance without panning and outstanding requests 
     } finally { f.dispose(); }
 });
 
+test('preview arrivals and failures advance without waiting for another paint frame', async () => {
+    const f = fixture(64);
+    try {
+        await f.start();
+        assert.equal(f.requests().length, 1);
+        const first = f.requests()[0].ids;
+        assert.equal(first.length, 16);
+        // Freeze all later paint callbacks. Business dispatch must continue
+        // from the URI/failure events, even when the browser delays painting.
+        f.arrive(first);
+        f.update();
+        f.update();
+        await f.settle();
+        assert.equal(f.requests().length, 2, 'arrivals must dispatch the next bounded batch through a microtask');
+        const second = f.requests()[1].ids;
+        assert.equal(second.length, 16);
+        assert.ok(second.every(id => !first.includes(id)));
+        assert.deepEqual(second, Array.from({ length: 16 }, (_, index) => f.state.sync.assets[47 - index].id),
+            'the nearest remaining placeholders come before the farther left-hand assets');
+        const failures = second.map(id => ({ id, versionId: 'a'.repeat(64) }));
+        f.update({ previewRequestFailures: failures });
+        await f.settle();
+        assert.equal(f.requests().length, 3, 'terminal failures must also release capacity without paint');
+        const third = f.requests()[2].ids;
+        assert.equal(third.length, 16);
+        f.arrive(third);
+        await f.settle();
+        assert.equal(f.requests().length, 4);
+        assert.equal(new Set(f.requests().flatMap(request => request.ids)).size, 64);
+        f.arrive(f.requests()[3].ids);
+        f.update();
+        await f.settle();
+        assert.equal(f.requests().length, 4, 'failed versions stay terminal and incidental syncs do not retry');
+    } finally { f.dispose(); }
+});
+
+test('a queued preview dispatch cannot run after disposal or a session change', async () => {
+    for (const stop of ['dispose', 'session']) {
+        const f = fixture(32);
+        try {
+            await f.start();
+            f.arrive(f.requests()[0].ids);
+            if (stop === 'dispose') f.dispose();
+            else f.update({ sessionKey: 'other-board' });
+            await f.settle();
+            assert.equal(f.requests().length, 1);
+        } finally { f.dispose(); }
+    }
+});
+
 test('each actual arrival frees one pending slot and prioritizes the current viewport', async () => {
     const f = fixture();
     try {
@@ -208,12 +258,13 @@ test('queued arrivals cannot request or mutate the editor after session change o
             await f.start();
             f.arrive(f.requests()[0].ids);
             await f.settle();
+            const requestsBeforeStop = f.requests().length;
             if (stop === 'session') f.update({ sessionKey: 'other-board' });
             else f.dispose();
             complete(new Blob(['preview'], { type: 'image/png' }));
             await f.settle();
             await f.flushFrame();
-            assert.equal(f.requests().length, 1);
+            assert.equal(f.requests().length, requestsBeforeStop, 'stopping the editor must prevent further dispatch');
             assert.equal(f.state.landings.length, 0, 'obsolete image work cannot land in the previous editor');
         } finally { f.dispose(); }
     }

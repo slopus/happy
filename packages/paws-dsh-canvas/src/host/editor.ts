@@ -144,7 +144,7 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
     let desired = new Map<string, ProjectCanvasRenderAsset>();
     let disposed = false;
     let fitFrame: number | undefined;
-    let previewFrame: number | undefined;
+    let previewQueued = false;
     let wheelFrame: number | undefined;
     let initialFit = true;
     let requestedAsset: string | undefined;
@@ -279,9 +279,12 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
     }
 
     function schedulePreviews(): void {
-        if (previewFrame !== undefined || disposed) return;
-        previewFrame = requestAnimationFrame(() => {
-            previewFrame = undefined;
+        if (previewQueued || disposed) return;
+        previewQueued = true;
+        // Image I/O follows progress events even when painting is delayed.
+        // Coalesce sync/viewport events and use their latest visible state.
+        queueMicrotask(() => {
+            previewQueued = false;
             requestVisibleAssets('preview');
         });
     }
@@ -479,8 +482,10 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
 
     // SDK record effects run synchronously. Export and background-tab
     // transitions can observe edits before the next animation frame.
+    // The SDK hydrates attribution users with source:'user' on a fresh origin.
+    // Keep them in saved documents, but only canvas content edits mark dirty.
     const effects = editor.store.sideEffects;
-    const changeHandlers = [...editor.store.scopedTypes.document].flatMap(type => [
+    const changeHandlers = [...editor.store.scopedTypes.document].filter(type => type !== 'user').flatMap(type => [
         effects.registerAfterCreateHandler(type, (record, source) => {
             if (source !== 'user' || disposed) return;
             const key = record.typeName === 'shape' ? keyOfShape(record) : undefined;
@@ -599,7 +604,6 @@ export function attachProjectEditor(editor: Editor, sessionKey: string): () => v
         disposed = true;
         if (mountedEditor === editor) mountedEditor = undefined;
         if (fitFrame !== undefined) cancelAnimationFrame(fitFrame);
-        if (previewFrame !== undefined) cancelAnimationFrame(previewFrame);
         if (wheelFrame !== undefined) cancelAnimationFrame(wheelFrame);
         scene.dispose();
         visibleAssets.set(undefined);
