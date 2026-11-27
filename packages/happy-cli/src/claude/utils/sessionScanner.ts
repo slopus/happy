@@ -27,6 +27,8 @@ type SessionLogEntry =
 export async function createSessionScanner(opts: {
     sessionId: string | null,
     workingDirectory: string
+    /** The environment Claude runs with, so the scanner reads the transcripts it writes. */
+    env?: NodeJS.ProcessEnv
     onMessage: (message: RawJSONLines) => void
     onTranscriptEvent?: (event: ScannerTranscriptEvent) => void
     /**
@@ -37,7 +39,7 @@ export async function createSessionScanner(opts: {
 }) {
 
     // Resolve project directory
-    const projectDir = getProjectPath(opts.workingDirectory);
+    const projectDir = getProjectPath(opts.workingDirectory, opts.env);
 
     // Finished, pending finishing and current session
     let finishedSessions = new Set<string>();

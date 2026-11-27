@@ -36,6 +36,7 @@ type QueueHandler = (message: string, mode: { permissionMode: 'default' }) => vo
 type ScannerOptions = {
     sessionId: string | null;
     workingDirectory: string;
+    env?: NodeJS.ProcessEnv;
     onMessage: (message: any) => void;
 };
 
@@ -207,7 +208,7 @@ describe('claudeLocalLauncher', () => {
         await launcher;
     });
 
-    async function startWithMetadata(initial: Record<string, unknown>) {
+    async function startWithMetadata(initial: Record<string, unknown>, claudeEnvVars?: Record<string, string>) {
         const localRun = createDeferred<void>();
         let scannerOptions: ScannerOptions | undefined;
         const state = { metadata: initial };
@@ -249,7 +250,7 @@ describe('claudeLocalLauncher', () => {
             onSessionFound: vi.fn(),
             onThinkingChange: vi.fn(),
             consumeOneTimeFlags: vi.fn(),
-            claudeEnvVars: undefined,
+            claudeEnvVars,
             claudeArgs: undefined,
             mcpServers: {},
             allowedTools: [],
@@ -263,10 +264,18 @@ describe('claudeLocalLauncher', () => {
         });
         return {
             state,
+            scannerOptions: scannerOptions!,
+            forwarded: session.client.sendClaudeSessionMessageFromLocalTranscript,
             updateMetadata,
             send: (message: Record<string, unknown>) => scannerOptions!.onMessage(message),
             assistant: (uuid: string, model: string, extra: Record<string, unknown> = {}) =>
-                scannerOptions!.onMessage({ type: 'assistant', uuid, message: { model, content: [] }, ...extra }),
+                scannerOptions!.onMessage({
+                    type: 'assistant',
+                    uuid,
+                    timestamp: new Date().toISOString(),
+                    message: { model, content: [] },
+                    ...extra,
+                }),
             finish: async () => {
                 localRun.resolve();
                 await launcher;
@@ -309,6 +318,31 @@ describe('claudeLocalLauncher', () => {
         run.assistant('a2', 'claude-sonnet-5-5');
         expect(run.state.metadata.currentModelCode).toBe('claude-sonnet-5-5');
 
+        await run.finish();
+    });
+
+    it('keeps replayed history out of the published model but still forwards it', async () => {
+        // `happy --continue --model claude-opus-5-5` on a transcript whose earlier turns ran Sonnet.
+        const run = await startWithMetadata({ currentModelCode: 'claude-opus-5-5' });
+
+        run.assistant('old', 'claude-sonnet-5-5', { timestamp: new Date(Date.now() - 60_000).toISOString() });
+        run.assistant('untimed', 'claude-sonnet-5-5', { timestamp: undefined });
+        expect(run.state.metadata.currentModelCode).toBe('claude-opus-5-5');
+        expect(run.updateMetadata).not.toHaveBeenCalled();
+        await vi.waitFor(() => {
+            expect(run.forwarded).toHaveBeenCalledWith(expect.objectContaining({ uuid: 'old' }));
+        });
+
+        run.assistant('live', 'claude-opus-5-5');
+        run.assistant('switched', 'claude-haiku-5-5');
+        expect(run.state.metadata.currentModelCode).toBe('claude-haiku-5-5');
+
+        await run.finish();
+    });
+
+    it('scans transcripts under the CLAUDE_CONFIG_DIR Claude is given', async () => {
+        const run = await startWithMetadata({}, { CLAUDE_CONFIG_DIR: '/other/claude' });
+        expect(run.scannerOptions.env?.CLAUDE_CONFIG_DIR).toBe('/other/claude');
         await run.finish();
     });
 

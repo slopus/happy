@@ -6,9 +6,15 @@ import { createSessionScanner } from "./utils/sessionScanner";
 import { launchFailureMessage } from "./utils/launchFailureMessage";
 import { RawJSONLines } from "./types";
 
-/** The model a main-thread assistant turn ran on, from the local transcript. */
-function localTurnModel(message: RawJSONLines): string | undefined {
+/**
+ * The model a main-thread assistant turn of this launch ran on, from the local transcript.
+ * Entries written before [since] are replayed history (`--continue`, a reconnect): they
+ * still reach the chat, but name the model an earlier run used.
+ */
+function localTurnModel(message: RawJSONLines, since: number): string | undefined {
     if (message.type !== 'assistant' || message.isSidechain === true) return undefined;
+    const timestamp = (message as { timestamp?: unknown }).timestamp;
+    if (typeof timestamp !== 'string' || !(Date.parse(timestamp) >= since)) return undefined;
     const model = message.message?.model;
     return model && model !== '<synthetic>' ? model : undefined;
 }
@@ -24,17 +30,19 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
 
     let scannerMessageChain = Promise.resolve();
     let lastTurnModel: string | undefined;
+    const launchedAt = Date.now();
 
     // Create scanner
     const scanner = await createSessionScanner({
         sessionId: session.sessionId,
         workingDirectory: session.path,
+        env: { ...process.env, ...session.claudeEnvVars },
         onMessage: (message) => { 
             // Block SDK summary messages - we generate our own
             if (message.type !== 'summary') {
                 // The terminal can switch models (/model): publish what local turns run,
                 // so an unpicked app composer shows and sends that model, not a stale one.
-                const model = localTurnModel(message);
+                const model = localTurnModel(message, launchedAt);
                 if (model && model !== lastTurnModel) {
                     lastTurnModel = model;
                     session.client.updateMetadata((metadata) => isPublishedModel(metadata.currentModelCode, model)

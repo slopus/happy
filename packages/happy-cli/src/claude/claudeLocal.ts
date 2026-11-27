@@ -52,7 +52,7 @@ export async function claudeLocal(opts: {
 }) {
 
     // Ensure project directory exists
-    const projectDir = getProjectPath(opts.path);
+    const projectDir = getProjectPath(opts.path, { ...process.env, ...opts.claudeEnvVars });
     mkdirSync(projectDir, { recursive: true });
 
     // Check if claudeArgs contains --continue or --resume (user passed these flags)
