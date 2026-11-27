@@ -524,7 +524,10 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   as they go on screen and show it in the same transaction, so a screen
   opens straight onto the grain and the metal, never a flat colour, outline
   or fade. They hold Paper's frame 0 where `ShaderMotion` says: Reduce
-  Motion, Low Power Mode, thermal state serious or critical.
+  Motion, Low Power Mode, thermal state serious or critical. The H in the
+  cloud is solid black (#000) under the metal in light and dark, never a
+  hole showing the sky: the shader adds its coverage, cloud.svg's H grown
+  2 texels, and no colour (desktop's liquidMetalShader.ts, every client).
 - **Animated emoji never loop** (Kirill, for both apps). An animated emoji
   or sticker (the Lottie art: state scenes, the boba, voice's mic) plays
   once when it appears, holds its last frame, and plays once more on a

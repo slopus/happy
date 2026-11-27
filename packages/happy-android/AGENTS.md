@@ -292,7 +292,10 @@ win:
   `rememberShadersMove` says: animations removed, Battery Saver, a low-RAM
   phone, thermal status severe or worse. Before Android 13 `ShaderStills`
   draws that frame 0 once with OpenGL ES 2 from the same AGSL, and a screen's
-  first frame waits for it (`StartWarmup` starts Start's ahead).
+  first frame waits for it (`StartWarmup` starts Start's ahead). The H in
+  the cloud is solid black (#000) under the metal in light and dark, never a
+  hole showing the sky: the shader adds its coverage, cloud.svg's H grown 2
+  texels, and no colour (desktop's liquidMetalShader.ts, every client).
 - **Worktree tabs:** a Happy CLI chat in the project layout has its
   checkout's chats as tabs under the header (`ui/session/WorktreeTabStrip`).
   A tab, `+`, archiving the open tab and a resume all switch the chat in
