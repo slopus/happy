@@ -65,23 +65,25 @@ public enum HappyCloud {
                     refreshUrl: api + "/token", clientId: "happy", scope: "happy", resource: server + "/")
     }
 
-    /// Settings' Happy Cloud switch, also in the first screen's Get help:
-    /// whether the app offers Happy Cloud's ways in (Start's Use Happy
-    /// Cloud, the account menu's, its invite links). Kept on this phone for
-    /// every account; until it is changed, on in the preview app only.
-    /// Servers already on the phone keep working either way.
+    /// Settings' Happy Cloud switch: whether the app offers Happy Cloud's
+    /// ways in (Start's Use Happy Cloud, the account menu's, its invite
+    /// links). This phone's own, never an account's or a server's. An
+    /// override over the build's default (`isOfferedByDefault`), kept only
+    /// once the switch is turned, so a phone that never turns it follows
+    /// each build's default. Servers already on the phone keep working
+    /// either way.
     public static func isOffered(in variant: AppVariant, defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: offeredKey) as? Bool ?? (variant == .preview)
+        defaults.object(forKey: offeredKey) as? Bool ?? isOfferedByDefault(in: variant)
     }
 
-    /// Turns the switch on or off, and says so (`offeredChanged`).
+    /// Until the switch is turned: on in development and preview builds,
+    /// off in the App Store app.
+    public static func isOfferedByDefault(in variant: AppVariant) -> Bool { variant != .production }
+
+    /// The switch's own change: the one place the override is written.
     public static func setOffered(_ on: Bool, defaults: UserDefaults = .standard) {
         defaults.set(on, forKey: offeredKey)
-        NotificationCenter.default.post(name: offeredChanged, object: nil)
     }
-
-    /// Posted when the switch changes, for the screens showing its ways in.
-    public static let offeredChanged = Notification.Name("HappyCloudOfferedChanged")
 
     static let offeredKey = "happy-cloud"
 

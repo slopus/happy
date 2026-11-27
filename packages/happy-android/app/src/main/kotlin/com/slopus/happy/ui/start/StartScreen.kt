@@ -116,9 +116,7 @@ object StartSpec {
  * the other ways in are the self-hosted flow's, in the ⋮ of the next
  * screen ([InstallDesktopScreen]) and the scanner.
  *
- *   ? (top right)  Get help ([GetHelpAlert]), a 48 target 4 in; with
- *                  Settings' Happy Cloud switch ([cloudOffered]), as
- *                  Settings can't be reached from here
+ *   ? (top right)  Get help ([GetHelpAlert]), a 48 target 4 in
  *   logo           88 wide, centred on the ?'s row
  *   slides         [StartGallery], centred between that row and Start
  *   Start          centred across, as wide as its label (at least 280),
@@ -136,9 +134,6 @@ fun StartScreen(
     connecting: Boolean,
     onStart: () -> Unit,
     onCloud: (() -> Unit)? = null,
-    /** Settings' Happy Cloud switch, in Get help; null where the build has no Happy Cloud. */
-    cloudOffered: Boolean? = null,
-    onCloudOffered: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val dark = HappyTheme.colors.dark
@@ -193,7 +188,7 @@ fun StartScreen(
                 Spacer(Modifier.weight(1f))
                 var help by remember { mutableStateOf(false) }
                 StartControl(Ionicon.HelpCircleOutline, stringResource(R.string.onboarding_get_help), tint, { help = true }, Modifier.testTag(StartTags.HELP))
-                if (help) GetHelpAlert(onDismiss = { help = false }, cloud = cloudOffered, onCloud = onCloudOffered)
+                if (help) GetHelpAlert(onDismiss = { help = false })
             }
         }
     }

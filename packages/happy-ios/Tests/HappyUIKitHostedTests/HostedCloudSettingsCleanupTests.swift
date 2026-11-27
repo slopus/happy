@@ -169,9 +169,10 @@ final class HostedCloudSettingsCleanupTests: XCTestCase {
         }
     }
 
-    /// Settings' Happy Cloud switch, a card above Privacy: off in the App
-    /// Store app until turned on, on in the preview app; turned, it is
-    /// what every build offers from then on.
+    /// Settings' Happy Cloud switch, a card above Privacy: the build's
+    /// default (off in the App Store app, on in the preview app) with
+    /// nothing kept until it is turned; turned, it is what every build
+    /// offers from then on.
     func testHappyCloudSwitchIsThePhonesOwn() async throws {
         let defaults = UserDefaults.standard
         let kept = defaults.object(forKey: "happy-cloud")
@@ -183,8 +184,10 @@ final class HostedCloudSettingsCleanupTests: XCTestCase {
             let settings = SettingsViewController(context: context, computer: id)
             let navigation = try await host(settings)
             XCTAssertEqual(settings.shownRow(SettingsIndex.happyCloud.id)?.isOn, variant == .preview, "\(variant)")
+            XCTAssertNil(defaults.object(forKey: "happy-cloud"), "kept before the switch was turned")
             capture(settings, navigation, "settings-happy-cloud-\(variant)-default")
             settings.shownRow(SettingsIndex.happyCloud.id)?.toggled?(variant != .preview)
+            XCTAssertEqual(defaults.object(forKey: "happy-cloud") as? Bool, variant != .preview)
             XCTAssertEqual(HappyCloud.isOffered(in: variant), variant != .preview)
             XCTAssertEqual(settings.shownRow(SettingsIndex.happyCloud.id)?.isOn, variant != .preview)
             capture(settings, navigation, "settings-happy-cloud-\(variant)-turned")

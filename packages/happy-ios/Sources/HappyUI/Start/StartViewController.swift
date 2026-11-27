@@ -11,8 +11,7 @@ import UIKit
 /// wide as its label) opens `InstallDesktopViewController`, which says to
 /// get Happy for the computer and scans its code, and whose ⋯ has the other
 /// self-hosted ways in; Use Happy Cloud, a text action under Start where
-/// Happy Cloud is offered (Settings' switch, also in Get help here, as
-/// Settings can't be reached yet), opens Happy Cloud's welcome. There is no Create
+/// Happy Cloud is offered, opens Happy Cloud's welcome. There is no Create
 /// account: a computer's code makes one. `StartLayout` places it all.
 ///
 /// The palette is Android's: deep blue and violet over near-black in dark
@@ -93,10 +92,9 @@ final class StartViewController: UIViewController {
         help.accessibilityIdentifier = "start-help"
         help.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            Alerts.help(on: self, cloud: context.variant)
+            Alerts.help(on: self)
         }, for: .touchUpInside)
         view.addSubview(help)
-        NotificationCenter.default.addObserver(self, selector: #selector(offeredChanged), name: HappyCloud.offeredChanged, object: nil)
         updateLogo()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.updateLogo() }
     }
@@ -158,14 +156,6 @@ final class StartViewController: UIViewController {
     /// The light logotype on the dark gradient, the dark one on the light.
     private func updateLogo() {
         logo.image = UIImage.happy(traitCollection.userInterfaceStyle == .dark ? "logotype-light" : "logotype-dark")
-    }
-
-    /// Settings' Happy Cloud switch, turned from Get help: Use Happy Cloud
-    /// comes or goes, and Start moves with it.
-    @objc private func offeredChanged() {
-        cloud.isHidden = !offersCloud
-        view.setNeedsLayout()
-        if offersCloud, view.window != nil { LiquidMetalView.prepare() }
     }
 
     /// Getting Happy for the computer, then its code.

@@ -24,9 +24,7 @@ extension Strings {
             return "Too many tries. Try again in \(minutes) min."
         }
         static let signOut = "Sign Out of Happy Cloud"
-        /// Settings' Happy Cloud switch, and the first screen's Get help.
-        static let turnOn = "Turn On Happy Cloud"
-        static let turnOff = "Turn Off Happy Cloud"
+        /// Settings' Happy Cloud switch.
         static let switchFooter = "Offers Happy Cloud on the first screen and in the account menu, and opens its invite links in the app. Servers already on this phone keep working either way."
         static let unreachable = "Happy Cloud couldn’t be reached. Check your connection and try again."
 
