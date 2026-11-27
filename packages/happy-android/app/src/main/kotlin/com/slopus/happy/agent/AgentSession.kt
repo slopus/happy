@@ -629,6 +629,15 @@ class AgentSession internal constructor(
     /** Archives a task, bot (`kind`) or subtask (`agent`): its row goes at once, with what nests under it, and comes back only if the computer refuses. */
     suspend fun archive(kind: String, id: String): Intent = intents.enqueue(Intent.ARCHIVE, id, of(kind))
 
+    /**
+     * Moves a project's chat [agentId] after [afterId] in [owner]'s list, or
+     * first when it is null (desktop's tab strip): the one order every
+     * device shows. Its row stands there at once and goes back only if the
+     * computer refuses.
+     */
+    suspend fun reorder(agentId: String, afterId: String?, owner: String): Intent =
+        intents.enqueue(Intent.REORDER, agentId, buildJsonObject { put("kind", "agent"); put("owner", owner); put("afterId", afterId) })
+
     /** Leaves a task or Surface (`kind`): out of this person's list at once. */
     suspend fun leave(kind: String, id: String): Intent = intents.enqueue(Intent.LEAVE, id, of(kind))
 
@@ -687,6 +696,14 @@ class AgentSession internal constructor(
                         "surface" -> renameAt("/v0/surfaces/$id", "surface", title, intent.id)
                         else -> renameAt("/v0/tasks/$id", "task", title, intent.id)
                     }
+                }
+                Intent.REORDER -> {
+                    // Each move names the chat it goes after and takes the moves made before it as
+                    // done: the outbox sends none before them ([Intent.waitsFor]).
+                    val afterId = (intent.value["afterId"] as? JsonPrimitive)?.contentOrNull
+                    val body = client.decode<JsonObject>("POST", "/v0/agents/$id/reorder", buildJsonObject { put("afterId", afterId); put("mutationId", intent.id) })
+                    // Where the computer put it, before the owner's event lists it again.
+                    (body["agent"] as? JsonObject)?.let { agent -> catalogLock.withLock { catalogState.update { it.withMoved(agent) } } }
                 }
                 else -> throw IntentRefusal("")
             }
@@ -852,7 +869,7 @@ class AgentSession internal constructor(
     init {
         scope.coroutineContext[Job]!!.invokeOnCompletion { stopHealth(closing = true) }
         scope.coroutineContext[Job]?.invokeOnCompletion { chatStarting.value = false }
-        intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME, SURFACE_JOIN), ::deliver)
+        intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME, Intent.REORDER, SURFACE_JOIN), ::deliver)
         feedLibrary.start()
         // Disk and journal here; startSecondary owns the once-per-connect catalog read.
         artifacts.start(events, verified = flowOf(false))

@@ -188,6 +188,29 @@ data class AgentCatalog(
         else -> this
     }
 
+    /**
+     * A conversation the computer moved in its owner's list, as it answered
+     * ([agent], with its new `orderKey`): kept, and in its owner's series at
+     * that key until the owner's own update, which lists the series again,
+     * comes (API.md: a reorder advances the owner).
+     */
+    fun withMoved(agent: JsonObject): AgentCatalog {
+        val id = agent.string("id") ?: return this
+        val index = HashMap(agents)
+        putAgent(agent, index)
+        val owner = agent.string("workspaceId") ?: return copy(agents = index)
+        fun placed(resource: JsonObject): JsonObject {
+            val series = (resource["agents"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+            if (series.none { it.string("id") == id }) return resource
+            return JsonObject(resource + ("agents" to JsonArray(inOrder(series.filter { it.string("id") != id }, agent))))
+        }
+        return copy(
+            projects = projects[owner]?.let { projects + (owner to placed(it)) } ?: projects,
+            workspaces = workspaces[owner]?.let { workspaces + (owner to placed(it)) } ?: workspaces,
+            agents = index,
+        )
+    }
+
     /** A task or bot ([kind]) renamed here and taken: it wears [name] until the computer's event brings its own copy. */
     fun withName(kind: String, id: String, name: String): AgentCatalog {
         fun renamed(map: Map<String, JsonObject>) = map[id]?.let { map + (id to JsonObject(it + ("name" to JsonPrimitive(name)))) }
@@ -334,6 +357,17 @@ data class AgentCatalog(
             val id = agent.string("id") ?: return
             (agent["subtasks"] as? JsonArray)?.forEach { (it as? JsonObject)?.let { child -> putAgent(child, index) } }
             if (force || newer(agent, index[id])) index[id] = agent
+        }
+
+        /**
+         * [agent] in an owner's ordered [series] before the first conversation
+         * whose `orderKey` sorts after its own, else last; fractional keys
+         * compare as text, as the agent orders them.
+         */
+        internal fun inOrder(series: List<JsonObject>, agent: JsonObject): List<JsonObject> {
+            val key = agent.string("orderKey") ?: return series + agent
+            val at = series.indexOfFirst { listed -> listed.string("orderKey")?.let { it > key } == true }
+            return if (at < 0) series + agent else series.subList(0, at) + agent + series.subList(at, series.size)
         }
 
         /** Whether [candidate] is at least as new as [current] (UUIDv7 versions compare as text). */

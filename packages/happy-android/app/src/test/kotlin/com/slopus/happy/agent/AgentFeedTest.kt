@@ -84,6 +84,34 @@ class AgentFeedTest {
         assertEquals(listOf("section-places", "artifacts", "todos", "section-bots"), places(false))
     }
 
+    /**
+     * A chat moved here stands where it was put until the computer has moved
+     * it, replayed over its list in the order the moves were made; the
+     * computer's answer then puts it at its new key in its owner's series,
+     * before the owner's own update lists the series again.
+     */
+    @Test
+    fun aChatMovedHereStandsWhereItWasPutAndTheComputersAnswerKeepsItThere() {
+        val kept = catalog(Wire.bootstrap(projects = listOf(Wire.project("p1", "rig", listOf(
+            Wire.agent("a", workspaceId = "p1", title = "A", orderKey = "1"),
+            Wire.agent("b", workspaceId = "p1", title = "B", orderKey = "2"),
+            Wire.agent("c", workspaceId = "p1", title = "C", orderKey = "3"),
+        )))))
+        fun order(moves: List<IntentOverlay.Move> = emptyList(), catalog: AgentCatalog = kept) =
+            AgentFeed.derive(catalog, intents = IntentOverlay(moves = moves)).conversations.map { it.agentId }
+        assertEquals(listOf("a", "b", "c"), order())
+        // Replayed in turn: c first, then a after b.
+        assertEquals(listOf("c", "b", "a"), order(listOf(IntentOverlay.Move("c", null, "p1"), IntentOverlay.Move("a", "b", "p1"))))
+        // The same move twice changes nothing more.
+        assertEquals(listOf("c", "a", "b"), order(listOf(IntentOverlay.Move("c", null, "p1"), IntentOverlay.Move("c", null, "p1"))))
+        // Another list's move, and one whose anchor has gone, leave this list as it is.
+        assertEquals(listOf("a", "b", "c"), order(listOf(IntentOverlay.Move("c", null, "w9"), IntentOverlay.Move("a", "gone", "p1"))))
+        // The computer's answer: c at its new key, first in its project before the project's own update.
+        val moved = kept.withMoved(Wire.agent("c", workspaceId = "p1", title = "C", version = "02", orderKey = "0"))
+        assertEquals(listOf("c", "a", "b"), (moved.projects.getValue("p1")["agents"] as JsonArray).map { (it as JsonObject).string("id") })
+        assertEquals(listOf("c", "a", "b"), order(catalog = moved))
+    }
+
     @Test
     fun aServerWithPipelinesListsThemUnderPlugins() {
         val places = { plugins: Boolean, pipelines: Boolean -> AgentFeed.derive(catalog(sample), plugins = plugins, pipelines = pipelines).rows.map { it.key }.take(5) }

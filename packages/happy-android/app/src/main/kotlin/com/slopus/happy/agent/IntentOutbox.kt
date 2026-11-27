@@ -29,8 +29,8 @@ import java.io.File
  * a task archived, a name given (iOS's `Intent`, docs/offline-first.md).
  * Applied on this phone at once, kept with the connection until answered.
  *
- * [kind] is an open set: the agent home's are [READ], [ARCHIVE], [LEAVE]
- * and [RENAME], and another library adds its own (`todo.create`, …) with a
+ * [kind] is an open set: the agent home's are [READ], [ARCHIVE], [LEAVE],
+ * [RENAME] and [REORDER], and another library adds its own (`todo.create`, …) with a
  * deliverer for them ([IntentOutbox.handle]). [id] goes as the route's
  * `mutationId` where it takes one. [kind]'s slot ([slotOf]) and [target]
  * make the intent's [slot]: a later one replaces one still waiting there.
@@ -49,7 +49,20 @@ data class Intent(
     /** Not sent again before this (ms). */
     val nextAttemptAt: Long = 0,
 ) {
-    val slot: String get() = "${slotOf(kind)}|$target"
+    /**
+     * Moves never replace one another (iOS's `IntentOutbox`): each is a step
+     * taken from the list the moves before it made, and a later move of
+     * another chat may have been placed against this one's.
+     */
+    val slot: String get() = if (kind == REORDER) "$kind|$target|$id" else "${slotOf(kind)}|$target"
+
+    /**
+     * Whether this goes only after [older], still kept: a move after the
+     * moves made before it in its list, each placed against the ones before
+     * it. [IntentOutbox] holds it back meanwhile, no failure counted.
+     */
+    fun waitsFor(older: Intent): Boolean =
+        kind == REORDER && older.kind == REORDER && older.createdAt < createdAt && older.value["owner"] == value["owner"]
 
     /** What [value] says it is about: `task`, `bot`, `agent` (a subtask) or `surface`. */
     val of: String? get() = (value["kind"] as? JsonPrimitive)?.contentOrNull
@@ -61,6 +74,13 @@ data class Intent(
         const val LEAVE = "leave"
         const val DELETE = "delete"
         const val RENAME = "rename"
+        /**
+         * A project's chat moved in its list (desktop's tab strip): [value]
+         * names the `owner` (its project's or worktree's workspace) and the
+         * chat it goes after (`afterId`, null for first). Each move keeps a
+         * slot of its own ([slot]).
+         */
+        const val REORDER = "reorder"
 
         /** Kinds that set one thing share a slot: an unarchive replaces an archive still waiting. */
         fun slotOf(kind: String): String = when (kind) {
@@ -122,7 +142,8 @@ class FileIntentStorage(private val file: File) : IntentStorage {
  * they show ([IntentOverlay]), and sent oldest first while the connection
  * is up ([setOnline]), each by the deliverer [handle]d for its kind. A
  * transient failure waits 1, 2, 4 … 30 s ([backoff]) and lets the rest go
- * meanwhile; an [IntentRefusal] drops the intent and says so on
+ * meanwhile, save those that go only after it ([Intent.waitsFor]), which wait
+ * with it; an [IntentRefusal] drops the intent and says so on
  * [rejections]. An intent whose kind nothing handles yet waits.
  */
 class IntentOutbox(
@@ -281,7 +302,12 @@ class IntentOutbox(
                 // Going offline must stop new claims before that callback runs.
                 if (!online.value) return@withLock null
                 val handled = deliverers.value
-                val due = loaded().filter { it.kind in handled && synchronized(inFlight) { it.id !in inFlight } }
+                val kept = loaded()
+                // One that goes only after an older one still kept waits for it ([Intent.waitsFor]):
+                // that one's end wakes this runner, so it sets no time of its own.
+                val due = kept.filter { candidate ->
+                    candidate.kind in handled && synchronized(inFlight) { candidate.id !in inFlight } && kept.none(candidate::waitsFor)
+                }
                 val intent = due.firstOrNull { it.nextAttemptAt <= now() }
                 if (intent == null) {
                     at = due.minOfOrNull { it.nextAttemptAt }
@@ -347,7 +373,8 @@ class IntentOutbox(
  * The connection's pending intents as home lays them over what the
  * computer last said (iOS's `IntentOverlay`): a chat read here has no dot,
  * a task, bot, subtask or Surface archived or left is gone with what nests
- * under it, a task or bot renamed wears its new name.
+ * under it, a task or bot renamed wears its new name, a chat moved stands
+ * where it was put.
  */
 data class IntentOverlay(
     /** Chats (agent IDs) read here that the computer may still call unread. */
@@ -356,19 +383,28 @@ data class IntentOverlay(
     val removed: Set<String> = emptySet(),
     /** Names given here, by task or bot ID. */
     val titles: Map<String, String> = emptyMap(),
+    /** Chats moved here, in the order they were moved, before the computer has moved them. */
+    val moves: List<Move> = emptyList(),
 ) {
+    /** [agentId] after [afterId], or first when it is null, in [owner]'s list of chats. */
+    data class Move(val agentId: String, val afterId: String?, val owner: String)
+
     companion object {
         fun of(intents: List<Intent>): IntentOverlay {
             if (intents.isEmpty()) return IntentOverlay()
             val read = HashSet<String>()
             val removed = HashSet<String>()
             val titles = HashMap<String, String>()
+            val moves = ArrayList<Move>()
             for (intent in intents) when (intent.kind) {
                 Intent.READ -> read += intent.target
                 Intent.ARCHIVE, Intent.LEAVE, Intent.DELETE -> removed += intent.target
                 Intent.RENAME -> (intent.value["title"] as? JsonPrimitive)?.contentOrNull?.let { titles[intent.target] = it }
+                Intent.REORDER -> (intent.value["owner"] as? JsonPrimitive)?.contentOrNull?.let { owner ->
+                    moves += Move(intent.target, (intent.value["afterId"] as? JsonPrimitive)?.contentOrNull, owner)
+                }
             }
-            return IntentOverlay(read, removed, titles)
+            return IntentOverlay(read, removed, titles, moves)
         }
     }
 }
