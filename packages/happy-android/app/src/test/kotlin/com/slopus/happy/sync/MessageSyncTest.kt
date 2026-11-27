@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
+import com.slopus.happy.data.StoredJson
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.net.HttpStatusException
 import com.slopus.happy.testing.FakeHappyServer
@@ -102,6 +103,22 @@ class MessageSyncTest {
         assertTrue(sync.loadOlder("s"))
         assertEquals(1L, store.messageHistory("s")!!.oldestSeq)
         assertFalse(store.messageHistory("s")!!.hasOlder)
+    }
+
+    /** A relay tool output of megabytes is stored cut to [StoredJson.MAX_BYTES], and the chat reads it. */
+    @Test
+    fun aHugeMessageIsStoredCutAndTheChatReadsIt() = runBlocking {
+        server.addSession("s", updatedAt = 100)
+        server.appendMessage("s", buildJsonObject { put("n", 1) })
+        server.appendMessage("s", buildJsonObject { put("output", "x".repeat(3 * 1024 * 1024)) })
+        store.upsertSessions(listOfNotNull(RecordDecoder(server.encryption).session(server.sessions.single())))
+        sync.catchUp("s")
+
+        val messages = withTimeout(5_000) { sync.messages("s").first { it.size == 2 } }
+        assertEquals("""{"n":1}""", messages[0].contentJson)
+        val cut = messages[1].contentJson!!
+        assertTrue(cut.encodeToByteArray().size <= StoredJson.MAX_BYTES)
+        assertTrue(cut.endsWith("…\"}"))
     }
 
     @Test
