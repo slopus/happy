@@ -72,10 +72,11 @@ export class PermissionHandler {
         // Only a concrete mode is pushed: setPermissionMode has no way to say
         // "go back to inheriting", so switching to Default leaves the running
         // query where it is and takes effect on the next one.
-        if (mode !== undefined
+        const mappedMode = mapToClaudeMode(mode);
+        if (mappedMode !== undefined
             && this.setPermissionModeCallback
-            && mapToClaudeMode(previousMode) !== mapToClaudeMode(mode)) {
-            this.setPermissionModeCallback(mapToClaudeMode(mode)).catch((err) => {
+            && mapToClaudeMode(previousMode) !== mappedMode) {
+            this.setPermissionModeCallback(mappedMode).catch((err) => {
                 logger.debug('Failed to sync permission mode via SDK:', err);
             });
         }
