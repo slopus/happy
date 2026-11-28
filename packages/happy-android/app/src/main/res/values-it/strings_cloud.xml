@@ -70,6 +70,9 @@
     <string name="cloud_email_resend_in">Invia di nuovo tra %1$s</string>
     <string name="cloud_email_resent">Ti abbiamo inviato un nuovo codice.</string>
     <string name="cloud_email_change">Cambia email</string>
+    <string name="cloud_email_paste">Incolla</string>
+    <string name="cloud_email_paste_none">Negli appunti non c\'è un codice di 6 cifre.</string>
+    <string name="cloud_email_open_mail">Apri l\'app di posta</string>
     <string name="cloud_email_invalid">Non sembra un indirizzo email.</string>
     <string name="cloud_email_code_wrong">Il codice è sbagliato o scaduto.</string>
     <string name="cloud_email_unavailable">L’accesso via email non funziona al momento. Riprova tra poco.</string>

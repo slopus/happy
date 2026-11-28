@@ -34,6 +34,11 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="*/*" />
         </intent>
+        <!-- Whether the phone has a mail app, for the email code step's "Open email app" (ui/connection/CloudConnect.kt). -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.APP_EMAIL" />
+        </intent>
     </queries>
 
     <application

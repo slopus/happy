@@ -1438,8 +1438,16 @@ change its wire behaviour on Android alone.
   /v2/auth/email/verify`, checked as its sixth digit comes; the field
   carries the one-time-code autofill hint), for the same session as the
   password sign-in below (`CloudAccount.startEmail`/`verifyEmail`,
-  `EmailSignIn`). Resend waits 60 s after each code and Change email goes
-  back. `invalid_email`, `invalid_code` and `unavailable` read in our words;
+  `EmailSignIn`). For a code read in Gmail or another mail app, the field
+  has Paste inside it at its end: it takes the first run of exactly six
+  digits on the clipboard (`CloudEmail.pastedCode`) and checks it as typing
+  does, or says there is no code there. The clipboard is read on that press
+  and never before (Android 12 and later tell the person at each read).
+  "Open email app" beside Change email opens the mail app in its own task
+  (`mailAppIntent`: `ACTION_MAIN` with `CATEGORY_APP_EMAIL`, which the
+  manifest's `<queries>` lets the app see), so the step is as it was on the
+  way back; it is left out on a phone with none. Resend waits 60 s after
+  each code and Change email goes back. `invalid_email`, `invalid_code` and `unavailable` read in our words;
   `unsupported_provider` and `429 rate_limited` show the service's own
   `error`, and a 429 holds Send code, Verify and Resend for its
   `Retry-After` (else `retryAfter`, else 60 s), counting down in m:ss. The

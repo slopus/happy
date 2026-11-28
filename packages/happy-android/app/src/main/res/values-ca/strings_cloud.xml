@@ -70,6 +70,9 @@
     <string name="cloud_email_resend_in">Torna a enviar d’aquí a %1$s</string>
     <string name="cloud_email_resent">T’hem enviat un codi nou.</string>
     <string name="cloud_email_change">Canvia el correu</string>
+    <string name="cloud_email_paste">Enganxa</string>
+    <string name="cloud_email_paste_none">No hi ha cap codi de 6 xifres al porta-retalls.</string>
+    <string name="cloud_email_open_mail">Obre l\'app de correu</string>
     <string name="cloud_email_invalid">No sembla una adreça de correu.</string>
     <string name="cloud_email_code_wrong">El codi és incorrecte o ha caducat.</string>
     <string name="cloud_email_unavailable">L’inici de sessió per correu no funciona ara mateix. Torna-ho a provar d’aquí a una estona.</string>

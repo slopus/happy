@@ -70,6 +70,9 @@
     <string name="cloud_email_resend_in">Reenviar em %1$s</string>
     <string name="cloud_email_resent">Enviamos um novo código.</string>
     <string name="cloud_email_change">Alterar e-mail</string>
+    <string name="cloud_email_paste">Colar</string>
+    <string name="cloud_email_paste_none">Não há um código de 6 dígitos na área de transferência.</string>
+    <string name="cloud_email_open_mail">Abrir app de e-mail</string>
     <string name="cloud_email_invalid">Isso não parece um endereço de e-mail.</string>
     <string name="cloud_email_code_wrong">Esse código está errado ou expirou.</string>
     <string name="cloud_email_unavailable">O login por e-mail não está funcionando agora. Tente novamente em instantes.</string>

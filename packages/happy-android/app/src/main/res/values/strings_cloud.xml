@@ -72,6 +72,9 @@
     <string name="cloud_email_resend_in">Resend in %1$s</string>
     <string name="cloud_email_resent">We sent you a new code.</string>
     <string name="cloud_email_change">Change email</string>
+    <string name="cloud_email_paste">Paste</string>
+    <string name="cloud_email_paste_none">There’s no 6-digit code on the clipboard.</string>
+    <string name="cloud_email_open_mail">Open email app</string>
     <string name="cloud_email_invalid">That doesn’t look like an email address.</string>
     <string name="cloud_email_code_wrong">That code is wrong or has expired.</string>
     <string name="cloud_email_unavailable">Email sign-in isn’t working right now. Try again in a moment.</string>

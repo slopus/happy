@@ -70,6 +70,9 @@
     <string name="cloud_email_resend_in">%1$s 后重新发送</string>
     <string name="cloud_email_resent">已向你发送新的验证码。</string>
     <string name="cloud_email_change">更换邮箱</string>
+    <string name="cloud_email_paste">粘贴</string>
+    <string name="cloud_email_paste_none">剪贴板中没有 6 位验证码。</string>
+    <string name="cloud_email_open_mail">打开邮件应用</string>
     <string name="cloud_email_invalid">这看起来不像邮箱地址。</string>
     <string name="cloud_email_code_wrong">验证码错误或已过期。</string>
     <string name="cloud_email_unavailable">邮箱登录暂时无法使用，请稍后再试。</string>

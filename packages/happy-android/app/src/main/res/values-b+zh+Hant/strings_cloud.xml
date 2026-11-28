@@ -70,6 +70,9 @@
     <string name="cloud_email_resend_in">%1$s 後重新傳送</string>
     <string name="cloud_email_resent">已寄送新的驗證碼給你。</string>
     <string name="cloud_email_change">更換電子郵件</string>
+    <string name="cloud_email_paste">貼上</string>
+    <string name="cloud_email_paste_none">剪貼簿中沒有 6 位數驗證碼。</string>
+    <string name="cloud_email_open_mail">開啟郵件 App</string>
     <string name="cloud_email_invalid">這看起來不像電子郵件地址。</string>
     <string name="cloud_email_code_wrong">驗證碼錯誤或已過期。</string>
     <string name="cloud_email_unavailable">電子郵件登入暫時無法使用，請稍後再試。</string>

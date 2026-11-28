@@ -70,6 +70,9 @@
     <string name="cloud_email_resend_in">%1$s 後に再送信</string>
     <string name="cloud_email_resent">新しいコードを送信しました。</string>
     <string name="cloud_email_change">メールアドレスを変更</string>
+    <string name="cloud_email_paste">貼り付け</string>
+    <string name="cloud_email_paste_none">クリップボードに6桁のコードがありません。</string>
+    <string name="cloud_email_open_mail">メールアプリを開く</string>
     <string name="cloud_email_invalid">メールアドレスの形式ではないようです。</string>
     <string name="cloud_email_code_wrong">コードが間違っているか、有効期限が切れています。</string>
     <string name="cloud_email_unavailable">現在メールでのサインインを利用できません。しばらくしてからお試しください。</string>

@@ -523,7 +523,9 @@ private fun CloudEmailStart(account: CloudAccount, nav: NavHostController) {
 /**
  * Continue with email's code step, for [email]: the code is checked as its
  * sixth digit comes, and the account is signed in as with a password, back
- * to Happy Cloud's servers; a wrong code is cleared. Resend waits a minute after each code, and a
+ * to Happy Cloud's servers; a wrong code is cleared. Paste takes the code from the clipboard
+ * ([CloudEmail.pastedCode]) and checks it the same way; "Open email app" opens the mail app
+ * ([mailAppIntent]) and is left out where there is none. Resend waits a minute after each code, and a
  * 429 holds Verify and Resend for its `Retry-After`.
  */
 @Composable
@@ -537,9 +539,14 @@ private fun CloudEmailCode(account: CloudAccount, nav: NavHostController, email:
     val wait = secondsUntil(waitUntil)
     val resendWait = secondsUntil(resendUntil)
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    // Looked for once: the action is there or not for as long as the step is up.
+    val mailApp = remember(context) { mailAppIntent(context) }
+    var pasteMissed by remember { mutableStateOf(false) }
     fun ask(call: suspend () -> EmailSignIn) {
         busy = true
         outcome = null
+        pasteMissed = false
         scope.launch {
             try {
                 when (val answer = call()) {
@@ -572,6 +579,7 @@ private fun CloudEmailCode(account: CloudAccount, nav: NavHostController, email:
             if (busy) return@onCode
             val complete = typed.length == CloudEmail.CODE_LENGTH && code.length != CloudEmail.CODE_LENGTH
             code = typed
+            pasteMissed = false
             if (typed.length < CloudEmail.CODE_LENGTH) outcome = null
             // The sixth digit, typed or filled in, checks it: nothing more to press.
             if (complete) verify()
@@ -580,8 +588,49 @@ private fun CloudEmailCode(account: CloudAccount, nav: NavHostController, email:
         onResend = { ask { account.startEmail(email) } },
         onChangeEmail = { nav.popBackStack() },
         onBack = { nav.popBackStack() },
+        // The clipboard is read on this press and at no other time; a code found there replaces what is typed and is checked as a sixth digit is.
+        onPaste = onPaste@{
+            if (busy) return@onPaste
+            val pasted = CloudEmail.pastedCode(clipboardText(context))
+            pasteMissed = pasted == null
+            if (pasted == null) return@onPaste
+            code = pasted
+            outcome = null
+            verify()
+        },
+        pasteMissed = pasteMissed,
+        // Its own task: this step, its code and its countdowns are as they were on the way back.
+        onOpenMail = mailApp?.let { intent ->
+            {
+                try {
+                    context.startActivity(intent)
+                } catch (_: android.content.ActivityNotFoundException) {
+                    // Uninstalled since the step opened: nothing to open.
+                }
+            }
+        },
     )
 }
+
+/**
+ * The clipboard's text, for the code step's Paste. Only ever called from a
+ * press: Android 12 and later tell the person each time an app reads it.
+ */
+internal fun clipboardText(context: android.content.Context): CharSequence? = runCatching {
+    context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)
+}.getOrNull()
+
+/**
+ * The person's mail app (`ACTION_MAIN` with `CATEGORY_APP_EMAIL`, which the
+ * manifest's `<queries>` lets the app see), opened in a task of its own so
+ * the code step stays as it was underneath. Null when nothing on the phone
+ * is one.
+ */
+internal fun mailAppIntent(context: android.content.Context): android.content.Intent? =
+    android.content.Intent(android.content.Intent.ACTION_MAIN)
+        .addCategory(android.content.Intent.CATEGORY_APP_EMAIL)
+        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        .takeIf { it.resolveActivity(context.packageManager) != null }
 
 /** Whole seconds left until [until] (elapsed realtime), counting down each second; 0 once it is past. */
 @Composable
