@@ -10,6 +10,7 @@ import com.android.billingclient.api.BillingResult
 import com.android.billingclient.api.PendingPurchasesParams
 import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
+import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import kotlinx.coroutines.channels.BufferOverflow
@@ -76,12 +77,19 @@ interface SubscriptionStore {
  * for voice's subscription. Its own client, beside the SDK's; it asks
  * nothing of RevenueCat itself.
  */
-class PlayBilling(context: Context) : SubscriptionStore {
+class PlayBilling internal constructor(newClient: (PurchasesUpdatedListener) -> BillingClient) : SubscriptionStore {
+    constructor(context: Context) : this({ listener ->
+        BillingClient.newBuilder(context.applicationContext)
+            .setListener(listener)
+            .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
+            .build()
+    })
+
     private val mutableUpdates = MutableSharedFlow<StoreUpdate>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val updates: SharedFlow<StoreUpdate> = mutableUpdates
 
-    private val client = BillingClient.newBuilder(context.applicationContext)
-        .setListener { result, purchases ->
+    private val client = newClient(
+        PurchasesUpdatedListener { result, purchases ->
             mutableUpdates.tryEmit(
                 when (result.responseCode) {
                     BillingClient.BillingResponseCode.OK -> StoreUpdate.Purchases(purchases.orEmpty().map(::purchase))
@@ -89,9 +97,8 @@ class PlayBilling(context: Context) : SubscriptionStore {
                     else -> StoreUpdate.Failed(result.responseCode)
                 },
             )
-        }
-        .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
-        .build()
+        },
+    )
     private val connecting = Mutex()
 
     /** What [monthly] found, for [buy]: Play wants its own details and the base plan's offer token. */
