@@ -84,6 +84,30 @@ export interface HandlerResult {
 }
 
 /**
+ * Schedule a deferred `idle` status emission after the standard idle timeout.
+ *
+ * We don't emit `idle` synchronously when a tool completes because the agent
+ * almost always streams follow-up text right after a tool result. Emitting
+ * `idle` immediately makes downstream UIs flicker (idle → busy → idle) — or
+ * in some clients, get stuck on a stale "idle" view while later chunks
+ * arrive. This mirrors the deferral that `handleAgentMessageChunk` already
+ * does after text chunks, so both event types converge on the same idle
+ * settling rule.
+ */
+export function scheduleDeferredIdle(ctx: HandlerContext, settledLogMessage: string): void {
+  ctx.clearIdleTimeout();
+  const idleTimeoutMs = ctx.transport.getIdleTimeout?.() ?? DEFAULT_IDLE_TIMEOUT_MS;
+  ctx.setIdleTimeout(() => {
+    if (ctx.activeToolCalls.size === 0) {
+      logger.debug(settledLogMessage);
+      ctx.emitIdleStatus();
+    } else {
+      logger.debug(`[AcpBackend] Deferred idle skipped — ${ctx.activeToolCalls.size} active tool calls`);
+    }
+  }, idleTimeoutMs);
+}
+
+/**
  * Parse args from update content (can be array or object)
  */
 export function parseArgsFromContent(content: unknown): Record<string, unknown> {
@@ -345,11 +369,11 @@ export function completeToolCall(
     callId: toolCallId,
   });
 
-  // If no more active tool calls, emit idle
+  // If no more active tool calls, defer the idle status so a follow-up
+  // text chunk has a chance to re-arm the idle timer first. See
+  // `scheduleDeferredIdle` for the full rationale.
   if (ctx.activeToolCalls.size === 0) {
-    ctx.clearIdleTimeout();
-    logger.debug('[AcpBackend] All tool calls completed, emitting idle status');
-    ctx.emitIdleStatus();
+    scheduleDeferredIdle(ctx, '[AcpBackend] All tool calls completed (deferred), emitting idle status');
   }
 }
 
@@ -423,11 +447,10 @@ export function failToolCall(
     callId: toolCallId,
   });
 
-  // If no more active tool calls, emit idle
+  // If no more active tool calls, defer the idle status so a follow-up
+  // text chunk has a chance to re-arm the idle timer first.
   if (ctx.activeToolCalls.size === 0) {
-    ctx.clearIdleTimeout();
-    logger.debug('[AcpBackend] All tool calls completed/failed, emitting idle status');
-    ctx.emitIdleStatus();
+    scheduleDeferredIdle(ctx, '[AcpBackend] All tool calls completed/failed (deferred), emitting idle status');
   }
 }
 
