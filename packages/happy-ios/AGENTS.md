@@ -828,11 +828,12 @@ Shared seams, changed only through the coordinator:
   through `push(_ route:context:)`. Each workstream replaces only its own
   placeholders in `Screens.make`;
 - the iPad shell ([docs/IPAD.md](docs/IPAD.md)): the window's root is
-  `ShellViewController`. On an iPhone it holds `AppCoordinator`'s stack
-  alone; on an iPad a `UISplitViewController` with home in the sidebar and
-  everything it opens in the main panel, collapsing to that one stack
-  below 768 or in a compact window. It is the delegate of every stack in
-  it, so nothing else sets `navigation.delegate`. AppCoordinator reads and
+  `ShellViewController`, a `UISplitViewController` with home in the
+  sidebar and everything it opens in the main panel on any device,
+  collapsing to `AppCoordinator`'s one stack below 768 or in a window
+  compact either way (every iPhone but a Duo open in landscape). It is
+  the delegate of every stack in it, so nothing else sets
+  `navigation.delegate`. AppCoordinator reads and
   sets the window's navigation as one stack (`shell.stack`, `setStack`).
   Home never pushes in the sidebar: its pushes become the main panel's
   root;

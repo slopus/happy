@@ -1,17 +1,20 @@
 # iPad
 
-On an iPad wide enough for it, the window is UIKit's own split view: the
+In a window wide enough for it, the window is UIKit's own split view: the
 account's home in the sidebar, everything it opens in the main panel beside
 it. Narrower, it is the phone app: one stack, home at its root. The window
-switches between the two as it is resized, and the same screens move
-between them.
+switches between the two as it is resized, folded or opened, and the same
+screens move between them. Which one shows is the window's width and size
+classes, never the device: an iPad full screen and an iPhone Duo open in
+landscape split; an iPhone, a folded Duo and a thin iPad window don't.
 
 The shell is `ShellViewController` (`Sources/HappyUI/Tablet`). The pure
 rules (when to split, where the main panel sits, how the stack is
 rewritten) are `SplitRule`, `MainPanelLayout` and `SplitStack` in
 `Sources/HappyLayout/Tablet/SplitRules.swift`, with exact tests in
 `Tests/HappyLayoutTests/SplitRulesTests.swift`. The hosted tests
-(`HostedSplitShellTests`) drive the real `AppCoordinator` window on an iPad.
+(`HostedSplitShellTests`) drive the real `AppCoordinator` window wherever
+it splits: an iPad, or an iPhone Duo open in landscape.
 
 ## The split view
 
@@ -101,12 +104,34 @@ rectangle, as on a phone, its bar's title centred over what is visible.
 When the sidebar hides, the safe area goes and the main panel takes the
 whole window, in the split's own animation.
 
+Only the sidebar's side is taken out (the left, or the right in a
+right-to-left language). The other side's safe area is the screen's, and
+stays with the screens inside: an iPhone Duo's status bar runs up the
+right edge in an 84-point column (iOS 27.1's vertical bar), and the bar's
+own buttons move into that column. Held short of it, the main panel left
+an empty strip with the buttons floating in it; given it, the chat's bar
+puts its buttons there and the transcript centres in what is clear.
+
 ### The sidebar's width
 
 `SplitRule.sidebarWidth`: 30% of the window, as happy-app's drawer, held to
 340–360. The system's own 320 cut the account's pill to "Connectin…" beside
 its two buttons; 340 is the least that keeps it whole. An 11-inch iPad
 upright leaves the main panel 480, more than a phone.
+
+**Folded partway, the sidebar meets the crease.** An iPhone Duo open in
+landscape and folded partway reports where its display divides: iOS
+27.1's division region (`UIView.reservedRegions(kind: .division)`), a band
+round the crease that is active only while the hinge is partly open. The
+sidebar's edge goes to the crease, as the system's own apps put theirs,
+so home is one half of the fold and the main panel the other
+(`SplitRule.sidebarWidth(window:divisions:)`); flat again, it is 340. The
+shell hears the hinge move through a `UIHingeInteraction` and animates the
+width there. The position is the system's, never a midpoint the app
+assumes; a crease across the window, or one that would leave either half
+under 340, is ignored. UIKit adds the region's touch margin to the main
+panel's safe area itself. On the iOS 27.2 Duo simulator the crease is at
+475.5 of 951, so the sidebar is 475⅔ on the display's pixels.
 
 ### Hiding the sidebar
 
@@ -128,11 +153,13 @@ window resizes or collapses are not taken for the person's choice.
 
 ## Readable widths
 
-Nothing stretches across a wide main panel. Every iPad's content is held to
-800 points, centred (`ContentWidthLimit`, `ContentWidth`); happy-app held
-only 13-inch screens to it, which left an 11-inch iPad's chat and settings
-running across a landscape window or a main panel with the sidebar hidden.
-On a phone there is no limit.
+Nothing stretches across a wide main panel. Content is held to 800
+points, centred, on any device (`ContentWidthLimit`, `ContentWidth`): a
+window narrower than that is never held, so a phone upright or a folded
+Duo uses its whole width, and a Duo open in landscape or a Pro Max on its
+side keeps to the column as an iPad does. happy-app held only 13-inch
+screens to it, which left an 11-inch iPad's chat and settings running
+across a landscape window or a main panel with the sidebar hidden.
 
 - The chats' rows lay out in that column (`ChatColumn`), and the agent
   chat's composer card keeps to it too (`ChatScreenLayout`'s
@@ -141,7 +168,7 @@ On a phone there is no limit.
   profile editor lay out at the column's width; the margins either side are
   their scroll view's insets (`UIScrollView.readableColumn`), so a finger
   anywhere in the panel still scrolls them.
-- In a regular-width iPad window the legacy chat docks its list under the
+- In a regular-width window the legacy chat docks its list under the
   bar and the worktree strip (`LegacyChatScreenLayout`'s `docked`), as
   happy-app's tablet did, but keeps the phone's bar: nothing scrolls under
   the glass, so no transcript shows through the strip or above the title.
@@ -154,20 +181,44 @@ On a phone there is no limit.
 
 | Window | Layout |
 | --- | --- |
-| iPhone | `phone` alone; there is no split view |
-| iPad, compact width (Slide Over, a third of Split View) | phone |
-| iPad, regular but under 768 (iPad mini portrait at 744, a 13-inch iPad's half in landscape at 683) | phone |
-| iPad, regular and 768 or wider (every iPad full screen except the mini in portrait) | split |
-| any iPad not showing a home (onboarding, sign-in, server confirmation) | phone, full window |
+| compact width: an iPhone upright, a folded iPhone Duo (466 × 678), Slide Over, a third of Split View | phone |
+| compact height: any iPhone on its side, a Pro Max's 956 × 440 included, a folded Duo on its side (678 × 466) | phone |
+| regular but under 768: a Duo open in portrait (669 × 951), an iPad mini upright (744), a 13-inch iPad's half in landscape (683) | phone |
+| regular both ways and 768 or wider: a Duo open in landscape (951 × 669), every iPad full screen except the mini upright | split |
+| any window not showing a home (onboarding, sign-in, server confirmation) | phone, full window |
 
-**Why 768 and not the size class alone.** The size class is the system's
-answer and is used: a compact window is always the phone. But a regular
-window can still be too thin. Beside a 320 sidebar, a 683 window leaves a
+**Why 768 and not the size classes alone.** The size classes are the
+system's answer and are used: a window compact either way is always the
+phone. A compact height is a phone on its side; a Pro Max there is
+regular at 956 wide, but 440 tall leaves the sidebar's foot over its rows
+and the chat a sliver above the keyboard, so it stays the phone it always
+was. And a regular window can still be too thin. Beside a 320 sidebar, a 683 window leaves a
 363 main panel, narrower than any iPhone, and the mini's 744 leaves 424.
 From 768 the main panel is at least 448, an iPhone Pro Max's width. 768 is
 also where happy-app's tablet shell started (`TabletBreakpoint`), so the
-two apps change layout at the same width. The rule is width alone, never
-height, so the keyboard never collapses the window.
+two apps change layout at the same width. Height counts only by its size
+class, which turning the device changes and the keyboard doesn't, so the
+keyboard never collapses the window. Every iPad window is regular in
+height, so for an iPad the rule is what it was.
+
+**An iPhone Duo.** Built with the iOS 27.1 SDK the app fills each display
+edge to edge, its status bar a column up the right (iOS 27.1's vertical
+bar). Measured on the iOS 27.2 Duo simulator, in points at @3x:
+
+| Duo | Window | Size classes (w × h) | Safe area | Layout |
+| --- | --- | --- | --- | --- |
+| folded, upright | 466 × 678 | compact × regular | right 84, bottom 34 | phone |
+| folded, on its side | 678 × 466 | compact × compact | right 84, bottom 34 | phone |
+| open in landscape | 951 × 669 | regular × regular | right 84, bottom 34 | split: sidebar 340, main panel 611 |
+| open in portrait | 669 × 951 | regular × regular | top 82, bottom 34 | phone |
+
+Open in portrait is the phone: a sidebar of 340 would leave the main
+panel 329, narrower than any iPhone, and a narrower sidebar cuts the
+account's pill. It is the same answer as an iPad mini upright, by the
+same rule. Folding and opening is a resize: the shell collapses and
+expands through the split's delegate calls, and the stack, a sheet over
+it and the call's bar all stay (`HostedSplitShellTests`).
+
 
 The shell applies it by giving the split view a compact horizontal size
 class (`traitOverrides`) whenever the window shouldn't split; the split
@@ -206,8 +257,8 @@ layout, AppCoordinator sees one stack (`ShellViewController.stack`,
   Settings stays and home changes beside it, as on a phone.
 - **Signing out** puts the first screen on the phone's stack, full window.
 - **A notification or a link** sets the stack to home and the chat
-  (`setStack([home, chat])`), so on an iPad the chat is the main panel's
-  root and its row is selected.
+  (`setStack([home, chat])`), so in a split window the chat is the main
+  panel's root and its row is selected.
 
 ## What happy-app's tablet shell had that this doesn't
 

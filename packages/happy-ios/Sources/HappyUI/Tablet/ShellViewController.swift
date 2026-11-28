@@ -4,9 +4,9 @@ import HappyLayout
 import UIKit
 import UltraView
 
-/// The window's root (docs/IPAD.md). On an iPhone it holds the app's one
-/// navigation stack, `phone`. On an iPad it holds a `UISplitViewController`
-/// with the system sidebar:
+/// The window's root (docs/IPAD.md). It holds a `UISplitViewController`
+/// with the system sidebar, on any device whose window can grow roomy
+/// enough (an iPad, an iPhone Duo open in landscape):
 ///
 ///     sidebar (primary)        main panel (secondary)
 ///     [home]                   [chat, profile, …] or the placeholder
@@ -30,8 +30,8 @@ import UltraView
 /// shell is the delegate of every stack in it.
 public final class ShellViewController: UIViewController {
     let context: AppContext
-    /// The phone's stack: the only one on an iPhone, and the split's compact
-    /// column on an iPad.
+    /// The phone's stack: the split's compact column, and the only one when
+    /// there is no split.
     let phone: UINavigationController
     let split: UISplitViewController?
     let sidebar: SidebarNavigationController
@@ -79,9 +79,12 @@ public final class ShellViewController: UIViewController {
     /// What fills the window under the bar: `phone` or the split.
     private var content: UIViewController?
 
-    /// `splits`: hold the split view, as an iPad does. A test can ask for
-    /// it on any device.
-    public init(context: AppContext, phone: UINavigationController, splits: Bool = UIDevice.current.userInterfaceIdiom == .pad) {
+    /// `splits`: hold the split view. Every device does: whether it shows is
+    /// the window's width and size classes (`SplitRule`), never the idiom,
+    /// so an iPhone Duo open in landscape gets the sidebar and folded the
+    /// phone's one stack, and a fold mid-session moves the same screens
+    /// between them. A test can leave it out.
+    public init(context: AppContext, phone: UINavigationController, splits: Bool = true) {
         self.context = context
         self.phone = phone
         sidebar = SidebarNavigationController(context: context)
@@ -123,7 +126,8 @@ public final class ShellViewController: UIViewController {
             return
         }
         split.delegate = self
-        registerForTraitChanges([UITraitHorizontalSizeClass.self]) { (self: Self, _) in self.updateMode() }
+        observeHinge()
+        registerForTraitChanges([UITraitHorizontalSizeClass.self, UITraitVerticalSizeClass.self]) { (self: Self, _) in self.updateMode() }
         split.preferredSplitBehavior = .tile
         split.presentsWithGesture = true
         // The button is put in the main panel's bar, at its root's leading
@@ -381,6 +385,29 @@ public final class ShellViewController: UIViewController {
         coordinator.animate(alongsideTransition: nil) { [weak self] _ in self?.settle() }
     }
 
+    /// Where a display folded partway divides the window (iOS 27.1): the
+    /// active division regions, in this view. None while it is flat or
+    /// closed, or on a device that doesn't fold.
+    private var divisions: [CGRect] {
+        #if compiler(>=6.4.1)
+        if #available(iOS 27.1, *) { return view.reservedRegions(kind: .division).map(\.frame) }
+        #endif
+        return []
+    }
+
+    /// The hinge moved (iOS 27.1, `UIHingeInteraction`): a display folded
+    /// partway or flat again moves the sidebar's edge to the crease or back.
+    private func observeHinge() {
+        #if compiler(>=6.4.1)
+        if #available(iOS 27.1, *) {
+            view.addInteraction(UIHingeInteraction { [weak self] _, _ in
+                // The division regions follow the hinge in the same update.
+                DispatchQueue.main.async { self?.updateMode(animated: true) }
+            })
+        }
+        #endif
+    }
+
     /// After the layout pass that collapsed or expanded the split.
     private func settle() {
         DispatchQueue.main.async { [weak self] in self?.resizing = false }
@@ -398,19 +425,34 @@ public final class ShellViewController: UIViewController {
     }
 
     /// Collapses or expands the split for a window `width` wide (the
-    /// current one by default) and the stack's root.
-    func updateMode(width: CGFloat? = nil) {
+    /// current one by default) and the stack's root. `animated`: the
+    /// sidebar's width moves in an animation, as when the display folds
+    /// partway and its edge goes to the crease.
+    func updateMode(width: CGFloat? = nil, animated: Bool = false) {
         guard let split, isViewLoaded else { return }
+        // Mid-resize the crease is the old window's; layout asks again.
+        let creases = width == nil ? divisions : []
         let width = width ?? view.bounds.width
-        let sidebarWidth = SplitRule.sidebarWidth(windowWidth: width)
+        let sidebarWidth = SplitRule.sidebarWidth(window: CGSize(width: width, height: view.bounds.height), divisions: creases,
+                                                  sidebarOnLeft: view.effectiveUserInterfaceLayoutDirection == .leftToRight,
+                                                  scale: traitCollection.displayScale)
         if split.preferredPrimaryColumnWidth != sidebarWidth {
-            split.minimumPrimaryColumnWidth = sidebarWidth
-            split.maximumPrimaryColumnWidth = sidebarWidth
-            split.preferredPrimaryColumnWidth = sidebarWidth
+            let resize = {
+                split.minimumPrimaryColumnWidth = sidebarWidth
+                split.maximumPrimaryColumnWidth = sidebarWidth
+                split.preferredPrimaryColumnWidth = sidebarWidth
+                if animated { split.view.layoutIfNeeded() }
+            }
+            if animated, isExpanded {
+                UIView.animate(withDuration: 0.35, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: resize)
+            } else {
+                resize()
+            }
         }
         let wanted = SplitRule.showsSplit(
             width: width,
             isRegularWidth: traitCollection.horizontalSizeClass == .regular,
+            isRegularHeight: traitCollection.verticalSizeClass != .compact,
             showsHome: Self.isHome(stack.first)
         )
         let forcedCompact = split.traitOverrides.contains(UITraitHorizontalSizeClass.self)
@@ -618,7 +660,9 @@ final class MainColumnViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        main.view.setLayoutFrame(MainPanelLayout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets)).panel)
+        let layout = MainPanelLayout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets),
+                                     sidebarOnLeft: view.effectiveUserInterfaceLayoutDirection == .leftToRight)
+        main.view.setLayoutFrame(layout.panel)
     }
 }
 
