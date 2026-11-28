@@ -102,7 +102,7 @@
     <string name="feed_clusters_unavailable">无法加载。请检查你的电脑是否开机。</string>
     <string name="feed_unread_mark">未读</string>
     <string name="feed_everything">全部</string>
-    <string name="feed_team">团队</string>
+    <string name="feed_team">服务器</string>
     <string name="feed_follow">关注%1$s</string>
     <string name="feed_mute">静音%1$s</string>
     <string name="feed_muted">已静音</string>

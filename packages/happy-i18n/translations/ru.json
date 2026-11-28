@@ -19,7 +19,7 @@
     "cloudSettings.noZones": "Нет зон для отображения",
     "cloudSettings.noSecrets": "Нет секретов для отображения",
     "cloudSettings.loadFailed": "Не удалось загрузить список",
-    "cloudSettings.ownerTeam": "Команда",
+    "cloudSettings.ownerTeam": "Сервер",
     "cloudSettings.ownerMine": "Мои секреты",
     "cloudSettings.ownerAgent": "Агент",
     "voiceStatusBar.tapToEnd": "нажмите, чтобы завершить",

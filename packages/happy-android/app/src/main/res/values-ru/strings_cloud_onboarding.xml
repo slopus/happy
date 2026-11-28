@@ -6,13 +6,13 @@
     <string name="cloud_onboarding_couldnt_skip">Не удалось пропустить шаг. Попробуйте ещё раз.</string>
     <string name="cloud_onboarding_couldnt_check">Не удалось связаться с сервером. Попробуйте ещё раз.</string>
     <string name="cloud_onboarding_photo_title">Добавьте фото</string>
-    <string name="cloud_onboarding_photo_body">Ваша команда и агенты увидят его рядом с вашим именем.</string>
+    <string name="cloud_onboarding_photo_body">Участники сервера и агенты увидят его рядом с вашим именем.</string>
     <string name="cloud_onboarding_choose_photo">Выбрать фото</string>
     <string name="cloud_onboarding_photo_failed">Фото не загрузилось. Попробуйте ещё раз.</string>
     <string name="cloud_onboarding_update_title">Обновите Happy, чтобы продолжить</string>
     <string name="cloud_onboarding_update_body">Сервер просит шаг, который эта версия Happy ещё не знает.</string>
     <string name="cloud_onboarding_update_action">Открыть Google Play</string>
-    <string name="cloud_onboarding_waiting_title">Ждём администратора</string>
+    <string name="cloud_onboarding_waiting_title">Ждём настройки</string>
     <string name="cloud_onboarding_waiting_body">Сначала тот, кто управляет сервером, должен завершить настройку: %1$s.</string>
     <string name="cloud_onboarding_not_ready_title">Почти готово</string>
     <string name="cloud_onboarding_not_ready_body">Сервер пока не готов. Проверьте чуть позже.</string>
@@ -43,7 +43,7 @@
     <string name="cloud_onboarding_inference_body">Ваши агенты думают с помощью модели, которую вы подключите: ChatGPT, Claude, Grok или ваш собственный эндпоинт.</string>
     <string name="cloud_onboarding_inference_free">А пока они используют бесплатную модель Happy.</string>
     <string name="cloud_onboarding_connect_provider">Подключить провайдера</string>
-    <string name="cloud_onboarding_inference_not_allowed">Ваша роль не позволяет подключать провайдеров. Обратитесь к администратору.</string>
+    <string name="cloud_onboarding_inference_not_allowed">У вас нет права подключать провайдеров. Обратитесь к тому, кто управляет этим сервером.</string>
     <string name="cloud_onboarding_plugins_title">Подключите инструменты</string>
     <string name="cloud_onboarding_plugins_body">Плагины позволяют агентам работать в сервисах вашей команды. Настройте один сейчас или позже в разделе «Плагины».</string>
     <string name="cloud_onboarding_plugins_needed">Плагины позволяют агентам работать в сервисах вашей команды. Сначала подключите: %1$s.</string>

@@ -70,7 +70,7 @@ class PluginScreensTest {
         // GitHub is installed: only Linear is still on offer.
         rule.onNodeWithText("Issues and projects.").assertIsDisplayed()
         assertEquals(0, rule.onAllNodesWithText("Repositories and pull requests.").fetchSemanticsNodes().size)
-        rule.onNodeWithText("Only people whose role can manage plugins can install and set them up.").assertIsDisplayed()
+        rule.onNodeWithText("Only people with permission to manage plugins can install and set them up.").assertIsDisplayed()
         rule.node(PluginsTags.available("linear")).performClick()
         rule.node(PluginsTags.installation("i2")).performClick()
         assertEquals(listOf("linear", "github"), opened)
@@ -223,7 +223,7 @@ class PluginScreensTest {
         assertEquals(1, installs)
         rule.node(PluginActionTags.FEATURE_NOTE).assertIsDisplayed()
         rule.onNodeWithText("keeps all its data", substring = true).assertIsDisplayed()
-        assertEquals("no word about roles", 0, rule.onAllNodesWithText("Only people whose role can manage plugins can install and set them up.").fetchSemanticsNodes().size)
+        assertEquals("no word about roles", 0, rule.onAllNodesWithText("Only people with permission to manage plugins can install and set them up.").fetchSemanticsNodes().size)
         val install = rule.node(PluginActionTags.INSTALL).bounds
         assertDp("the note 8 under the button", install.bottom + 8.dp, rule.node(PluginActionTags.FEATURE_NOTE).bounds.top)
     }
@@ -248,14 +248,14 @@ class PluginScreensTest {
     fun theListSaysNothingOfRolesForFeaturePlugins() {
         rule.setHappyContent { PluginsScreen(PluginsState.Loaded(PluginsSnapshot(listOf(pipelines), emptyList(), canManage = false)), onOpen = {}, onRetry = {}, onBack = {}) }
         rule.node(PluginsTags.available("pipelines")).assertIsDisplayed()
-        assertEquals(0, rule.onAllNodesWithText("Only people whose role can manage plugins can install and set them up.").fetchSemanticsNodes().size)
+        assertEquals(0, rule.onAllNodesWithText("Only people with permission to manage plugins can install and set them up.").fetchSemanticsNodes().size)
     }
 
     @Test
     fun theRoleNoteStaysWithTheIntegrations() {
         val linear = plugin("linear", "Linear", "Issues and projects.")
         rule.setHappyContent { PluginsScreen(PluginsState.Loaded(PluginsSnapshot(listOf(linear, pipelines), emptyList(), canManage = false)), onOpen = {}, onRetry = {}, onBack = {}) }
-        val note = rule.onNodeWithText("Only people whose role can manage plugins can install and set them up.").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val note = rule.onNodeWithText("Only people with permission to manage plugins can install and set them up.").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val features = rule.onNodeWithText("FEATURES").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         // Under Available, Linear's group; Pipelines is in Features, below it.
         assertTrue(rule.node(PluginsTags.available("linear")).fetchSemanticsNode().boundsInRoot.bottom < note.top)

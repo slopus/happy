@@ -19,7 +19,7 @@
     "cloudSettings.noZones": "Brak stref do wyświetlenia",
     "cloudSettings.noSecrets": "Brak sekretów do wyświetlenia",
     "cloudSettings.loadFailed": "Nie udało się wczytać listy",
-    "cloudSettings.ownerTeam": "Zespół",
+    "cloudSettings.ownerTeam": "Serwer",
     "cloudSettings.ownerMine": "Moje sekrety",
     "cloudSettings.ownerAgent": "Agent",
     "voiceStatusBar.tapToEnd": "dotknij, aby zakończyć",

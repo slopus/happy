@@ -230,7 +230,7 @@ class ComputeScreenTest {
         rule.onNodeWithTag(ComputeTags.access(ComputeAccess.Private)).assertIsEnabled()
         rule.onNodeWithText("Add a computer").assertExists()
         rule.onNodeWithText("Just for you. Only your agents can join, and you approve each one.").assertExists()
-        rule.onNodeWithText("Shared computers need admin permission. You can add a private computer of your own.").assertExists()
+        rule.onNodeWithText("Shared computers need permission to manage computers. You can add a private computer of your own.").assertExists()
         rule.onNodeWithTag(ComputeTags.access(ComputeAccess.Shared)).performClick()
         assertEquals(0, changes)
         rule.onNodeWithTag(ComputeTags.CONCURRENCY).assertExists()
@@ -294,7 +294,7 @@ class ComputeScreenTest {
     @Test
     fun everyPublishedSystemGetsItsCommand() {
         rule.setHappyContent { ComputerAddScreen(install(ComputeAccess.Shared, setOf(ComputeSystem.Linux, ComputeSystem.MacOS, ComputeSystem.Windows), notice = null), ComputeRole.Manage, {}, {}, {}) }
-        rule.onNodeWithText("Run this on the computer your team's agents will use", substring = true).assertExists()
+        rule.onNodeWithText("Run this on the computer the server's agents will use", substring = true).assertExists()
         rule.onNodeWithText("MACOS AND LINUX").assertExists()
         rule.onNodeWithText("WINDOWS (POWERSHELL)").performScrollTo().assertExists()
         rule.onNodeWithTag(ComputeTags.command("windows")).assertTextEquals("irm https://get.example/install.ps1 | iex")

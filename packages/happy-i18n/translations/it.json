@@ -19,7 +19,7 @@
     "cloudSettings.noZones": "Nessuna zona da mostrare",
     "cloudSettings.noSecrets": "Nessun segreto da mostrare",
     "cloudSettings.loadFailed": "Impossibile caricare l’elenco",
-    "cloudSettings.ownerTeam": "Team",
+    "cloudSettings.ownerTeam": "Server",
     "cloudSettings.ownerMine": "I miei segreti",
     "cloudSettings.ownerAgent": "Agente",
     "voiceStatusBar.tapToEnd": "tocca per terminare",

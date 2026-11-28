@@ -19,7 +19,7 @@
     "cloudSettings.noZones": "No zones to show",
     "cloudSettings.noSecrets": "No secrets to show",
     "cloudSettings.loadFailed": "Couldn’t load this list",
-    "cloudSettings.ownerTeam": "Team",
+    "cloudSettings.ownerTeam": "Server",
     "cloudSettings.ownerMine": "Mine",
     "cloudSettings.ownerAgent": "Agent",
     "voiceStatusBar.tapToEnd": "tap to end",

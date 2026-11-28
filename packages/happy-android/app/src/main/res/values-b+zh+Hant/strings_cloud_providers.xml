@@ -2,7 +2,7 @@
 <resources>
     <string name="cloud_providers_title">推論</string>
     <string name="cloud_providers_included">已包含</string>
-    <string name="cloud_providers_team">團隊</string>
+    <string name="cloud_providers_team">伺服器</string>
     <string name="cloud_providers_mine">我的帳號</string>
     <string name="cloud_providers_free">Happy（免費）</string>
     <string name="cloud_providers_off">已關閉</string>

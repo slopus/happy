@@ -6,13 +6,13 @@
     <string name="cloud_onboarding_couldnt_skip">Não foi possível pular esta etapa. Tente de novo.</string>
     <string name="cloud_onboarding_couldnt_check">Não foi possível acessar o servidor. Tente de novo.</string>
     <string name="cloud_onboarding_photo_title">Adicione uma foto</string>
-    <string name="cloud_onboarding_photo_body">Sua equipe e os agentes a veem ao lado do seu nome.</string>
+    <string name="cloud_onboarding_photo_body">As pessoas e os agentes do servidor a veem ao lado do seu nome.</string>
     <string name="cloud_onboarding_choose_photo">Escolher foto</string>
     <string name="cloud_onboarding_photo_failed">Sua foto não foi enviada. Tente de novo.</string>
     <string name="cloud_onboarding_update_title">Atualize o Happy para continuar</string>
     <string name="cloud_onboarding_update_body">Este servidor pede uma etapa que esta versão do Happy ainda não conhece.</string>
     <string name="cloud_onboarding_update_action">Abrir o Google Play</string>
-    <string name="cloud_onboarding_waiting_title">Aguardando seu administrador</string>
+    <string name="cloud_onboarding_waiting_title">Aguardando a configuração</string>
     <string name="cloud_onboarding_waiting_body">Alguém que gerencia este servidor precisa concluir a configuração primeiro: %1$s.</string>
     <string name="cloud_onboarding_not_ready_title">Quase pronto</string>
     <string name="cloud_onboarding_not_ready_body">Este servidor ainda não está pronto. Verifique de novo daqui a pouco.</string>
@@ -43,7 +43,7 @@
     <string name="cloud_onboarding_inference_body">Seus agentes pensam com o modelo que você conectar: ChatGPT, Claude, Grok ou seu próprio endpoint.</string>
     <string name="cloud_onboarding_inference_free">Até lá, eles usam o modelo gratuito do Happy.</string>
     <string name="cloud_onboarding_connect_provider">Conectar um provedor</string>
-    <string name="cloud_onboarding_inference_not_allowed">Sua função não pode conectar provedores. Peça ao seu administrador.</string>
+    <string name="cloud_onboarding_inference_not_allowed">Você não pode conectar provedores aqui. Peça a quem gerencia este servidor.</string>
     <string name="cloud_onboarding_plugins_title">Conecte suas ferramentas</string>
     <string name="cloud_onboarding_plugins_body">Plugins permitem que seus agentes trabalhem nos serviços que sua equipe usa. Configure um agora ou depois em Plugins.</string>
     <string name="cloud_onboarding_plugins_needed">Plugins permitem que seus agentes trabalhem nos serviços que sua equipe usa. Conecte primeiro: %1$s.</string>

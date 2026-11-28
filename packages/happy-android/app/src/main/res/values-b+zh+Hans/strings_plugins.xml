@@ -8,7 +8,7 @@
     <string name="plugins_empty">此服务器暂未提供插件。</string>
     <string name="plugins_failed">无法加载插件</string>
     <string name="plugins_tap_to_retry">轻点以重试。</string>
-    <string name="plugins_manage_note">只有角色可以管理插件的人才能安装和设置插件。</string>
+    <string name="plugins_manage_note">只有拥有插件管理权限的人才能安装和设置插件。</string>
     <string name="plugins_status_ready">就绪</string>
     <string name="plugins_status_needs_setup">需要设置</string>
     <string name="plugins_status_setup_again">需要重新设置</string>
@@ -39,6 +39,6 @@
     <string name="plugins_signed_in_browser">请在浏览器中完成登录，然后回到这里。</string>
     <string name="plugins_uninstall">卸载</string>
     <string name="plugins_uninstall_title">卸载%1$s？</string>
-    <string name="plugins_uninstall_body">%1$s 将在你所在的每个团队中对你隐藏。不会删除任何内容，重新安装后一切都会恢复。</string>
-    <string name="plugins_feature_note">仅对你生效，适用于你所在的每个团队。卸载会隐藏%1$s并保留其所有数据：团队用它创建的内容仍会保留，重新安装后一切都会恢复。</string>
+    <string name="plugins_uninstall_body">%1$s 将在你所在的每个服务器上对你隐藏。不会删除任何内容，重新安装后一切都会恢复。</string>
+    <string name="plugins_feature_note">仅对你生效，适用于你所在的每个服务器。卸载会隐藏%1$s并保留其所有数据：其他人用它创建的内容仍会保留，重新安装后一切都会恢复。</string>
 </resources>

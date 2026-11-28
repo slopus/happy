@@ -123,7 +123,7 @@
     <string name="feed_clusters_unavailable">These couldn’t be loaded. Check that your computer is on.</string>
     <string name="feed_unread_mark">Unread</string>
     <string name="feed_everything">Everything</string>
-    <string name="feed_team">Team</string>
+    <string name="feed_team">Server</string>
     <string name="feed_follow">Follow %1$s</string>
     <string name="feed_mute">Mute %1$s</string>
     <string name="feed_muted">Muted</string>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_group_agents">Agentes</string>
-    <string name="settings_group_team">Equipo</string>
+    <string name="settings_group_team">Servidor</string>
 </resources>

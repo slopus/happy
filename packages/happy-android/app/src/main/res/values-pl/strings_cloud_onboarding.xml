@@ -6,13 +6,13 @@
     <string name="cloud_onboarding_couldnt_skip">Nie udało się pominąć tego kroku. Spróbuj ponownie.</string>
     <string name="cloud_onboarding_couldnt_check">Nie udało się połączyć z serwerem. Spróbuj ponownie.</string>
     <string name="cloud_onboarding_photo_title">Dodaj zdjęcie</string>
-    <string name="cloud_onboarding_photo_body">Twój zespół i agenci zobaczą je obok Twojego imienia.</string>
+    <string name="cloud_onboarding_photo_body">Osoby i agenci na serwerze zobaczą je obok Twojego imienia.</string>
     <string name="cloud_onboarding_choose_photo">Wybierz zdjęcie</string>
     <string name="cloud_onboarding_photo_failed">Nie udało się przesłać zdjęcia. Spróbuj ponownie.</string>
     <string name="cloud_onboarding_update_title">Zaktualizuj Happy, aby kontynuować</string>
     <string name="cloud_onboarding_update_body">Ten serwer wymaga kroku, którego ta wersja Happy jeszcze nie zna.</string>
     <string name="cloud_onboarding_update_action">Otwórz Google Play</string>
-    <string name="cloud_onboarding_waiting_title">Czekamy na administratora</string>
+    <string name="cloud_onboarding_waiting_title">Czekamy na konfigurację</string>
     <string name="cloud_onboarding_waiting_body">Najpierw osoba zarządzająca tym serwerem musi dokończyć konfigurację: %1$s.</string>
     <string name="cloud_onboarding_not_ready_title">Prawie gotowe</string>
     <string name="cloud_onboarding_not_ready_body">Ten serwer nie jest jeszcze gotowy. Sprawdź ponownie za chwilę.</string>
@@ -43,7 +43,7 @@
     <string name="cloud_onboarding_inference_body">Twoi agenci myślą za pomocą modelu, który połączysz: ChatGPT, Claude, Grok lub własny endpoint.</string>
     <string name="cloud_onboarding_inference_free">Do tego czasu korzystają z darmowego modelu Happy.</string>
     <string name="cloud_onboarding_connect_provider">Połącz dostawcę</string>
-    <string name="cloud_onboarding_inference_not_allowed">Twoja rola nie pozwala łączyć dostawców. Poproś administratora.</string>
+    <string name="cloud_onboarding_inference_not_allowed">Nie możesz tu łączyć dostawców. Poproś osobę, która zarządza tym serwerem.</string>
     <string name="cloud_onboarding_plugins_title">Połącz swoje narzędzia</string>
     <string name="cloud_onboarding_plugins_body">Wtyczki pozwalają agentom pracować w usługach, z których korzysta Twój zespół. Skonfiguruj jedną teraz lub później w sekcji Wtyczki.</string>
     <string name="cloud_onboarding_plugins_needed">Wtyczki pozwalają agentom pracować w usługach, z których korzysta Twój zespół. Najpierw połącz: %1$s.</string>

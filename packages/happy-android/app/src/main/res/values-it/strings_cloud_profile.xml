@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="cloud_profile_title">Crea il tuo profilo</string>
-    <string name="cloud_profile_detail">È così che il tuo team e gli agenti ti vedono su %1$s.</string>
+    <string name="cloud_profile_detail">È così che ti vedono le persone e gli agenti su %1$s.</string>
     <string name="cloud_profile_add_photo">Aggiungi foto</string>
     <string name="cloud_profile_change_photo">Cambia foto</string>
     <string name="cloud_profile_name_failed">Impossibile salvare il nome. Controlla la connessione e riprova.</string>

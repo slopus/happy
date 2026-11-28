@@ -8,7 +8,7 @@
     <string name="plugins_empty">Este servidor ainda não oferece plugins.</string>
     <string name="plugins_failed">Não foi possível carregar os plugins</string>
     <string name="plugins_tap_to_retry">Toque para tentar de novo.</string>
-    <string name="plugins_manage_note">Somente pessoas cuja função pode gerenciar plugins podem instalá-los e configurá-los.</string>
+    <string name="plugins_manage_note">Somente pessoas com permissão para gerenciar plugins podem instalá-los e configurá-los.</string>
     <string name="plugins_status_ready">Pronto</string>
     <string name="plugins_status_needs_setup">Precisa de configuração</string>
     <string name="plugins_status_setup_again">Precisa ser configurado de novo</string>
@@ -39,6 +39,6 @@
     <string name="plugins_signed_in_browser">Termine o login no navegador e volte aqui.</string>
     <string name="plugins_uninstall">Desinstalar</string>
     <string name="plugins_uninstall_title">Desinstalar %1$s?</string>
-    <string name="plugins_uninstall_body">%1$s ficará oculto para você em todas as equipes de que faz parte. Nada é apagado e, ao instalá-lo de novo, tudo volta.</string>
-    <string name="plugins_feature_note">Só para você, em todas as equipes de que faz parte. Desinstalar oculta %1$s e mantém todos os dados: o que sua equipe fez com ele continua e, ao instalá-lo de novo, tudo volta.</string>
+    <string name="plugins_uninstall_body">%1$s ficará oculto para você em todos os servidores de que faz parte. Nada é apagado e, ao instalá-lo de novo, tudo volta.</string>
+    <string name="plugins_feature_note">Só para você, em todos os servidores de que faz parte. Desinstalar oculta %1$s e mantém todos os dados: o que outras pessoas fizeram com ele continua e, ao instalá-lo de novo, tudo volta.</string>
 </resources>

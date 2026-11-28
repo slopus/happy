@@ -108,7 +108,7 @@
     <string name="feed_clusters_unavailable">Не удалось загрузить. Проверьте, что компьютер включён.</string>
     <string name="feed_unread_mark">Не прочитано</string>
     <string name="feed_everything">Всё</string>
-    <string name="feed_team">Команда</string>
+    <string name="feed_team">Сервер</string>
     <string name="feed_follow">Подписаться на %1$s</string>
     <string name="feed_mute">Заглушить %1$s</string>
     <string name="feed_muted">Заглушено</string>

@@ -26,9 +26,9 @@
     <string name="compute_access_title">Kto może z niego korzystać</string>
     <string name="compute_access_shared">Współdzielony</string>
     <string name="compute_access_private">Prywatny</string>
-    <string name="compute_access_shared_about">Dla zespołu. Mogą na nim pracować agenci każdego członka.</string>
+    <string name="compute_access_shared_about">Dla całego serwera. Mogą na nim pracować agenci każdego członka.</string>
     <string name="compute_access_private_about">Tylko dla Ciebie. Dołączać mogą tylko Twoi agenci, a każdego zatwierdzasz.</string>
-    <string name="compute_access_member_footer">Komputery współdzielone wymagają uprawnień administratora. Możesz dodać własny prywatny komputer.</string>
+    <string name="compute_access_member_footer">Komputery współdzielone wymagają uprawnienia do zarządzania komputerami. Możesz dodać własny prywatny komputer.</string>
     <string name="compute_yours">Twój</string>
     <string name="compute_owner_named">Właściciel: %1$s</string>
     <string name="compute_owner_member">Członka zespołu</string>
@@ -53,7 +53,7 @@
     <string name="compute_create_failed">Brak polecenia instalacji</string>
     <string name="compute_no_command">Happy Cloud nie wysłał polecenia instalacji.</string>
     <string name="compute_create">Utwórz polecenie instalacji</string>
-    <string name="compute_install_shared">Uruchom to jako administrator na komputerze, z którego będą korzystać agenci zespołu. Instaluje Happy supervisor dla całego systemu i dołącza komputer jako współdzielony.</string>
+    <string name="compute_install_shared">Uruchom to jako administrator na komputerze, z którego będą korzystać agenci serwera. Instaluje Happy supervisor dla całego systemu i dołącza komputer jako współdzielony.</string>
     <string name="compute_install_private">Uruchom to na własnym komputerze, zalogowany jako Ty. Instaluje Happy supervisor i dołącza komputer jako Twój.</string>
     <string name="compute_command_note">Polecenie działa raz i zawiera sekret, więc nikomu go nie pokazuj.</string>
     <string name="compute_expires">Wygasa: %1$s</string>

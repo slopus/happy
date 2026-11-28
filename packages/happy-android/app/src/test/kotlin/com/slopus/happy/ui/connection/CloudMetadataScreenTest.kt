@@ -53,9 +53,11 @@ class CloudMetadataScreenTest {
     }
 
     @Test fun secretMetadataUsesTheSameReadOnlyCardMeasure() {
-        val secrets = CloudMetadataState.Secrets(listOf(CloudSecretMetadata("deploy", "Deploy token", "Used for releases", "team")))
+        // The server's secrets, whether the cluster says `team` (as it still does) or `server`, under one heading.
+        val secrets = CloudMetadataState.Secrets(listOf(CloudSecretMetadata("deploy", "Deploy token", "Used for releases", "team"), CloudSecretMetadata("relay", "Relay key", null, "server")))
         rule.setHappyContent { CloudMetadataScreen(CloudMetadataPage.Secrets, secrets, {}, {}) }
-        rule.onNodeWithText("TEAM").assertIsDisplayed()
+        rule.onNodeWithText("SERVER").assertIsDisplayed()
+        rule.onNodeWithTag("secret.relay").assertIsDisplayed()
         rule.onNodeWithText("Used for releases").assertIsDisplayed()
         rule.onNodeWithTag("secret.deploy").assertHasNoClickAction()
         assertDp("secret card row width", (379 - 2f / rule.density.density).dp, rule.node("secret.deploy").bounds.width)

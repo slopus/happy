@@ -251,4 +251,13 @@ class CloudProvidersTest {
             assertEquals("`baseUrl` must not be a private address.", e.message)
         }
     }
+
+    @Test
+    fun aDestinationNamedServerIsTheServersOwn() {
+        // docs/teams.md §10: `server` is the cluster's newer word for `team`.
+        assertEquals(CloudDestination.Team, CloudDestination.of("team"))
+        assertEquals(CloudDestination.Team, CloudDestination.of("server"))
+        assertEquals(CloudDestination.Private, CloudDestination.of("private"))
+        assertEquals(null, CloudDestination.of("elsewhere"))
+    }
 }

@@ -100,7 +100,7 @@ object GenUiActions {
         if (id.value != null && !CLUSTER_ID.matches(id.value)) return null
         if ((o.optionalString("description") ?: return null).value.orEmpty().length > MAX_DESCRIPTION) return null
         val owner = o.optionalString("owner") ?: return null
-        if (owner.value != null && owner.value !in setOf("me", "team")) return null
+        if (owner.value != null && owner.value !in setOf("me", "team", "server")) return null
         o["uses"]?.let { uses ->
             val names = (uses as? JsonArray)?.map { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content ?: return null } ?: return null
             val allowed = CLUSTER_USES.getValue(kind)

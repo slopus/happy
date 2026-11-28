@@ -1,4 +1,4 @@
-{"sources":{"en.json":"fc16b727792b9775773ce98f1d196d79efa48957de2ca7fdd01802a2cbc2ccf4","ru.json":"ff3ef581d5d7f71a125e30ec1bcb787f73571c69a320772421d17bc330a3047d","pl.json":"f697e0273555be0fb7872f03209f6cfe751d015598df82d967003b499faf7d55","es.json":"7932f348e836b2895b0d63d69437be4ed63d625ec2c81fe63a85df1af6a60c78","it.json":"4af6515ee576ae4e6a6c9f96f735746f77e98669b5e34a844cb0571985ceefcc","pt.json":"97457e080ffbe5db7a8be4a30d37b59778d4bc0827691b58c3bc15db4002923d","ca.json":"634e9cd99696b4761c5184f2170fd108c49cb20ba3f512b1ec5592d7d7988bdd","zh-Hans.json":"ff07e213f63ce87bdb26e1b6b95532869365ca214df9399675ff06b5cc13cc9b","zh-Hant.json":"693e11d8ac7bf8bddb63444cec0b0c3393feb802d02ef037008ca249779b695f","ja.json":"50d10dbe26813bc011e48e23df13321c04f32f29243e9725249aa369cb1b7dd0","parameters.json":"be2298a5535d7fe740a01a3e2df484501ecf1f876cab05cef4c00894f1fd2784"},
+{"sources":{"en.json":"d7e7968a94ea836bc230889116e69ee30ca0727a61b3630230c7d3881739edaa","ru.json":"1b3410190395a1a95c407dacf8e542fa8887757e81d1d3a246bba4a098a4982c","pl.json":"c6a7c1346b5e8e3a0ddb8cc922a6e294a211c696cc28ca3b103fd4a8455a73b2","es.json":"c4e59bea1c04e2ae28a55517619558d4250e54a8ac3e6ef59e215e34777a02fd","it.json":"d8d7b00e19b1385d08e9247ba47ee15e137d5b18cfd1a2da9c9ac3680468f5f9","pt.json":"4e57678f88fc67c32659e80df0fc60a3a47767a06ad5d96d8375d133cff0b722","ca.json":"6a842f9aba988fd3ef416b48cf911ea3e6bf99ac772a9268807094a69c78f018","zh-Hans.json":"9b4e93f490652d058cbaa5e869e4fd1b10ee945439409bbc851a8a1069139d0f","zh-Hant.json":"d233ea691d64adb99a753e4b91b3e39348e4f71e263299c4154770c5a2c1aa16","ja.json":"04138ff12bc47bc55b6ef1a96411d21c57183e7c7fccca96ea2e4663f3f13f28","parameters.json":"be2298a5535d7fe740a01a3e2df484501ecf1f876cab05cef4c00894f1fd2784"},
 "keys":{
 "cloudSettings.zones":{"name":"cloud_settings_zones","kind":"string","value":"Zones"},
 "cloudSettings.secrets":{"name":"cloud_settings_secrets","kind":"string","value":"Secrets"},
@@ -17,7 +17,7 @@
 "cloudSettings.noZones":{"name":"cloud_settings_no_zones","kind":"string","value":"No zones to show"},
 "cloudSettings.noSecrets":{"name":"cloud_settings_no_secrets","kind":"string","value":"No secrets to show"},
 "cloudSettings.loadFailed":{"name":"cloud_settings_load_failed","kind":"string","value":"Couldn’t load this list"},
-"cloudSettings.ownerTeam":{"name":"cloud_settings_owner_team","kind":"string","value":"Team"},
+"cloudSettings.ownerTeam":{"name":"cloud_settings_owner_team","kind":"string","value":"Server"},
 "cloudSettings.ownerMine":{"name":"cloud_settings_owner_mine","kind":"string","value":"Mine"},
 "cloudSettings.ownerAgent":{"name":"cloud_settings_owner_agent","kind":"string","value":"Agent"},
 "voiceStatusBar.tapToEnd":{"name":"voice_status_bar_tap_to_end","kind":"string","value":"tap to end"},

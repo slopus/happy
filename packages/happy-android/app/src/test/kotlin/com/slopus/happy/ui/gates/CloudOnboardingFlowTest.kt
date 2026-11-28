@@ -79,7 +79,7 @@ class CloudOnboardingFlowTest {
             CloudOnboarding(false, gates = listOf(OnboardingGate("paymentMethod", Scope.Server, Requirement.Required, Status.Open, canComplete = false, kind = Kind.PaymentMethod))),
             actions(notNow = false, checkFails = true),
         )
-        rule.onNodeWithText("Waiting for your admin").assertIsDisplayed()
+        rule.onNodeWithText("Waiting for setup").assertIsDisplayed()
         rule.onNodeWithText("Someone who manages this server has to finish setting it up first: adding a payment method.").assertIsDisplayed()
         rule.onNodeWithText("Check again").performClick()
         rule.waitForIdle()
@@ -156,7 +156,7 @@ class CloudOnboardingFlowTest {
         // Required: the free model isn't offered as a way around it.
         rule.onNodeWithText("Your agents think with a model you connect: ChatGPT, Claude, Grok, or your own endpoint.").assertIsDisplayed()
         rule.onNodeWithText("Connect a provider").performClick()
-        rule.onNodeWithText("Your role can't connect providers. Ask your admin.").assertIsDisplayed()
+        rule.onNodeWithText("You can't connect providers here. Ask someone who manages this server.").assertIsDisplayed()
     }
 
     @Test

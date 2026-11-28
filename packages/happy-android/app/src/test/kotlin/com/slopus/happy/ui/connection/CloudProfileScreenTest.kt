@@ -58,7 +58,7 @@ class CloudProfileScreenTest {
         val sent = mutableListOf<String>()
         screen(onSubmit = { sent += it })
         rule.onNodeWithText("Create your profile").assertIsDisplayed()
-        rule.onNodeWithText("This is how your team and agents see you on @acme.").assertIsDisplayed()
+        rule.onNodeWithText("This is how people and agents on @acme see you.").assertIsDisplayed()
         rule.onNodeWithText("Your name").assertIsDisplayed()
         rule.onNodeWithTag(ServerSignInTags.NAME).assertIsFocused()
         rule.onNodeWithTag(CloudTags.PRIMARY).assertIsNotEnabled()

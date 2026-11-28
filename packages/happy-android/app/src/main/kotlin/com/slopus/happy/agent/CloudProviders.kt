@@ -167,13 +167,14 @@ data class CloudCapabilities(
 /** `GET /v0/cloud/providers`: the connections, and what may be added where the server says. */
 data class CloudProviderList(val connections: List<CloudConnection>, val capabilities: CloudCapabilities?)
 
-/** Where something added is kept: the person's own connection, or the team's default for its vendor. */
+/** Where something added is kept: the person's own connection, or the server's default for its vendor. */
 enum class CloudDestination(val id: String) {
     Private("private"),
     Team("team");
 
     companion object {
-        fun of(id: String?): CloudDestination? = entries.firstOrNull { it.id == id }
+        /** `server` is the cluster's newer word for `team` (docs/teams.md §10), which it still answers. */
+        fun of(id: String?): CloudDestination? = if (id == "server") Team else entries.firstOrNull { it.id == id }
     }
 }
 

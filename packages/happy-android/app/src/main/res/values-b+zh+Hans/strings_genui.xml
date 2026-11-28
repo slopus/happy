@@ -45,8 +45,8 @@
     <string name="genui_cluster_unchangeable">你无法修改此密钥。</string>
     <string name="genui_cluster_owner">归属</string>
     <string name="genui_cluster_owner_me">我的</string>
-    <string name="genui_cluster_owner_team">团队的</string>
-    <string name="genui_cluster_owner_problem">你的角色无法添加密钥。</string>
+    <string name="genui_cluster_owner_team">服务器的</string>
+    <string name="genui_cluster_owner_problem">你没有添加这些密钥的权限。</string>
     <string name="genui_cluster_name_placeholder">给它起个名字</string>
     <string name="genui_cluster_name_problem">名称为 1 到 100 个字符。</string>
     <string name="genui_cluster_description_problem">请使用不超过 2000 个字符。</string>

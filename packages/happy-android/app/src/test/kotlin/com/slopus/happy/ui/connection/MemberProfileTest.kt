@@ -93,10 +93,14 @@ class MemberProfileTest {
         rule.onNodeWithText("Staff engineer · Reviewers").assertIsDisplayed()
     }
 
-    @Test fun `an owner says so before their teams, and until the members are read the profile's own flag stands in`() {
-        val owner = profile.copy(user = profile.user.copy(id = "u0", teamRole = "owner"))
+    private val owner = profile.copy(user = profile.user.copy(id = "u0", teamRole = "owner"))
+
+    @Test fun `an owner says so before their teams`() {
         show(MemberProfileSource.State.Loaded(owner), members.copy(members = listOf(TeamMember("a0", userId = "u0", owner = true, teams = listOf("reviewers")))))
         rule.onNodeWithText("Staff engineer · Owner, Reviewers").assertIsDisplayed()
+    }
+
+    @Test fun `until the members are read the profile's own owner flag stands in`() {
         show(MemberProfileSource.State.Loaded(owner), members = null)
         rule.onNodeWithText("Staff engineer · Owner").assertIsDisplayed()
     }
@@ -125,9 +129,9 @@ class MemberProfileTest {
         rule.onNodeWithText("—").assertIsDisplayed()
     }
 
-    @Test fun `an unknown member says they aren't on the team`() {
+    @Test fun `an unknown member says they aren't on the server`() {
         show(MemberProfileSource.State.Unknown)
-        rule.onNodeWithText("This person isn’t on this team.").assertIsDisplayed()
+        rule.onNodeWithText("This person isn’t on this server.").assertIsDisplayed()
     }
 
     @Test fun `a failed read offers a retry`() {

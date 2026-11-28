@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="cloud_profile_title">Crea el teu perfil</string>
-    <string name="cloud_profile_detail">Així és com et veuen el teu equip i els agents a %1$s.</string>
+    <string name="cloud_profile_detail">Així és com et veuen les persones i els agents a %1$s.</string>
     <string name="cloud_profile_add_photo">Afegeix una foto</string>
     <string name="cloud_profile_change_photo">Canvia la foto</string>
     <string name="cloud_profile_name_failed">No s\'ha pogut desar el nom. Comprova la connexió i torna-ho a provar.</string>

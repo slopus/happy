@@ -45,8 +45,8 @@
     <string name="genui_cluster_unchangeable">Вы не можете изменить этот секрет.</string>
     <string name="genui_cluster_owner">Чей</string>
     <string name="genui_cluster_owner_me">Мой</string>
-    <string name="genui_cluster_owner_team">Команды</string>
-    <string name="genui_cluster_owner_problem">Ваша роль не может добавлять секреты.</string>
+    <string name="genui_cluster_owner_team">Сервера</string>
+    <string name="genui_cluster_owner_problem">У вас нет права добавлять такие секреты.</string>
     <string name="genui_cluster_name_placeholder">Как его назвать</string>
     <string name="genui_cluster_name_problem">Имя — от 1 до 100 символов.</string>
     <string name="genui_cluster_description_problem">Не больше 2000 символов.</string>

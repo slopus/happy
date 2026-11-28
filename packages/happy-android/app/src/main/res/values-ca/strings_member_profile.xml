@@ -16,7 +16,7 @@
     <string name="member_profile_window_month">Darrer mes</string>
     <string name="member_profile_recent">Activitat recent</string>
     <string name="member_profile_no_tasks">Encara no hi ha tasques</string>
-    <string name="member_profile_unknown">Aquesta persona no és a l’equip.</string>
+    <string name="member_profile_unknown">Aquesta persona no és al servidor.</string>
     <string name="member_profile_archived">Arxivada</string>
     <string name="agent_search_people">Persones</string>
 </resources>

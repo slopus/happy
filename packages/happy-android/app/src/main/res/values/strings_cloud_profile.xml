@@ -2,7 +2,7 @@
 <resources>
     <!-- Create your profile: a new member's name and photo on a Happy Cloud server, before it is kept. -->
     <string name="cloud_profile_title">Create your profile</string>
-    <string name="cloud_profile_detail">This is how your team and agents see you on %1$s.</string>
+    <string name="cloud_profile_detail">This is how people and agents on %1$s see you.</string>
     <string name="cloud_profile_add_photo">Add photo</string>
     <string name="cloud_profile_change_photo">Change photo</string>
     <string name="cloud_profile_name_failed">Couldn\'t save your name. Check your connection and try again.</string>

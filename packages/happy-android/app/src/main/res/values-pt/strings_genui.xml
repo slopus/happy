@@ -45,8 +45,8 @@
     <string name="genui_cluster_unchangeable">Você não pode alterar este segredo.</string>
     <string name="genui_cluster_owner">De quem é</string>
     <string name="genui_cluster_owner_me">Meu</string>
-    <string name="genui_cluster_owner_team">Da equipe</string>
-    <string name="genui_cluster_owner_problem">Sua função não pode adicionar segredos.</string>
+    <string name="genui_cluster_owner_team">Do servidor</string>
+    <string name="genui_cluster_owner_problem">Você não tem permissão para adicionar estes segredos.</string>
     <string name="genui_cluster_name_placeholder">Como chamá-lo</string>
     <string name="genui_cluster_name_problem">Um nome tem de 1 a 100 caracteres.</string>
     <string name="genui_cluster_description_problem">Use até 2.000 caracteres.</string>

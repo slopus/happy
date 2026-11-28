@@ -6,13 +6,13 @@
     <string name="cloud_onboarding_couldnt_skip">無法略過此步驟，請重試。</string>
     <string name="cloud_onboarding_couldnt_check">無法連線至伺服器，請重試。</string>
     <string name="cloud_onboarding_photo_title">新增照片</string>
-    <string name="cloud_onboarding_photo_body">你的團隊和代理程式會在你的名字旁看到它。</string>
+    <string name="cloud_onboarding_photo_body">伺服器上的成員和代理程式會在你的名字旁看到它。</string>
     <string name="cloud_onboarding_choose_photo">選擇照片</string>
     <string name="cloud_onboarding_photo_failed">照片未上傳，請重試。</string>
     <string name="cloud_onboarding_update_title">更新 Happy 以繼續</string>
     <string name="cloud_onboarding_update_body">此伺服器要求的步驟，此版本的 Happy 尚不支援。</string>
     <string name="cloud_onboarding_update_action">開啟 Google Play</string>
-    <string name="cloud_onboarding_waiting_title">正在等待管理員</string>
+    <string name="cloud_onboarding_waiting_title">正在等待設定</string>
     <string name="cloud_onboarding_waiting_body">需要由管理此伺服器的人先完成設定：%1$s。</string>
     <string name="cloud_onboarding_not_ready_title">即將就緒</string>
     <string name="cloud_onboarding_not_ready_body">此伺服器尚未就緒，請稍後再檢查。</string>
@@ -43,7 +43,7 @@
     <string name="cloud_onboarding_inference_body">你的代理程式使用你連接的模型思考：ChatGPT、Claude、Grok 或你自己的端點。</string>
     <string name="cloud_onboarding_inference_free">在此之前，它們使用 Happy 的免費模型。</string>
     <string name="cloud_onboarding_connect_provider">連接供應商</string>
-    <string name="cloud_onboarding_inference_not_allowed">你的角色無法連接供應商，請聯絡管理員。</string>
+    <string name="cloud_onboarding_inference_not_allowed">你無法在這裡連接供應商，請聯絡管理此伺服器的人。</string>
     <string name="cloud_onboarding_plugins_title">連接你的工具</string>
     <string name="cloud_onboarding_plugins_body">外掛程式讓你的代理程式能在團隊使用的服務中工作。現在設定一個，或稍後在「外掛程式」中設定。</string>
     <string name="cloud_onboarding_plugins_needed">外掛程式讓你的代理程式能在團隊使用的服務中工作。請先連接：%1$s。</string>

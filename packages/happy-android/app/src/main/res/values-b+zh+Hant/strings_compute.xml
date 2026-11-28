@@ -26,9 +26,9 @@
     <string name="compute_access_title">誰可以使用</string>
     <string name="compute_access_shared">共用</string>
     <string name="compute_access_private">私人</string>
-    <string name="compute_access_shared_about">供團隊使用。任何成員的代理都可以在上面工作。</string>
+    <string name="compute_access_shared_about">供整個伺服器使用。任何成員的代理都可以在上面工作。</string>
     <string name="compute_access_private_about">只供你使用。只有你的代理可以加入，每一個都由你批准。</string>
-    <string name="compute_access_member_footer">共用電腦需要管理員權限。你可以新增一台自己的私人電腦。</string>
+    <string name="compute_access_member_footer">共用電腦需要管理電腦的權限。你可以新增一台自己的私人電腦。</string>
     <string name="compute_yours">你的</string>
     <string name="compute_owner_named">%1$s 的</string>
     <string name="compute_owner_member">成員的</string>
@@ -50,7 +50,7 @@
     <string name="compute_create_failed">沒有安裝命令</string>
     <string name="compute_no_command">Happy Cloud 沒有傳送安裝命令。</string>
     <string name="compute_create">建立安裝命令</string>
-    <string name="compute_install_shared">請以管理員身分在團隊代理將使用的電腦上執行。它會為整個系統安裝 Happy supervisor，並將電腦作為共用電腦加入。</string>
+    <string name="compute_install_shared">請以管理員身分在伺服器代理將使用的電腦上執行。它會為整個系統安裝 Happy supervisor，並將電腦作為共用電腦加入。</string>
     <string name="compute_install_private">請在你自己的電腦上、以你自己的帳號執行。它會安裝 Happy supervisor，並將電腦以你的名義加入。</string>
     <string name="compute_command_note">此命令只能使用一次，並含有密鑰，請勿外流。</string>
     <string name="compute_expires">到期時間：%1$s</string>

@@ -8,7 +8,7 @@
     <string name="plugins_empty">Ten serwer nie oferuje jeszcze wtyczek.</string>
     <string name="plugins_failed">Nie udało się wczytać wtyczek</string>
     <string name="plugins_tap_to_retry">Dotknij, aby spróbować ponownie.</string>
-    <string name="plugins_manage_note">Instalować i konfigurować wtyczki mogą tylko osoby, których rola pozwala nimi zarządzać.</string>
+    <string name="plugins_manage_note">Instalować i konfigurować wtyczki mogą tylko osoby z uprawnieniem do zarządzania nimi.</string>
     <string name="plugins_status_ready">Gotowa</string>
     <string name="plugins_status_needs_setup">Wymaga konfiguracji</string>
     <string name="plugins_status_setup_again">Wymaga ponownej konfiguracji</string>
@@ -39,6 +39,6 @@
     <string name="plugins_signed_in_browser">Dokończ logowanie w przeglądarce i wróć tutaj.</string>
     <string name="plugins_uninstall">Odinstaluj</string>
     <string name="plugins_uninstall_title">Odinstalować %1$s?</string>
-    <string name="plugins_uninstall_body">%1$s zostanie ukryty przed Tobą w każdym zespole, do którego należysz. Nic nie zostanie usunięte, a ponowna instalacja przywróci wszystko.</string>
-    <string name="plugins_feature_note">Tylko dla Ciebie, w każdym zespole, do którego należysz. Odinstalowanie ukrywa %1$s i zachowuje wszystkie dane: to, co zespół z nim stworzył, zostaje, a ponowna instalacja przywraca wszystko.</string>
+    <string name="plugins_uninstall_body">%1$s zostanie ukryty przed Tobą na każdym serwerze, do którego należysz. Nic nie zostanie usunięte, a ponowna instalacja przywróci wszystko.</string>
+    <string name="plugins_feature_note">Tylko dla Ciebie, na każdym serwerze, do którego należysz. Odinstalowanie ukrywa %1$s i zachowuje wszystkie dane: to, co inni z nim stworzyli, zostaje, a ponowna instalacja przywraca wszystko.</string>
 </resources>

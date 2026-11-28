@@ -8,7 +8,7 @@
     <string name="plugins_empty">このサーバーにはまだプラグインがありません。</string>
     <string name="plugins_failed">プラグインを読み込めませんでした</string>
     <string name="plugins_tap_to_retry">タップして再試行します。</string>
-    <string name="plugins_manage_note">プラグインのインストールと設定は、プラグインを管理できるロールの人だけが行えます。</string>
+    <string name="plugins_manage_note">プラグインのインストールと設定は、プラグインを管理する権限を持つ人だけが行えます。</string>
     <string name="plugins_status_ready">準備完了</string>
     <string name="plugins_status_needs_setup">設定が必要</string>
     <string name="plugins_status_setup_again">再設定が必要</string>
@@ -39,6 +39,6 @@
     <string name="plugins_signed_in_browser">ブラウザーでサインインを完了してから、ここに戻ってください。</string>
     <string name="plugins_uninstall">アンインストール</string>
     <string name="plugins_uninstall_title">%1$sをアンインストールしますか？</string>
-    <string name="plugins_uninstall_body">所属するすべてのチームで、%1$sがあなたに表示されなくなります。何も削除されず、再インストールするとすべて元に戻ります。</string>
-    <string name="plugins_feature_note">あなただけに適用され、所属するすべてのチームに反映されます。アンインストールすると%1$sは非表示になりますが、データはすべて残ります。チームが作成したものはそのままで、再インストールするとすべて元に戻ります。</string>
+    <string name="plugins_uninstall_body">所属するすべてのサーバーで、%1$sがあなたに表示されなくなります。何も削除されず、再インストールするとすべて元に戻ります。</string>
+    <string name="plugins_feature_note">あなただけに適用され、所属するすべてのサーバーに反映されます。アンインストールすると%1$sは非表示になりますが、データはすべて残ります。他の人が作成したものはそのままで、再インストールするとすべて元に戻ります。</string>
 </resources>

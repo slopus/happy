@@ -415,7 +415,7 @@ class ConversationLayoutTest {
     @Test fun `a role that only reads gets a line saying so in the composer's place, in a new chat too`() {
         rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), ConversationScreenActions(), roleCanSend = false) }
         rule.node(ConversationScreenTags.READ_ONLY).assertIsDisplayed()
-        rule.onNodeWithText("You can read this conversation, but your role can't send messages.").assertIsDisplayed()
+        rule.onNodeWithText("You can read this conversation, but you don't have permission to send messages.").assertIsDisplayed()
         rule.node(ConversationComposerTags.COMPOSER).assertDoesNotExist()
     }
 

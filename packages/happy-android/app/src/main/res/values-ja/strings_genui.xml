@@ -45,8 +45,8 @@
     <string name="genui_cluster_unchangeable">このシークレットを変更する権限がありません。</string>
     <string name="genui_cluster_owner">所有者</string>
     <string name="genui_cluster_owner_me">自分</string>
-    <string name="genui_cluster_owner_team">チーム</string>
-    <string name="genui_cluster_owner_problem">あなたのロールではシークレットを追加できません。</string>
+    <string name="genui_cluster_owner_team">サーバー</string>
+    <string name="genui_cluster_owner_problem">このシークレットを追加する権限がありません。</string>
     <string name="genui_cluster_name_placeholder">表示する名前</string>
     <string name="genui_cluster_name_problem">名前は 1〜100 文字です。</string>
     <string name="genui_cluster_description_problem">2,000 文字以内にしてください。</string>

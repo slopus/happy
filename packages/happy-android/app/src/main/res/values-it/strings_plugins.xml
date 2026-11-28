@@ -8,7 +8,7 @@
     <string name="plugins_empty">Questo server non offre ancora plugin.</string>
     <string name="plugins_failed">Impossibile caricare i plugin</string>
     <string name="plugins_tap_to_retry">Tocca per riprovare.</string>
-    <string name="plugins_manage_note">Solo chi ha un ruolo che può gestire i plugin può installarli e configurarli.</string>
+    <string name="plugins_manage_note">Solo chi ha il permesso di gestire i plugin può installarli e configurarli.</string>
     <string name="plugins_status_ready">Pronto</string>
     <string name="plugins_status_needs_setup">Da configurare</string>
     <string name="plugins_status_setup_again">Da configurare di nuovo</string>
@@ -39,6 +39,6 @@
     <string name="plugins_signed_in_browser">Completa l’accesso nel browser, poi torna qui.</string>
     <string name="plugins_uninstall">Disinstalla</string>
     <string name="plugins_uninstall_title">Disinstallare %1$s?</string>
-    <string name="plugins_uninstall_body">%1$s verrà nascosto a te in tutti i team di cui fai parte. Non viene eliminato nulla e reinstallandolo torna tutto.</string>
-    <string name="plugins_feature_note">Solo per te, in tutti i team di cui fai parte. Disinstallare nasconde %1$s e ne conserva tutti i dati: ciò che il tuo team ha creato resta e reinstallandolo torna tutto.</string>
+    <string name="plugins_uninstall_body">%1$s verrà nascosto a te in tutti i server di cui fai parte. Non viene eliminato nulla e reinstallandolo torna tutto.</string>
+    <string name="plugins_feature_note">Solo per te, in tutti i server di cui fai parte. Disinstallare nasconde %1$s e ne conserva tutti i dati: ciò che altri hanno creato resta e reinstallandolo torna tutto.</string>
 </resources>

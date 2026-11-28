@@ -6,13 +6,13 @@
     <string name="cloud_onboarding_couldnt_skip">このステップをスキップできませんでした。もう一度お試しください。</string>
     <string name="cloud_onboarding_couldnt_check">サーバーに接続できませんでした。もう一度お試しください。</string>
     <string name="cloud_onboarding_photo_title">写真を追加</string>
-    <string name="cloud_onboarding_photo_body">チームとエージェントにあなたの名前と一緒に表示されます。</string>
+    <string name="cloud_onboarding_photo_body">サーバーのメンバーとエージェントに、あなたの名前と一緒に表示されます。</string>
     <string name="cloud_onboarding_choose_photo">写真を選ぶ</string>
     <string name="cloud_onboarding_photo_failed">写真をアップロードできませんでした。もう一度お試しください。</string>
     <string name="cloud_onboarding_update_title">続けるには Happy をアップデートしてください</string>
     <string name="cloud_onboarding_update_body">このサーバーは、このバージョンの Happy がまだ対応していないステップを求めています。</string>
     <string name="cloud_onboarding_update_action">Google Play を開く</string>
-    <string name="cloud_onboarding_waiting_title">管理者を待っています</string>
+    <string name="cloud_onboarding_waiting_title">設定を待っています</string>
     <string name="cloud_onboarding_waiting_body">このサーバーの管理者が先に設定を完了する必要があります: %1$s。</string>
     <string name="cloud_onboarding_not_ready_title">もうすぐです</string>
     <string name="cloud_onboarding_not_ready_body">このサーバーはまだ準備ができていません。しばらくしてからもう一度確認してください。</string>
@@ -43,7 +43,7 @@
     <string name="cloud_onboarding_inference_body">エージェントは接続したモデルで考えます: ChatGPT、Claude、Grok、または独自のエンドポイント。</string>
     <string name="cloud_onboarding_inference_free">それまでは Happy の無料モデルを使います。</string>
     <string name="cloud_onboarding_connect_provider">プロバイダーを接続</string>
-    <string name="cloud_onboarding_inference_not_allowed">あなたのロールではプロバイダーを接続できません。管理者に依頼してください。</string>
+    <string name="cloud_onboarding_inference_not_allowed">ここではプロバイダーを接続できません。このサーバーを管理している人に依頼してください。</string>
     <string name="cloud_onboarding_plugins_title">ツールを接続</string>
     <string name="cloud_onboarding_plugins_body">プラグインを使うと、エージェントがチームの使うサービスで作業できます。今すぐ設定するか、後でプラグインから設定してください。</string>
     <string name="cloud_onboarding_plugins_needed">プラグインを使うと、エージェントがチームの使うサービスで作業できます。まず次を接続してください: %1$s。</string>

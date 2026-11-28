@@ -16,7 +16,7 @@
     <string name="member_profile_window_month">过去 1 个月</string>
     <string name="member_profile_recent">最近活动</string>
     <string name="member_profile_no_tasks">还没有任务</string>
-    <string name="member_profile_unknown">此人不在这个团队中。</string>
+    <string name="member_profile_unknown">此人不在这个服务器上。</string>
     <string name="member_profile_archived">已归档</string>
     <string name="agent_search_people">成员</string>
 </resources>

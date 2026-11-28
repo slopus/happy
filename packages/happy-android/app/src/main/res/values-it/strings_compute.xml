@@ -26,9 +26,9 @@
     <string name="compute_access_title">Chi può usarlo</string>
     <string name="compute_access_shared">Condiviso</string>
     <string name="compute_access_private">Privato</string>
-    <string name="compute_access_shared_about">Per il tuo team. Possono lavorarci gli agenti di qualsiasi membro.</string>
+    <string name="compute_access_shared_about">Per tutto il server. Possono lavorarci gli agenti di qualsiasi membro.</string>
     <string name="compute_access_private_about">Solo per te. Possono unirsi solo i tuoi agenti, e li approvi uno per uno.</string>
-    <string name="compute_access_member_footer">I computer condivisi richiedono i permessi di amministratore. Puoi aggiungere un computer privato tuo.</string>
+    <string name="compute_access_member_footer">I computer condivisi richiedono il permesso di gestire i computer. Puoi aggiungere un computer privato tuo.</string>
     <string name="compute_yours">Tuo</string>
     <string name="compute_owner_named">Di %1$s</string>
     <string name="compute_owner_member">Di un membro</string>
@@ -52,7 +52,7 @@
     <string name="compute_create_failed">Nessun comando di installazione</string>
     <string name="compute_no_command">Happy Cloud non ha inviato un comando di installazione.</string>
     <string name="compute_create">Crea comando di installazione</string>
-    <string name="compute_install_shared">Eseguilo come amministratore sul computer che useranno gli agenti del tuo team. Installa il supervisor di Happy per tutto il sistema e unisce il computer come condiviso.</string>
+    <string name="compute_install_shared">Eseguilo come amministratore sul computer che useranno gli agenti del server. Installa il supervisor di Happy per tutto il sistema e unisce il computer come condiviso.</string>
     <string name="compute_install_private">Eseguilo sul tuo computer, con il tuo account. Installa il supervisor di Happy e unisce il computer come tuo.</string>
     <string name="compute_command_note">Il comando funziona una sola volta e contiene un segreto, quindi tienilo privato.</string>
     <string name="compute_expires">Scade il %1$s</string>

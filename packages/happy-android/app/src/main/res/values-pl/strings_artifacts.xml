@@ -108,7 +108,7 @@
     <string name="feed_clusters_unavailable">Nie udało się ich wczytać. Sprawdź, czy komputer jest włączony.</string>
     <string name="feed_unread_mark">Nieprzeczytane</string>
     <string name="feed_everything">Wszystko</string>
-    <string name="feed_team">Zespół</string>
+    <string name="feed_team">Serwer</string>
     <string name="feed_follow">Obserwuj %1$s</string>
     <string name="feed_mute">Wycisz %1$s</string>
     <string name="feed_muted">Wyciszone</string>

@@ -19,7 +19,7 @@
     "cloudSettings.noZones": "No hi ha zones per mostrar",
     "cloudSettings.noSecrets": "No hi ha secrets per mostrar",
     "cloudSettings.loadFailed": "No s’ha pogut carregar la llista",
-    "cloudSettings.ownerTeam": "Equip",
+    "cloudSettings.ownerTeam": "Servidor",
     "cloudSettings.ownerMine": "Meus",
     "cloudSettings.ownerAgent": "Agent",
     "voiceStatusBar.tapToEnd": "toca per finalitzar",

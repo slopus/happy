@@ -2,7 +2,7 @@
 <resources>
     <string name="cloud_providers_title">Инференс</string>
     <string name="cloud_providers_included">Включено</string>
-    <string name="cloud_providers_team">Команда</string>
+    <string name="cloud_providers_team">Сервер</string>
     <string name="cloud_providers_mine">Мой аккаунт</string>
     <string name="cloud_providers_free">Happy (бесплатно)</string>
     <string name="cloud_providers_off">Выкл.</string>

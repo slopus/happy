@@ -16,7 +16,7 @@
     <string name="member_profile_window_month">Último mês</string>
     <string name="member_profile_recent">Atividade recente</string>
     <string name="member_profile_no_tasks">Ainda não há tarefas</string>
-    <string name="member_profile_unknown">Esta pessoa não está na equipe.</string>
+    <string name="member_profile_unknown">Esta pessoa não está no servidor.</string>
     <string name="member_profile_archived">Arquivada</string>
     <string name="agent_search_people">Pessoas</string>
 </resources>

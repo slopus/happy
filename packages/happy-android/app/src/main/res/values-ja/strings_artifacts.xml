@@ -102,7 +102,7 @@
     <string name="feed_clusters_unavailable">読み込めませんでした。コンピュータの電源が入っているか確認してください。</string>
     <string name="feed_unread_mark">未読</string>
     <string name="feed_everything">全体</string>
-    <string name="feed_team">チーム</string>
+    <string name="feed_team">サーバー</string>
     <string name="feed_follow">%1$sをフォロー</string>
     <string name="feed_mute">%1$sをミュート</string>
     <string name="feed_muted">ミュート中</string>

@@ -6,13 +6,13 @@
     <string name="cloud_onboarding_couldnt_skip">Impossibile saltare questo passaggio. Riprova.</string>
     <string name="cloud_onboarding_couldnt_check">Impossibile raggiungere il server. Riprova.</string>
     <string name="cloud_onboarding_photo_title">Aggiungi una foto</string>
-    <string name="cloud_onboarding_photo_body">Il tuo team e gli agenti la vedranno accanto al tuo nome.</string>
+    <string name="cloud_onboarding_photo_body">Le persone e gli agenti del server la vedranno accanto al tuo nome.</string>
     <string name="cloud_onboarding_choose_photo">Scegli foto</string>
     <string name="cloud_onboarding_photo_failed">La foto non è stata caricata. Riprova.</string>
     <string name="cloud_onboarding_update_title">Aggiorna Happy per continuare</string>
     <string name="cloud_onboarding_update_body">Questo server chiede un passaggio che questa versione di Happy non conosce ancora.</string>
     <string name="cloud_onboarding_update_action">Apri Google Play</string>
-    <string name="cloud_onboarding_waiting_title">In attesa del tuo admin</string>
+    <string name="cloud_onboarding_waiting_title">In attesa della configurazione</string>
     <string name="cloud_onboarding_waiting_body">Chi gestisce questo server deve prima completare la configurazione: %1$s.</string>
     <string name="cloud_onboarding_not_ready_title">Quasi pronto</string>
     <string name="cloud_onboarding_not_ready_body">Questo server non è ancora pronto. Controlla di nuovo tra poco.</string>
@@ -43,7 +43,7 @@
     <string name="cloud_onboarding_inference_body">I tuoi agenti ragionano con il modello che colleghi: ChatGPT, Claude, Grok o un tuo endpoint.</string>
     <string name="cloud_onboarding_inference_free">Nel frattempo usano il modello gratuito di Happy.</string>
     <string name="cloud_onboarding_connect_provider">Collega un provider</string>
-    <string name="cloud_onboarding_inference_not_allowed">Il tuo ruolo non può collegare provider. Chiedi al tuo admin.</string>
+    <string name="cloud_onboarding_inference_not_allowed">Qui non puoi collegare provider. Chiedi a chi gestisce questo server.</string>
     <string name="cloud_onboarding_plugins_title">Collega i tuoi strumenti</string>
     <string name="cloud_onboarding_plugins_body">I plugin permettono ai tuoi agenti di lavorare nei servizi che usa il tuo team. Configurane uno ora o più tardi da Plugin.</string>
     <string name="cloud_onboarding_plugins_needed">I plugin permettono ai tuoi agenti di lavorare nei servizi che usa il tuo team. Collega prima: %1$s.</string>

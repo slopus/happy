@@ -45,8 +45,8 @@
     <string name="genui_cluster_unchangeable">You can’t change this secret.</string>
     <string name="genui_cluster_owner">Whose</string>
     <string name="genui_cluster_owner_me">Mine</string>
-    <string name="genui_cluster_owner_team">The team’s</string>
-    <string name="genui_cluster_owner_problem">Your role can’t add secrets.</string>
+    <string name="genui_cluster_owner_team">The server’s</string>
+    <string name="genui_cluster_owner_problem">You don’t have permission to add these secrets.</string>
     <string name="genui_cluster_name_placeholder">What to call it</string>
     <string name="genui_cluster_name_problem">A name is 1 to 100 characters.</string>
     <string name="genui_cluster_description_problem">Use 2,000 characters or fewer.</string>

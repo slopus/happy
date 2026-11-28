@@ -112,7 +112,8 @@ class ClusterSecretDraft(val kind: ClusterSecretKind, prefill: JsonObject) {
 
     var name by mutableStateOf(prefill.str("name").orEmpty())
     var description by mutableStateOf(prefill.str("description").orEmpty())
-    var owner by mutableStateOf(if (prefill.str("owner") == "team") ClusterOwner.Team else ClusterOwner.Me)
+    // `server` is the cluster's newer word for `team` (docs/teams.md §10); `team` is still sent, which it takes.
+    var owner by mutableStateOf(if (prefill.str("owner") in setOf("team", "server")) ClusterOwner.Team else ClusterOwner.Me)
     /** The owners the person may choose; empty until read, or when their role may add none. */
     var owners by mutableStateOf<List<ClusterOwner>>(emptyList())
     /** Endpoint and environment: whether MCP servers may open it too. */

@@ -154,7 +154,10 @@ internal fun CloudMetadataScreen(page: CloudMetadataPage, state: CloudMetadataSt
                 is CloudMetadataState.Secrets -> {
                     if (state.secrets.isEmpty()) ItemGroup { Item(stringResource(R.string.cloud_settings_no_secrets), showChevron = false) }
                     val owners = listOf("team" to R.string.cloud_settings_owner_team, "me" to R.string.cloud_settings_owner_mine, "agent" to R.string.cloud_settings_owner_agent)
-                    val groups = state.secrets.groupBy { secret -> secret.owner?.takeIf { owner -> owners.any { it.first == owner } } }
+                    // The server's own secrets: the cluster still answers `team`, and will say `server` (docs/teams.md §10).
+                    val groups = state.secrets.groupBy { secret ->
+                        secret.owner?.let { if (it == "server") "team" else it }?.takeIf { owner -> owners.any { it.first == owner } }
+                    }
                     for ((owner, title) in owners + (null to null)) {
                         val secrets = groups[owner] ?: continue
                         ItemGroup(title = title?.let { stringResource(it) }) {

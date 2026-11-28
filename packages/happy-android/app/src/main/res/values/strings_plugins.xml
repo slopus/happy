@@ -13,7 +13,7 @@
     <string name="plugins_empty">This server offers no plugins yet.</string>
     <string name="plugins_failed">Plugins couldn\'t be loaded</string>
     <string name="plugins_tap_to_retry">Tap to try again.</string>
-    <string name="plugins_manage_note">Only people whose role can manage plugins can install and set them up.</string>
+    <string name="plugins_manage_note">Only people with permission to manage plugins can install and set them up.</string>
     <string name="plugins_status_ready">Ready</string>
     <string name="plugins_status_needs_setup">Needs setup</string>
     <string name="plugins_status_setup_again">Needs setup again</string>
@@ -44,6 +44,6 @@
     <string name="plugins_signed_in_browser">Finish signing in in your browser, then come back here.</string>
     <string name="plugins_uninstall">Uninstall</string>
     <string name="plugins_uninstall_title">Uninstall %1$s?</string>
-    <string name="plugins_uninstall_body">%1$s will be hidden from you in every team you belong to. Nothing is deleted, and installing it again brings everything back.</string>
-    <string name="plugins_feature_note">Just for you, in every team you belong to. Uninstalling hides %1$s and keeps all its data: what your team made with it stays, and installing it again brings everything back.</string>
+    <string name="plugins_uninstall_body">%1$s will be hidden from you on every server you belong to. Nothing is deleted, and installing it again brings everything back.</string>
+    <string name="plugins_feature_note">Just for you, on every server you belong to. Uninstalling hides %1$s and keeps all its data: what others made with it stays, and installing it again brings everything back.</string>
 </resources>

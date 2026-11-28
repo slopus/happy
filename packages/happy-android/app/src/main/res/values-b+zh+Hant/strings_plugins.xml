@@ -8,7 +8,7 @@
     <string name="plugins_empty">此伺服器尚未提供外掛程式。</string>
     <string name="plugins_failed">無法載入外掛程式</string>
     <string name="plugins_tap_to_retry">輕觸以重試。</string>
-    <string name="plugins_manage_note">只有角色可以管理外掛程式的人才能安裝和設定外掛程式。</string>
+    <string name="plugins_manage_note">只有擁有外掛程式管理權限的人才能安裝和設定外掛程式。</string>
     <string name="plugins_status_ready">就緒</string>
     <string name="plugins_status_needs_setup">需要設定</string>
     <string name="plugins_status_setup_again">需要重新設定</string>
@@ -39,6 +39,6 @@
     <string name="plugins_signed_in_browser">請在瀏覽器中完成登入，然後回到這裡。</string>
     <string name="plugins_uninstall">解除安裝</string>
     <string name="plugins_uninstall_title">解除安裝%1$s？</string>
-    <string name="plugins_uninstall_body">%1$s 將在你所在的每個團隊中對你隱藏。不會刪除任何內容，重新安裝後一切都會恢復。</string>
-    <string name="plugins_feature_note">僅對你生效，適用於你所在的每個團隊。解除安裝會隱藏%1$s並保留其所有資料：團隊用它建立的內容仍會保留，重新安裝後一切都會恢復。</string>
+    <string name="plugins_uninstall_body">%1$s 將在你所在的每個伺服器上對你隱藏。不會刪除任何內容，重新安裝後一切都會恢復。</string>
+    <string name="plugins_feature_note">僅對你生效，適用於你所在的每個伺服器。解除安裝會隱藏%1$s並保留其所有資料：其他人用它建立的內容仍會保留，重新安裝後一切都會恢復。</string>
 </resources>

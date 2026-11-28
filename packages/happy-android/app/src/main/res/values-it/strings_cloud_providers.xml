@@ -2,7 +2,7 @@
 <resources>
     <string name="cloud_providers_title">Inferenza</string>
     <string name="cloud_providers_included">Incluso</string>
-    <string name="cloud_providers_team">Team</string>
+    <string name="cloud_providers_team">Server</string>
     <string name="cloud_providers_mine">Il mio account</string>
     <string name="cloud_providers_free">Happy (gratis)</string>
     <string name="cloud_providers_off">Disattivato</string>

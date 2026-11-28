@@ -12,13 +12,13 @@
     <string name="cloud_onboarding_couldnt_skip">Couldn\'t skip this step. Try again.</string>
     <string name="cloud_onboarding_couldnt_check">Couldn\'t reach the server. Try again.</string>
     <string name="cloud_onboarding_photo_title">Add a photo</string>
-    <string name="cloud_onboarding_photo_body">Your team and agents see it next to your name.</string>
+    <string name="cloud_onboarding_photo_body">People and agents on the server see it next to your name.</string>
     <string name="cloud_onboarding_choose_photo">Choose photo</string>
     <string name="cloud_onboarding_photo_failed">Your photo didn\'t upload. Try again.</string>
     <string name="cloud_onboarding_update_title">Update Happy to continue</string>
     <string name="cloud_onboarding_update_body">This server asks for a step this version of Happy doesn\'t know yet.</string>
     <string name="cloud_onboarding_update_action">Open Google Play</string>
-    <string name="cloud_onboarding_waiting_title">Waiting for your admin</string>
+    <string name="cloud_onboarding_waiting_title">Waiting for setup</string>
     <string name="cloud_onboarding_waiting_body">Someone who manages this server has to finish setting it up first: %1$s.</string>
     <string name="cloud_onboarding_not_ready_title">Almost ready</string>
     <string name="cloud_onboarding_not_ready_body">This server isn\'t ready for you yet. Check again in a little while.</string>
@@ -49,7 +49,7 @@
     <string name="cloud_onboarding_inference_body">Your agents think with a model you connect: ChatGPT, Claude, Grok, or your own endpoint.</string>
     <string name="cloud_onboarding_inference_free">Until then, they use Happy\'s free model.</string>
     <string name="cloud_onboarding_connect_provider">Connect a provider</string>
-    <string name="cloud_onboarding_inference_not_allowed">Your role can\'t connect providers. Ask your admin.</string>
+    <string name="cloud_onboarding_inference_not_allowed">You can\'t connect providers here. Ask someone who manages this server.</string>
     <string name="cloud_onboarding_plugins_title">Connect your tools</string>
     <string name="cloud_onboarding_plugins_body">Plugins let your agents work in the services your team uses. Set one up now, or later from Plugins.</string>
     <string name="cloud_onboarding_plugins_needed">Plugins let your agents work in the services your team uses. Connect these first: %1$s.</string>

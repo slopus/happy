@@ -19,7 +19,7 @@
     "cloudSettings.noZones": "沒有可顯示的區域",
     "cloudSettings.noSecrets": "沒有可顯示的機密",
     "cloudSettings.loadFailed": "無法載入清單",
-    "cloudSettings.ownerTeam": "團隊",
+    "cloudSettings.ownerTeam": "伺服器",
     "cloudSettings.ownerMine": "我的",
     "cloudSettings.ownerAgent": "代理",
     "voiceStatusBar.tapToEnd": "點按結束",

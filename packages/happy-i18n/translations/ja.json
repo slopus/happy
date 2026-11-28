@@ -19,7 +19,7 @@
     "cloudSettings.noZones": "表示できるゾーンはありません",
     "cloudSettings.noSecrets": "表示できるシークレットはありません",
     "cloudSettings.loadFailed": "一覧を読み込めませんでした",
-    "cloudSettings.ownerTeam": "チーム",
+    "cloudSettings.ownerTeam": "サーバー",
     "cloudSettings.ownerMine": "自分",
     "cloudSettings.ownerAgent": "エージェント",
     "voiceStatusBar.tapToEnd": "タップして終了",

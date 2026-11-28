@@ -45,8 +45,8 @@
     <string name="genui_cluster_unchangeable">No pots canviar aquest secret.</string>
     <string name="genui_cluster_owner">De qui és</string>
     <string name="genui_cluster_owner_me">Meu</string>
-    <string name="genui_cluster_owner_team">De l’equip</string>
-    <string name="genui_cluster_owner_problem">El teu rol no pot afegir secrets.</string>
+    <string name="genui_cluster_owner_team">Del servidor</string>
+    <string name="genui_cluster_owner_problem">No tens permís per afegir aquests secrets.</string>
     <string name="genui_cluster_name_placeholder">Com s’ha de dir</string>
     <string name="genui_cluster_name_problem">Un nom té d’1 a 100 caràcters.</string>
     <string name="genui_cluster_description_problem">Fes servir 2.000 caràcters o menys.</string>

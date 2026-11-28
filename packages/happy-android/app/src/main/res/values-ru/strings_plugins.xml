@@ -8,7 +8,7 @@
     <string name="plugins_empty">Этот сервер пока не предлагает плагинов.</string>
     <string name="plugins_failed">Не удалось загрузить плагины</string>
     <string name="plugins_tap_to_retry">Нажмите, чтобы повторить.</string>
-    <string name="plugins_manage_note">Устанавливать и настраивать плагины могут только люди, чья роль позволяет управлять ими.</string>
+    <string name="plugins_manage_note">Устанавливать и настраивать плагины могут только люди с правом управлять ими.</string>
     <string name="plugins_status_ready">Готов</string>
     <string name="plugins_status_needs_setup">Нужна настройка</string>
     <string name="plugins_status_setup_again">Нужно настроить заново</string>
@@ -39,6 +39,6 @@
     <string name="plugins_signed_in_browser">Завершите вход в браузере и вернитесь сюда.</string>
     <string name="plugins_uninstall">Отключить</string>
     <string name="plugins_uninstall_title">Отключить %1$s?</string>
-    <string name="plugins_uninstall_body">%1$s скроется от вас во всех командах, где вы состоите. Ничего не удаляется, а после повторной установки всё вернётся.</string>
-    <string name="plugins_feature_note">Только для вас, во всех командах, где вы состоите. Если отключить %1$s, все данные сохранятся: всё, что с ним сделала команда, останется, а после повторной установки всё вернётся.</string>
+    <string name="plugins_uninstall_body">%1$s скроется от вас на всех серверах, где вы состоите. Ничего не удаляется, а после повторной установки всё вернётся.</string>
+    <string name="plugins_feature_note">Только для вас, на всех серверах, где вы состоите. Если отключить %1$s, все данные сохранятся: всё, что с ним сделали другие, останется, а после повторной установки всё вернётся.</string>
 </resources>

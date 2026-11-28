@@ -224,7 +224,7 @@ class FeedScreenTest {
         rule.onNodeWithText("EVERYWHERE").assertExists()
         rule.onNodeWithText("PLACES").assertExists()
         rule.onNodeWithText("Everything").assertExists()
-        rule.onNodeWithText("Team").assertExists()
+        rule.onNodeWithText("Server").assertExists()
         rule.onAllNodesWithTag(FeedTags.PLACE).assertCountEquals(6)
         rule.onNodeWithTag(FeedTags.follow("bot:b1"), useUnmergedTree = true).assertIsOff()
         // No choice of its own follows Everything.

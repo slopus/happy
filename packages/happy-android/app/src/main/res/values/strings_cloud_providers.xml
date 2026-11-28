@@ -7,7 +7,7 @@
 <resources>
     <string name="cloud_providers_title">Inference</string>
     <string name="cloud_providers_included">Included</string>
-    <string name="cloud_providers_team">Team</string>
+    <string name="cloud_providers_team">Server</string>
     <string name="cloud_providers_mine">My account</string>
     <string name="cloud_providers_free">Happy (free)</string>
     <string name="cloud_providers_off">Off</string>

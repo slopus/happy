@@ -2,7 +2,7 @@
 <resources>
     <string name="cloud_providers_title">Inferencja</string>
     <string name="cloud_providers_included">W cenie</string>
-    <string name="cloud_providers_team">Zespół</string>
+    <string name="cloud_providers_team">Serwer</string>
     <string name="cloud_providers_mine">Moje konto</string>
     <string name="cloud_providers_free">Happy (za darmo)</string>
     <string name="cloud_providers_off">Wył.</string>

@@ -16,7 +16,7 @@
     <string name="member_profile_window_month">過去1か月</string>
     <string name="member_profile_recent">最近のアクティビティ</string>
     <string name="member_profile_no_tasks">まだタスクはありません</string>
-    <string name="member_profile_unknown">この人はこのチームにいません。</string>
+    <string name="member_profile_unknown">この人はこのサーバーにいません。</string>
     <string name="member_profile_archived">アーカイブ済み</string>
     <string name="agent_search_people">メンバー</string>
 </resources>

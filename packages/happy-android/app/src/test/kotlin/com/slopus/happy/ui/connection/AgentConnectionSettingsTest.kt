@@ -197,7 +197,7 @@ class AgentConnectionSettingsTest {
             useUnmergedTree = true,
         ).assertExists()
         rule.onNode(hasTestTag(AgentSharingTags.ROW) and hasAnyDescendant(hasText("Notifications")), useUnmergedTree = true).assertExists()
-        rule.onNodeWithText("TEAM").assertDoesNotExist()
+        rule.onNodeWithText("SERVER").assertDoesNotExist()
         rule.onNodeWithText("Sharing").assertDoesNotExist()
         rule.node(AgentSharingTags.ROW).performScrollTo().performClick()
         assertEquals(1, opened)
@@ -255,7 +255,7 @@ class AgentConnectionSettingsTest {
         assertTrue(rule.onNode(hasTestTag(AgentSharingTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y > rule.onNode(hasTestTag(DataStorageTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y)
         rule.onNode(hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(DataStorageTags.ROW)) and hasAnyDescendant(hasTestTag(ComputeTags.ROW)), useUnmergedTree = true).assertDoesNotExist()
         rule.onNodeWithText("AGENTS").assertExists()
-        rule.onNodeWithText("TEAM").assertExists()
+        rule.onNodeWithText("SERVER").assertExists()
         rule.onNodeWithText("ADVANCED").assertDoesNotExist()
         rule.onNode(hasTestTag(ComputeTags.ROW) and hasAnyDescendant(hasText("Compute")), useUnmergedTree = true).assertExists()
         rule.onNode(hasTestTag(CloudProvidersTags.ROW) and hasAnyDescendant(hasText("Inference")), useUnmergedTree = true).assertExists()

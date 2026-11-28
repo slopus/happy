@@ -102,7 +102,7 @@
     <string name="feed_clusters_unavailable">無法載入。請檢查你的電腦是否開機。</string>
     <string name="feed_unread_mark">未讀</string>
     <string name="feed_everything">全部</string>
-    <string name="feed_team">團隊</string>
+    <string name="feed_team">伺服器</string>
     <string name="feed_follow">追蹤%1$s</string>
     <string name="feed_mute">靜音%1$s</string>
     <string name="feed_muted">已靜音</string>

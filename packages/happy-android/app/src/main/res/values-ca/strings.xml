@@ -21,7 +21,7 @@
     <string name="cloud_settings_no_zones">No hi ha zones per mostrar</string>
     <string name="cloud_settings_no_secrets">No hi ha secrets per mostrar</string>
     <string name="cloud_settings_load_failed">No s’ha pogut carregar la llista</string>
-    <string name="cloud_settings_owner_team">Equip</string>
+    <string name="cloud_settings_owner_team">Servidor</string>
     <string name="cloud_settings_owner_mine">Meus</string>
     <string name="cloud_settings_owner_agent">Agent</string>
 

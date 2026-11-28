@@ -106,7 +106,7 @@
     <string name="feed_clusters_unavailable">Não foi possível carregá-los. Verifique se o computador está ligado.</string>
     <string name="feed_unread_mark">Não lido</string>
     <string name="feed_everything">Tudo</string>
-    <string name="feed_team">Equipe</string>
+    <string name="feed_team">Servidor</string>
     <string name="feed_follow">Seguir %1$s</string>
     <string name="feed_mute">Silenciar %1$s</string>
     <string name="feed_muted">Silenciado</string>
