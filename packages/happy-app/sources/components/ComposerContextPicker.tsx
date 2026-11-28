@@ -26,10 +26,11 @@ type Props = {
     onPickFiles?: () => void;
     onClose: (restoreFocus?: boolean) => void;
 };
-const ROW_HEIGHT = Platform.OS === 'web' ? 34 : 44;
+const GROUP_HEADING_HEIGHT = 26;
 const groups = ['files', 'agents', 'plugins', 'sites', 'sessions'] as const;
 export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandle, Props>(function ComposerContextPicker(props, ref) {
     const { theme } = useUnistyles();
+    const rowHeight = Platform.OS === 'web' ? 34 : 44;
     const [selected, setSelected] = React.useState(0);
     const [files, setFiles] = React.useState<FileItem[]>([]);
     const [filesLoading, setFilesLoading] = React.useState(false);
@@ -100,11 +101,23 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
         // Keep management reachable even for accounts with many saved roles.
         all.push(...filterContextItems(roleItems, 'agents', props.query).slice(0, props.query.trim() ? 20 : 8));
         if (props.canManageRoles) all.push({ id: 'manage-agent-roles', category: 'agents', title: t('delegation.manageRoles'), detail: '', text: '', icon: 'settings-outline', action: 'manage-roles' });
-        // Keep Android recommendations compact; @ searches still cover all loaded conversations.
-        const recommendedSessions = Platform.OS === 'android' && !props.query.trim() ? sessionItems.slice(0, 2) : sessionItems;
-        all.push(...pluginItems, ...siteItems, ...recommendedSessions);
+        all.push(...pluginItems, ...siteItems);
+        if (Platform.OS === 'android' && !props.query.trim()) {
+            // Reserve room for ten recent conversations; compactness is a
+            // viewport constraint, not a two-conversation data limit.
+            const recommendedSessions = sessionItems.slice(0, 10);
+            return [...all.slice(0, 30 - recommendedSessions.length), ...recommendedSessions];
+        }
+        all.push(...sessionItems);
         return filterContextItems(all, 'all', props.query).slice(0, props.query.trim() ? 60 : 30);
     }, [files, roleItems, pluginItems, siteItems, sessionItems, props.onPickFiles, props.canManageRoles, props.query]);
+    const previewHeight = Platform.OS === 'android' && !props.query.trim()
+        ? groups.reduce((height, group) => {
+            const count = items.filter(item => item.category === group).length;
+            return count ? height + GROUP_HEADING_HEIGHT + (group === 'sessions' ? Math.min(2, count) : count) * rowHeight : height;
+        }, 0)
+        : 388;
+    const resultsMaxHeight = previewHeight > 0 ? Math.min(388, previewHeight) : 388;
     React.useEffect(() => { keyboardSelection.current = false; setSelected(0); }, [props.query]);
     const safeSelected = Math.min(selected, Math.max(0, items.length - 1));
     // Hover only changes the highlight. Scroll-to-selection is exclusively a
@@ -118,9 +131,9 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
         const node = view?.getScrollableNode?.();
         if (node) {
             if (top < node.scrollTop) node.scrollTop = top;
-            else if (top + ROW_HEIGHT > node.scrollTop + node.clientHeight) node.scrollTop = top + ROW_HEIGHT - node.clientHeight;
+            else if (top + rowHeight > node.scrollTop + node.clientHeight) node.scrollTop = top + rowHeight - node.clientHeight;
         } else view?.scrollTo?.({ y: top, animated: false });
-    }, [safeSelected, items]);
+    }, [safeSelected, items, rowHeight]);
     const select = React.useCallback((index: number) => {
         const item = items[index];
         if (!item) return;
@@ -164,19 +177,19 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
     let offset = 0;
     rowOffsets.current.clear();
     return <View ref={rootRef} style={styles.container} testID="composer-context-picker">
-        <ScrollView ref={scrollRef} style={styles.results} keyboardShouldPersistTaps="handled" nestedScrollEnabled testID="composer-context-results" showsVerticalScrollIndicator>
+        <ScrollView ref={scrollRef} style={[styles.results, { maxHeight: resultsMaxHeight }]} keyboardShouldPersistTaps="handled" nestedScrollEnabled testID="composer-context-results" showsVerticalScrollIndicator>
             {groups.map(group => {
                 const rows = items.filter(item => item.category === group);
                 if (!rows.length) return null;
-                offset += 26;
+                offset += GROUP_HEADING_HEIGHT;
                 return <View key={group}>
                     <Text style={styles.heading} testID={`composer-context-group-${group}`}>{t(group === 'files' ? 'composerContext.addGroup' : group === 'agents' ? 'delegation.addGroup' : group === 'sessions' ? 'composerContext.conversationsGroup' : `composerContext.${group}`)}</Text>
                     {rows.map(item => {
                         const index = items.indexOf(item);
-                        rowOffsets.current.set(item.id, offset); offset += ROW_HEIGHT;
+                        rowOffsets.current.set(item.id, offset); offset += rowHeight;
                         return <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`${item.title}, ${item.detail}`} accessibilityState={{ selected: safeSelected === index }} testID={`composer-context-item-${item.id}`}
                             onHoverIn={() => { keyboardSelection.current = false; setSelected(index); }} onPress={() => select(index)}
-                            style={({ pressed }) => [styles.row, { height: ROW_HEIGHT, backgroundColor: pressed ? theme.colors.surfacePressed : safeSelected === index ? theme.colors.surfaceSelected : theme.colors.surface }]}>
+                            style={({ pressed }) => [styles.row, { height: rowHeight, backgroundColor: pressed ? theme.colors.surfacePressed : safeSelected === index ? theme.colors.surfaceSelected : theme.colors.surface }]}>
                             {item.provider ? <CodingAgentIcon agent={item.provider} size={16} /> : <Ionicons name={item.icon} size={16} color={theme.colors.textSecondary} />}
                             <Text numberOfLines={1} style={styles.itemTitle}>{item.title}</Text>
                             {!!item.detail && <Text numberOfLines={1} style={styles.detail}>{item.detail}</Text>}
@@ -194,8 +207,8 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
 });
 const styles = StyleSheet.create(theme => ({
     container: { flexShrink: 1, width: '100%', borderRadius: 14, borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface, padding: 6, overflow: 'hidden', shadowColor: theme.colors.shadow.color, shadowOffset: { width: 0, height: 4 }, shadowOpacity: theme.colors.shadow.opacity, shadowRadius: 16, elevation: 8 },
-    results: { flexShrink: 1, maxHeight: 388, ...(Platform.OS === 'web' ? { scrollbarWidth: 'thin' as const } : {}) },
-    heading: { height: 26, paddingHorizontal: 8, paddingTop: 5, fontSize: 12, color: theme.colors.textSecondary, fontWeight: '600' },
+    results: { flexShrink: 1, ...(Platform.OS === 'web' ? { scrollbarWidth: 'thin' as const } : {}) },
+    heading: { height: GROUP_HEADING_HEIGHT, paddingHorizontal: 8, paddingTop: 5, fontSize: 12, color: theme.colors.textSecondary, fontWeight: '600' },
     row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, borderRadius: 7 },
     itemTitle: { fontSize: 13, color: theme.colors.text, flexShrink: 1, maxWidth: '70%' },
     detail: { fontSize: 11, color: theme.colors.textSecondary, flexShrink: 1, marginLeft: 'auto', maxWidth: '44%' },

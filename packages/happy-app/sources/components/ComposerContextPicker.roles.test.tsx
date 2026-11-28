@@ -3,13 +3,13 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer has no declarations.
 import TestRenderer from 'react-test-renderer';
-const mocks = vi.hoisted(() => ({ sessions: {} as Record<string, any>, status: 'connected', platformOS: 'web', list: vi.fn() }));
+const mocks = vi.hoisted(() => ({ sessions: {} as Record<string, any>, plugins: [] as any[], status: 'connected', platformOS: 'web', list: vi.fn() }));
 vi.mock('react-native', () => ({ ActivityIndicator: 'ActivityIndicator', Platform: { get OS() { return mocks.platformOS; } }, Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', View: 'View' }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => ({ useUnistyles: () => ({ theme: { colors: {} } }), StyleSheet: { create: (fn: any) => fn({ colors: { shadow: {} } }) } }));
 vi.mock('@/sync/storage', () => ({ useSocketStatus: () => ({ status: mocks.status }), storage: (select: any) => select({ sessions: mocks.sessions, sessionMessages: {}, machines: { 'machine-a': { active: true }, 'machine-b': { active: true } } }) }));
 vi.mock('@/sync/apiDelegation', () => ({ listDelegationRoles: mocks.list }));
-vi.mock('@/hooks/usePlugins', () => ({ usePlugins: () => ({ plugins: [], loading: false, status: 'ready' }) }));
+vi.mock('@/hooks/usePlugins', () => ({ usePlugins: () => ({ plugins: mocks.plugins, loading: false, status: 'ready' }) }));
 vi.mock('@/hooks/useWebPopoverDismiss', () => ({ useWebPopoverDismiss: () => {} }));
 vi.mock('@/utils/sessionUtils', () => ({ getSessionName: (session: any) => session.metadata?.summary?.text ?? session.id }));
 vi.mock('./plugins/pluginText', () => ({ resolvePluginText: () => '' }));
@@ -23,7 +23,7 @@ describe('Add menu role choices', () => {
     let renderer: any;
     beforeEach(() => {
         (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; vi.clearAllMocks();
-        mocks.status = 'connected'; mocks.platformOS = 'web';
+        mocks.status = 'connected'; mocks.platformOS = 'web'; mocks.plugins = [];
         setFirstSubmissionScope('test-account', 'https://server.test');
         mocks.sessions = { parent: { id: 'parent', metadata: { machineId: 'machine-a', capabilities: { delegation: 1 } } } };
         mocks.list.mockResolvedValue([role]);
@@ -44,22 +44,40 @@ describe('Add menu role choices', () => {
         expect(row()).toBeTruthy();
         expect(mocks.list).toHaveBeenCalledTimes(1);
     });
-    it('recommends only the two most recent Android conversations on an empty query', async () => {
+    it('keeps ten recent Android conversations in one scroller while showing only two initially', async () => {
         mocks.platformOS = 'android';
-        for (let index = 0; index < 5; index++) {
+        for (let index = 0; index < 15; index++) {
             const id = `other-${index}`;
             mocks.sessions[id] = { id, createdAt: 1, lastMessageAt: index + 1, metadata: { summary: { text: id }, path: '/work' } };
         }
         const onSelect = vi.fn();
         await render('parent', onSelect);
         const sessionRows = renderer.root.findAllByType('Pressable').filter((node: any) => node.props.testID?.startsWith('composer-context-item-session:'));
-        expect(sessionRows.map((node: any) => node.props.testID)).toEqual([
-            'composer-context-item-session:other-4', 'composer-context-item-session:other-3',
-        ]);
-        act(() => sessionRows[1].props.onPress());
-        expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ reference: expect.objectContaining({ id: 'other-3' }) }));
+        expect(sessionRows.map((node: any) => node.props.testID)).toEqual(
+            Array.from({ length: 10 }, (_, index) => `composer-context-item-session:other-${14 - index}`));
+        const scrollers = renderer.root.findAllByType('ScrollView');
+        expect(scrollers).toHaveLength(1);
+        // One role + management row, then the conversation heading and two rows.
+        expect(Object.assign({}, ...[scrollers[0].props.style].flat()).maxHeight).toBe(26 + 2 * 44 + 26 + 2 * 44);
+        act(() => sessionRows[9].props.onPress());
+        expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ reference: expect.objectContaining({ id: 'other-5' }) }));
     });
-    it('searches Android conversations beyond the two recommendations and keeps all matching results', async () => {
+    it('reserves recent Android conversations when many plugins fill the other groups', async () => {
+        mocks.platformOS = 'android';
+        mocks.plugins = Array.from({ length: 30 }, (_, index) => ({
+            manifest: { id: `plugin-${index}`, title: 'Plugin', description: 'Description' }, status: { installed: true },
+        }));
+        for (let index = 0; index < 15; index++) {
+            const id = `other-${index}`;
+            mocks.sessions[id] = { id, createdAt: 1, lastMessageAt: index + 1, metadata: { summary: { text: id } } };
+        }
+        await render();
+        const choices = renderer.root.findAllByType('Pressable').filter((node: any) => node.props.testID?.startsWith('composer-context-item-'));
+        expect(choices).toHaveLength(30);
+        expect(choices.filter((node: any) => node.props.testID.startsWith('composer-context-item-session:'))).toHaveLength(10);
+        expect(renderer.root.findByProps({ testID: 'composer-context-item-manage-agent-roles' })).toBeTruthy();
+    });
+    it('searches Android conversations beyond the ten recommendations and keeps all matching results', async () => {
         mocks.platformOS = 'android';
         for (let index = 0; index < 45; index++) {
             const id = `other-${index}`;
