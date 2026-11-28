@@ -64,6 +64,10 @@ final class AppConfigurationTests: XCTestCase {
         // `happy` also carries the server sign-in's redirect (`OAuthRedirect`).
         XCTAssertEqual(schemes, ["happy"])
         XCTAssertEqual(schemes?.contains(OAuthRedirect.scheme), true)
+        // What the email code step may ask about before offering Open Mail
+        // and Open Gmail (`MailApp`); asking about a scheme not listed here
+        // is always answered no.
+        XCTAssertEqual(info["LSApplicationQueriesSchemes"] as? [String], ["message", "googlegmail"])
     }
 
     /// One version for every variant: the plists' version (kept equal by

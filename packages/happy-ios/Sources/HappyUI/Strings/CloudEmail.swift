@@ -21,6 +21,12 @@ extension Strings {
         static let resend = "Resend code"
         static let resent = "We sent a new code."
         static let changeEmail = "Change email"
+        /// The code step's ways to the email, where the code is: Apple's
+        /// Mail, and Gmail when it is installed.
+        static let openMail = "Open Mail"
+        static let openGmail = "Open Gmail"
+        /// Paste found nothing that could be the code.
+        static let nothingToPaste = "No 6-digit code to paste. Copy it from the email first."
 
         static func send(in seconds: TimeInterval) -> String { "Send code in \(clock(seconds))" }
         static func verify(in seconds: TimeInterval) -> String { "Verify in \(clock(seconds))" }

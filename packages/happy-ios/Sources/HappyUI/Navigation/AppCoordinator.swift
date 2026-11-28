@@ -32,7 +32,7 @@ public final class AppCoordinator {
     /// An entity or file link from outside, waiting for the stored accounts.
     private var pendingInstanceLink: String?
     /// A Happy Cloud invite link, waiting for the stored accounts.
-    private var pendingInvite: CloudInvite?
+    private var pendingInvite: CloudInviteLink?
     /// Links a screen hands over to open as links from outside open (`openHappyLink`).
     private var linkRequests: NSObjectProtocol?
     /// What an instance link opens once its connection is home.
@@ -203,9 +203,11 @@ public final class AppCoordinator {
         // Google's redirect (its reversed client ID's scheme) goes to its
         // sign-in, which usually takes it in its own session first.
         if CloudGoogle.handle(url) { return true }
-        // An invite that reaches the app opens, switch or not: the App
-        // Store app just doesn't claim their links yet (its entitlements).
-        if let invite = CloudInvite(url: url) {
+        // A Happy Cloud invite, in either form (`https://<web>/join#…`,
+        // `happy://cloud/join#…`), opens on its invite and stays in the
+        // app, Settings' Happy Cloud switch on or off; a newer one takes
+        // the place of one still waiting or on screen.
+        if let invite = CloudInviteLink(url: url) {
             pendingInvite = invite
             openPendingInvite()
             return true
@@ -224,7 +226,7 @@ public final class AppCoordinator {
     }
 
     /// A Happy Cloud invite: the Cloud flow over whatever is shown, on the
-    /// invite once the account is signed in.
+    /// invite, which is shown before any sign-in.
     private func openPendingInvite() {
         guard accountRestored, pendingInvite != nil, shell.topViewController != nil else { return }
         guard clearedForLink(then: { [weak self] in self?.openPendingInvite() }),

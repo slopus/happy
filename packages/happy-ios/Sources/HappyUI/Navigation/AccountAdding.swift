@@ -52,13 +52,18 @@ enum AccountAdding {
     /// Happy Cloud, full screen: Welcome while the account isn't signed in
     /// on this phone, its servers once it is (`CloudScreens`).
     /// Cloud servers need no scanned code: their addresses are built from
-    /// the app's own base. An invite link opens on its invite, after
-    /// signing in when the account isn't.
+    /// the app's own base. An invite link opens on its invite, signed in
+    /// or not, in the place of any invite already shown.
     /// Settings' Happy Cloud switch only hides the ways in to here (Start's
     /// and the account menu's); whatever does arrive (a server's Sign In,
     /// an invite link, a settings link) opens whether or not it is on.
-    static func connectToCloud(context: AppContext, from controller: UIViewController, invite: CloudInvite? = nil) {
+    static func connectToCloud(context: AppContext, from controller: UIViewController, invite: CloudInviteLink? = nil) {
         let first = CloudScreens.first(context: context, invite: invite)
+        // Over a Happy Cloud flow pushed on the first screen (another
+        // invite, say): in its place, not on top of it.
+        if controller is CloudFlowScreen, controller.navigationController != nil, !(controller.navigationController is CloudNavigationController) {
+            return CloudScreens.replace(from: controller, with: first)
+        }
         if context.account.accounts.isEmpty, let navigation = controller.navigationController {
             navigation.pushViewController(first, animated: true)
             return

@@ -396,3 +396,67 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertEqual([short.picture, short.name, short.handle, short.status], [long.picture, long.name, long.handle, long.status])
     }
 }
+
+/// The code step's Paste in its field and its row of quiet links.
+final class CloudCodeStepLayoutTests: XCTestCase {
+    /// A small text action: 32 tall, its words and 14 each side.
+    func testLinksSitSideBySideCentredInTheColumn() {
+        let row = CloudLinksLayout(labels: [60, 70, 82], width: 342)
+        // 88 + 98 + 110 and two gaps of 4: 304, centred in 342.
+        XCTAssertEqual(row.links, [
+            CGRect(x: 19, y: 0, width: 88, height: 32),
+            CGRect(x: 111, y: 0, width: 98, height: 32),
+            CGRect(x: 213, y: 0, width: 110, height: 32),
+        ])
+        XCTAssertEqual(CloudLinksLayout.Metrics.height, 32)
+    }
+
+    /// Fewer links are the same row: as tall, at the same top, centred.
+    func testOneLinkIsTheSameRow() {
+        let row = CloudLinksLayout(labels: [82], width: 342, origin: CGPoint(x: 24, y: 130))
+        XCTAssertEqual(row.links, [CGRect(x: 24 + 116, y: 130, width: 110, height: 32)])
+        let two = CloudLinksLayout(labels: [60, 82], width: 342, origin: CGPoint(x: 24, y: 130))
+        XCTAssertEqual(two.links, [CGRect(x: 24 + 70, y: 130, width: 88, height: 32), CGRect(x: 24 + 162, y: 130, width: 110, height: 32)])
+        XCTAssertEqual(CloudLinksLayout(labels: [], width: 342).links, [])
+    }
+
+    /// A short word still makes a link wide enough to tap.
+    func testAShortLinkKeepsTheButtonsLeastWidth() {
+        XCTAssertEqual(CloudLinksLayout(labels: [10], width: 300).links, [CGRect(x: 118, y: 0, width: 64, height: 32)])
+    }
+
+    /// Wider together than the column, each gives up the same share and
+    /// the row fills the column exactly.
+    func testLinksTooWideShareTheColumn() {
+        let row = CloudLinksLayout(labels: [72, 172], width: 154)
+        // 100 and 200 into the 150 the gap leaves: half each.
+        XCTAssertEqual(row.links, [CGRect(x: 0, y: 0, width: 50, height: 32), CGRect(x: 54, y: 0, width: 100, height: 32)])
+        XCTAssertEqual(row.links.last?.maxX, 154)
+    }
+
+    /// Paste sits at the field's right end at its own size, centred down
+    /// it, and the text ends 8 before it.
+    func testTheFieldsAccessoryTakesItsRoomFromTheText() {
+        let size = CGSize(width: 342, height: 58)
+        let plain = CloudFieldLayout(size: size)
+        XCTAssertEqual(plain.text, CGRect(x: 18, y: 0, width: 312, height: 58))
+        XCTAssertEqual(plain.accessory, .zero)
+        XCTAssertEqual(plain.prefix, CGRect(x: 18, y: 0, width: 0, height: 58))
+
+        let pasting = CloudFieldLayout(size: size, accessory: CGSize(width: 66, height: 34))
+        XCTAssertEqual(pasting.accessory, CGRect(x: 266, y: 12, width: 66, height: 34))
+        XCTAssertEqual(pasting.text, CGRect(x: 18, y: 0, width: 240, height: 58))
+
+        let prefixed = CloudFieldLayout(size: size, prefix: 14)
+        XCTAssertEqual(prefixed.prefix, CGRect(x: 18, y: 0, width: 14, height: 58))
+        XCTAssertEqual(prefixed.text, CGRect(x: 33, y: 0, width: 297, height: 58))
+    }
+
+    /// An accessory wider than the field leaves the text nothing, and
+    /// stays inside the field.
+    func testAnAccessoryNeverLeavesTheField() {
+        let tight = CloudFieldLayout(size: CGSize(width: 80, height: 58), accessory: CGSize(width: 200, height: 34))
+        XCTAssertEqual(tight.accessory, CGRect(x: 26, y: 12, width: 44, height: 34))
+        XCTAssertEqual(tight.text, CGRect(x: 18, y: 0, width: 0, height: 58))
+    }
+}

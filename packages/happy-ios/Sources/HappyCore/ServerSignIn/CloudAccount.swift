@@ -268,26 +268,31 @@ public actor CloudAccount {
         return try await call("POST", "/v1/servers", body: ["name": name], as: Response.self).server
     }
 
-    /// What `invite` offers, before it is taken.
-    public func preview(_ invite: CloudInvite) async throws -> CloudInvitePreview {
-        try await inviteCall("/v1/invites/preview", invite, as: CloudInvitePreview.self)
+    /// What `invite` offers, before it is taken and before anyone signs
+    /// in: `POST /v1/invites/preview` needs no session and gets none, so
+    /// the invite is shown first and the account's token goes only to the
+    /// accept.
+    public static func preview(_ invite: CloudInvite, http: any HTTPTransport = NoRedirectURLSessionTransport()) async throws -> CloudInvitePreview {
+        let response = try await http.send(HTTPRequest(method: "POST", url: URL(string: HappyCloud.api + "/v1/invites/preview")!,
+                                                       headers: ["Accept": "application/json", "Content-Type": "application/json"],
+                                                       body: try JSONEncoder().encode(["token": invite.token])))
+        guard (200..<300).contains(response.status) else { throw inviteRefusal(response, endsPass: false) }
+        guard let value = try? JSONDecoder().decode(CloudInvitePreview.self, from: response.body) else { throw CloudAccountError.invalidResponse }
+        return value
     }
 
     /// Takes `invite`: the account joins its server, which it returns.
     public func accept(_ invite: CloudInvite) async throws -> CloudServer {
         struct Response: Decodable { let server: CloudServer }
-        return try await inviteCall("/v1/invites/accept", invite, as: Response.self).server
-    }
-
-    private func inviteCall<T: Decodable>(_ path: String, _ invite: CloudInvite, as: T.Type) async throws -> T {
         let body = try JSONEncoder().encode(["token": invite.token])
-        let response = try await send("POST", url: URL(string: HappyCloud.api + path)!, body: body, refuse: Self.inviteRefusal)
-        guard let value = try? JSONDecoder().decode(T.self, from: response.body) else { throw CloudAccountError.invalidResponse }
-        return value
+        let response = try await send("POST", url: URL(string: HappyCloud.api + "/v1/invites/accept")!, body: body, refuse: { Self.inviteRefusal($0) })
+        guard let value = try? JSONDecoder().decode(Response.self, from: response.body) else { throw CloudAccountError.invalidResponse }
+        return value.server
     }
 
     /// An invite refused, as a `CloudInviteError` when its `code` is one.
-    private static func inviteRefusal(_ response: HTTPResponse) -> any Error {
+    /// A 401 is the session's (`endsPass`), whatever it says.
+    private static func inviteRefusal(_ response: HTTPResponse, endsPass: Bool = true) -> any Error {
         struct Failure: Decodable { let code: String?; let emailHint: String? }
         let failure = try? JSONDecoder().decode(Failure.self, from: response.body)
         switch response.status == 401 ? nil : failure?.code {
@@ -297,7 +302,7 @@ public actor CloudAccount {
         case "exhausted": return CloudInviteError.exhausted
         case "accepted": return CloudInviteError.accepted
         case "email_mismatch": return CloudInviteError.emailMismatch(hint: failure?.emailHint)
-        default: return refusal(response)
+        default: return refusal(response, endsPass: endsPass)
         }
     }
 

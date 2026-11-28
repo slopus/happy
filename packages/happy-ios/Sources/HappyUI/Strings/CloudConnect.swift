@@ -64,9 +64,19 @@ extension Strings {
         static let inviteOtherEmail = "Use your invited email"
         static func inviteRole(_ role: String) -> String { "You’ll join as \(role)." }
         static func invitedBy(_ name: String) -> String { "\(name) invited you" }
+        /// With the invite's role, when it says when it ends.
+        static func inviteExpires(_ date: Date) -> String {
+            "This invite expires \(date.formatted(date: .abbreviated, time: .shortened))."
+        }
         static let inviteJoin = "Join"
+        /// Join's words while the account is signed out: the tap signs in
+        /// and then joins, without a second one.
+        static let inviteSignIn = "Sign in to join"
         static let inviteShowServers = "Show My Servers"
-        static let inviteOtherAccount = "Use Another Account"
+        /// A refused invite's one way out while the account is signed out.
+        static let inviteClose = "Close"
+        /// As the web's join page says it.
+        static let inviteOtherAccount = "Sign in with another email"
         static let inviteInvalid = "This invite link doesn’t work. Ask for a new one."
         static let inviteExpired = "This invite has expired. Ask for a new link."
         static let inviteRevoked = "This invite was withdrawn. Ask for a new link."

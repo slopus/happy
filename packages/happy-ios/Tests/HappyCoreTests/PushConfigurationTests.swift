@@ -24,17 +24,20 @@ final class PushConfigurationTests: XCTestCase {
     }
 
     func testEntitlementsAskForAPNsLikeTheRNApp() throws {
-        // Development and preview also sign in to Happy Cloud with Apple
-        // and open Happy Cloud's invite links; the App Store app leaves
-        // them to the browser until Happy Cloud ships.
+        // Every variant opens Happy Cloud's invite links
+        // (https://happybases.com/join#<token>) in the app; development and
+        // preview also sign in to Happy Cloud with Apple.
         XCTAssertEqual(try plist("App/Happy.entitlements") as NSDictionary,
                        ["aps-environment": "development", "com.apple.developer.applesignin": ["Default"],
-                        "com.apple.developer.associated-domains": ["applinks:join.happy.engineering"]] as NSDictionary)
+                        "com.apple.developer.associated-domains": ["applinks:happybases.com"]] as NSDictionary)
         let production = try plist("App/Happy-Production.entitlements")
         XCTAssertEqual(production["aps-environment"] as? String, "development")
         // Share links open production alone, as app.happy.engineering does: the AASA on
         // link.happy.page names 466DQWDR8C.com.ex3ndr.happy only.
-        XCTAssertEqual(production["com.apple.developer.associated-domains"] as? [String], ["applinks:app.happy.engineering", "applinks:link.happy.page"])
+        XCTAssertEqual(production["com.apple.developer.associated-domains"] as? [String],
+                       ["applinks:app.happy.engineering", "applinks:happybases.com", "applinks:link.happy.page"])
+        // The claim is the web host the app parses invite links on.
+        XCTAssertEqual(HappyCloud.web, "happybases.com")
     }
 
     func testBuildFilesSignWithTheEntitlements() throws {

@@ -36,8 +36,11 @@ final class HostedCloudSwitchOffTests: XCTestCase {
         addTeardownBlock { @MainActor in
             defaults.set(kept, forKey: "happy-cloud")
             CloudScreens.account = nil
-            CloudScreens.pendingInvite = nil
+            CloudScreens.pendingJoin = nil
+            CloudScreens.inviteHTTP = NoRedirectURLSessionTransport()
         }
+        // An invite's preview goes nowhere from a test.
+        CloudScreens.inviteHTTP = NoNetwork()
         HappyCloud.setOffered(false)
         XCTAssertFalse(HappyCloud.isOffered(in: .production))
     }
@@ -117,12 +120,38 @@ final class HostedCloudSwitchOffTests: XCTestCase {
         XCTAssertTrue(home, "the window never showed home")
         try await Task.sleep(for: .milliseconds(600))
 
-        let invite = try XCTUnwrap(URL(string: "https://\(HappyCloud.invite)/#q7Xk2_bN-9vLmR4tY8wE1zA6sD3fG5hJ0kP2oI9uYtR"))
-        XCTAssertNotNil(CloudInvite(url: invite))
-        XCTAssertTrue(coordinator.open(invite), "the invite was refused")
-        let opened = try await until { window.rootViewController?.presentedViewController is CloudNavigationController }
+        // Both forms of the link, with the switch off, in the App Store
+        // app: each opens on the invite itself, shown before any sign-in,
+        // and a newer one takes the place of the one on screen.
+        func shown() -> CloudInviteViewController? {
+            let flow = window.rootViewController?.presentedViewController as? CloudNavigationController
+            return flow.flatMap { $0.isBeingDismissed ? nil : $0.viewControllers.first as? CloudInviteViewController }
+        }
+        let token = "q7Xk2_bN-9vLmR4tY8wE1zA6sD3fG5hJ0kP2oI9uYtR"
+        let universal = try XCUnwrapURL("https://\(HappyCloud.web)/join#\(token)")
+        XCTAssertTrue(coordinator.open(universal), "the invite was refused")
+        let opened = try await until { shown()?.viewIfLoaded?.window != nil }
         XCTAssertTrue(opened, "the invite opened nothing")
-        XCTAssertEqual(CloudScreens.pendingInvite?.token, CloudInvite(url: invite)?.token, "the invite isn't kept for after the sign-in")
+        let first = try XCTUnwrap(shown())
+        let asked = try await until { first.phase != .loading }
+        XCTAssertTrue(asked, "the invite never asked what it offers")
+        XCTAssertEqual(first.phase, .failed(Strings.HappyCloud.unreachable), "shown at once, signed out, from the API (out of reach here)")
+        XCTAssertNil(CloudScreens.account)
+        XCTAssertNil(CloudScreens.pendingJoin, "opening a link joins nothing and keeps nothing to join later")
+
+        // The web page's Open in Happy; here without a token that could be
+        // one, so it is refused with nothing asked.
+        let scheme = try XCUnwrapURL("happy://cloud/join#short")
+        XCTAssertTrue(coordinator.open(scheme), "happy://cloud/join isn't the app's")
+        let replaced = try await until { shown().map { $0 !== first && $0.viewIfLoaded?.window != nil } ?? false }
+        XCTAssertTrue(replaced, "the second link didn't take the first's place")
+        XCTAssertEqual(shown()?.phase, .refused(.invalid))
+        XCTAssertEqual(shown()?.primary.title, Strings.CloudConnect.inviteClose)
+
+        // Another page of the web host, and its servers' web apps, aren't invites.
+        for other in ["https://\(HappyCloud.web)/", "https://acme.\(HappyCloud.web)/join#\(token)"] {
+            XCTAssertFalse(coordinator.open(try XCUnwrapURL(other)), other)
+        }
         withExtendedLifetime(coordinator) {}
     }
 
@@ -150,6 +179,8 @@ final class HostedCloudSwitchOffTests: XCTestCase {
         XCTAssertEqual(actions(), ["account-add", "account-cloud"])
         XCTAssertEqual(ways().count, 3)
     }
+
+    private func XCUnwrapURL(_ text: String) throws -> URL { try XCTUnwrap(URL(string: text), text) }
 
     private static func top(of window: UIWindow) -> UIViewController? {
         var queue = [window.rootViewController].compactMap { $0 }

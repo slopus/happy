@@ -11,12 +11,25 @@ import XCTest
 private actor CloudHTTP: HTTPTransport {
     var requests: [HTTPRequest] = []
     var answers: [String: (Int, String)] = [:]
+    /// Paths whose answers wait for `release`, and the requests waiting.
+    private var held: Set<String> = []
+    private var waiting: [String: [CheckedContinuation<Void, Never>]] = [:]
 
     func answer(_ path: String, _ status: Int, _ body: String) { answers[path] = (status, body) }
 
+    /// Requests to `path` get no answer until `release(path)`.
+    func hold(_ path: String) { held.insert(path) }
+
+    func release(_ path: String) {
+        held.remove(path)
+        waiting.removeValue(forKey: path)?.forEach { $0.resume() }
+    }
+
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         requests.append(request)
-        let (status, body) = answers["\(request.method) \(request.url.path)"] ?? (404, #"{"code":"not_found","error":"Not found."}"#)
+        let path = "\(request.method) \(request.url.path)"
+        if held.contains(path) { await withCheckedContinuation { waiting[path, default: []].append($0) } }
+        let (status, body) = answers[path] ?? (404, #"{"code":"not_found","error":"Not found."}"#)
         return HTTPResponse(status: status, body: Data(body.utf8))
     }
 }
@@ -556,23 +569,39 @@ final class CloudScreensTests: XCTestCase {
 
     // MARK: Invite links
 
-    private static let invite = CloudInvite(url: URL(string: "https://join.happy.engineering/#q7Xk2_bN-9vLmR4tY8wE1zA6sD3fG5hJ0kP2oI9uYtR")!)!
+    private static let invite = CloudInvite(url: URL(string: "https://happybases.com/join#q7Xk2_bN-9vLmR4tY8wE1zA6sD3fG5hJ0kP2oI9uYtR")!)!
+    private static let offer = #"{"server":{"name":"acme","displayName":"Acme","image":null},"roleName":"Viewer","expiresAt":"2026-11-19T09:28:08.851234Z","inviter":{"name":"Steve Korshakov","image":null}}"#
+    private static let joined = #"{"server":{"id":"s1","name":"acme","displayName":"acme","url":"https://acme.happy-clusters.com/","image":null}}"#
 
-    /// An invite link, signed in: the server and the role it gives, and
-    /// Join takes it and goes on to Connecting.
-    func testAnInviteShowsItsServerAndJoinTakesIt() async throws {
-        let http = CloudHTTP()
-        await http.answer("POST /v1/invites/preview", 200, #"{"server":{"name":"acme","displayName":"Acme","image":null},"roleName":"Viewer","expiresAt":"2026-11-19T09:28:08.851234Z","inviter":{"name":"Steve Korshakov","image":null}}"#)
-        await http.answer("POST /v1/invites/accept", 200, #"{"server":{"id":"s1","name":"acme","displayName":"acme","url":"https://acme.happy-clusters.com/","image":null}}"#)
-        let screen = CloudInviteViewController(context: context(), account: CloudAccount.preview(token: "account", http: http), invite: Self.invite)
-        let connecting = UIViewController()
-        var connectingTo: CloudServer?
-        screen.connecting = { connectingTo = $0; return connecting }
+    /// The invite's screen over `http`, in a navigation on screen; the
+    /// account is `account` (nil: signed out) until the test ends.
+    private func inviteScreen(_ http: CloudHTTP, account: CloudAccount?, link: CloudInviteLink = .invite(CloudScreensTests.invite)) -> (CloudInviteViewController, UINavigationController) {
+        CloudScreens.account = account
+        CloudScreens.pendingJoin = nil
+        addTeardownBlock { @MainActor in
+            CloudScreens.account = nil
+            CloudScreens.pendingJoin = nil
+        }
+        let screen = CloudInviteViewController(context: context(), link: link)
+        screen.http = http
         let navigation = UINavigationController(rootViewController: screen)
         show(navigation)
         screen.view.layoutIfNeeded()
+        return (screen, navigation)
+    }
+
+    private func paths(_ http: CloudHTTP) async -> [String] { await http.requests.map(\.url.path) }
+
+    /// An invite link, signed out: the server, who invited, the role and
+    /// when it ends are shown before any sign-in, asked without a session,
+    /// and nothing is taken by opening it.
+    func testAnInviteIsShownBeforeAnySignIn() async throws {
+        let http = CloudHTTP()
+        await http.answer("POST /v1/invites/preview", 200, Self.offer)
+        let (screen, navigation) = inviteScreen(http, account: nil)
         let loading = frames(screen)
-        XCTAssertFalse(screen.primary.isEnabled, "Join waits for the invite")
+        XCTAssertFalse(screen.primary.isEnabled, "the button waits for the invite")
+        XCTAssertEqual(screen.primary.title, "Sign in to join")
         await settle { screen.phase != .loading }
         screen.view.layoutIfNeeded()
         XCTAssertEqual(screen.titleLabel.string, "Join a server")
@@ -581,37 +610,233 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertEqual(screen.handle.string, "@acme")
         XCTAssertEqual(screen.inviter.string, "Steve Korshakov invited you")
         XCTAssertEqual(screen.inviterPicture.alpha, 1)
-        XCTAssertEqual(screen.status.string, "You’ll join as Viewer.")
+        let expires = try XCTUnwrap(CloudInvitePreview.date("2026-11-19T09:28:08.851234Z"))
+        XCTAssertEqual(screen.status.string, "You’ll join as Viewer. This invite expires \(expires.formatted(date: .abbreviated, time: .shortened)).")
+        XCTAssertEqual(screen.primary.title, "Sign in to join")
+        XCTAssertTrue(screen.primary.isEnabled)
+        XCTAssertFalse(screen.primary.isLoading)
+        XCTAssertEqual(frames(screen), loading, "nothing moved once the invite loaded")
+        XCTAssertTrue(navigation.topViewController === screen)
+        let asked = await http.requests
+        XCTAssertEqual(asked.map(\.url.path), ["/v1/invites/preview"], "opening the link asks what it offers and takes nothing")
+        XCTAssertNil(asked.first?.headers["Authorization"], "no session is needed to see the invite")
+        XCTAssertNil(asked.first?.url.query)
+        XCTAssertNil(asked.first?.url.fragment)
+        XCTAssertNil(CloudScreens.pendingJoin, "nothing waits to be taken before the tap")
+    }
+
+    /// Sign in to join is the consent: the welcome comes over the invite,
+    /// and whoever signs in takes it at once, with no second tap and no
+    /// second preview.
+    func testSignInToJoinSignsInAndThenJoins() async throws {
+        let http = CloudHTTP()
+        await http.answer("POST /v1/invites/preview", 200, Self.offer)
+        await http.answer("POST /v1/invites/accept", 200, Self.joined)
+        let (screen, navigation) = inviteScreen(http, account: nil)
+        await settle { screen.phase != .loading }
+        screen.primary.tapped()
+        await settle { navigation.topViewController is CloudWelcomeViewController && navigation.transitionCoordinator == nil }
+        let welcome = try XCTUnwrap(navigation.topViewController as? CloudWelcomeViewController, "Sign in to join opens the sign-in")
+        XCTAssertTrue(navigation.viewControllers.first === screen, "the invite waits under the sign-in")
+        XCTAssertEqual(welcome.note.string, "", "nothing has ended")
+        XCTAssertEqual(CloudScreens.pendingJoin?.invite, Self.invite)
+        let before = await paths(http)
+        XCTAssertEqual(before, ["/v1/invites/preview"], "nothing is taken before the sign-in")
+
+        // The accept waits, so the screen it runs on can be looked at.
+        await http.hold("POST /v1/invites/accept")
+        CloudScreens.signedIn(CloudAccount.preview(token: "account", http: http), context: context(), from: welcome)
+        XCTAssertNil(CloudScreens.pendingJoin, "taken up once")
+        await settle { navigation.topViewController is CloudInviteViewController && navigation.transitionCoordinator == nil }
+        let joining = try XCTUnwrap(navigation.topViewController as? CloudInviteViewController)
+        XCTAssertNotIdentical(joining, screen)
+        XCTAssertEqual(navigation.viewControllers.count, 1, "in the place of the invite and the sign-in")
+        let connecting = UIViewController()
+        var connectingTo: CloudServer?
+        joining.connecting = { _, server in connectingTo = server; return connecting }
+        await settle { await http.requests.contains { $0.url.path == "/v1/invites/accept" } }
+        joining.view.layoutIfNeeded()
+        guard case .joining = joining.phase else { return XCTFail("signed in, it joins without a tap: \(joining.phase)") }
+        XCTAssertEqual(joining.name.string, "Acme", "what was offered is shown while it joins")
+        XCTAssertEqual(joining.primary.title, "Join")
+        XCTAssertTrue(joining.primary.isLoading, "the button shows it working")
+        let sent = await http.requests
+        let accepted = try XCTUnwrap(sent.first { $0.url.path == "/v1/invites/accept" })
+        XCTAssertEqual(accepted.headers["Authorization"], "Bearer account")
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: accepted.body ?? Data()) as? [String: String], ["token": Self.invite.token])
+        await http.release("POST /v1/invites/accept")
+        await settle { navigation.topViewController === connecting }
+        XCTAssertTrue(navigation.topViewController === connecting, "joined: on to the server")
+        XCTAssertEqual(connectingTo?.name, "acme")
+        let all = await paths(http)
+        XCTAssertEqual(all, ["/v1/invites/preview", "/v1/invites/accept"], "the invite wasn't asked for again, and was taken once")
+    }
+
+    /// Back from the sign-in is the invite again, as offered and signed
+    /// out, and nothing waits for a later sign-in to join on its strength.
+    func testBackFromTheSignInReturnsToTheInviteAndForgetsTheTap() async throws {
+        let http = CloudHTTP()
+        await http.answer("POST /v1/invites/preview", 200, Self.offer)
+        let (screen, navigation) = inviteScreen(http, account: nil)
+        await settle { screen.phase != .loading }
+        let offered = frames(screen)
+        screen.primary.tapped()
+        await settle { navigation.topViewController is CloudWelcomeViewController && navigation.transitionCoordinator == nil }
+        XCTAssertNotNil(CloudScreens.pendingJoin)
+        navigation.popViewController(animated: false)
+        await settle { CloudScreens.pendingJoin == nil }
+        XCTAssertNil(CloudScreens.pendingJoin, "the tap's consent ends with the sign-in it began")
+        XCTAssertTrue(navigation.topViewController === screen)
+        guard case .offered = screen.phase else { return XCTFail("\(screen.phase)") }
+        XCTAssertEqual(screen.primary.title, "Sign in to join")
+        XCTAssertTrue(screen.primary.isEnabled)
+        screen.view.layoutIfNeeded()
+        XCTAssertEqual(frames(screen), offered)
+
+        let asked = await paths(http)
+        XCTAssertEqual(asked, ["/v1/invites/preview"], "nothing was joined")
+    }
+
+    /// An invite link, signed in: Join takes it and goes on to Connecting.
+    func testSignedInJoinTakesTheInvite() async throws {
+        let http = CloudHTTP()
+        await http.answer("POST /v1/invites/preview", 200, Self.offer)
+        await http.answer("POST /v1/invites/accept", 200, Self.joined)
+        let (screen, navigation) = inviteScreen(http, account: CloudAccount.preview(token: "account", http: http))
+        let connecting = UIViewController()
+        var connectingTo: CloudServer?
+        screen.connecting = { _, server in connectingTo = server; return connecting }
+        let loading = frames(screen)
+        XCTAssertFalse(screen.primary.isEnabled, "Join waits for the invite")
+        XCTAssertEqual(screen.primary.title, "Join")
+        await settle { screen.phase != .loading }
+        screen.view.layoutIfNeeded()
+        XCTAssertEqual(screen.name.string, "Acme")
         XCTAssertEqual(screen.primary.title, "Join")
         XCTAssertTrue(screen.primary.isEnabled)
         XCTAssertEqual(frames(screen), loading, "nothing moved once the invite loaded")
+        let preview = await http.requests.last
+        XCTAssertNil(preview?.headers["Authorization"], "the session's token goes only to the accept")
+        let before = await paths(http)
+        XCTAssertEqual(before, ["/v1/invites/preview"], "signed in or not, opening the link joins nothing")
+        screen.primary.tapped()
+        XCTAssertTrue(screen.primary.isLoading, "Join shows it working")
+        guard case .joining = screen.phase else { return XCTFail("\(screen.phase)") }
         screen.primary.tapped()
         await settle { navigation.topViewController === connecting }
         XCTAssertEqual(connectingTo?.name, "acme")
         let accepted = await http.requests.last
         XCTAssertEqual(accepted?.url.path, "/v1/invites/accept")
         XCTAssertEqual(accepted?.headers["Authorization"], "Bearer account")
+        let all = await paths(http)
+        XCTAssertEqual(all.filter { $0 == "/v1/invites/accept" }.count, 1, "a second tap while it joins does nothing")
     }
 
-    /// An invite that can't be taken says why, in words; an expired one
-    /// offers nothing more.
+    /// An invite that can't be taken says why, in words, and offers one
+    /// way out: the account's servers, or Close while signed out.
     func testARefusedInviteSaysWhy() async throws {
         let http = CloudHTTP()
         await http.answer("POST /v1/invites/preview", 410, #"{"code":"expired","error":"This invitation has expired."}"#)
-        let screen = CloudInviteViewController(context: context(), account: CloudAccount.preview(token: "account", http: http), invite: Self.invite)
-        show(UINavigationController(rootViewController: screen))
-        screen.view.layoutIfNeeded()
+        for account in [CloudAccount.preview(token: "account", http: http), nil] {
+            let (screen, _) = inviteScreen(http, account: account)
+            let loading = frames(screen)
+            await settle { screen.phase != .loading }
+            screen.view.layoutIfNeeded()
+            XCTAssertEqual(screen.phase, .refused(.expired))
+            XCTAssertEqual(screen.titleLabel.string, "Invite unavailable")
+            XCTAssertEqual(screen.bodyLabel.alpha, 0, "no “you’ve been invited” over a refusal")
+            XCTAssertEqual(screen.status.string, "This invite has expired. Ask for a new link.")
+            XCTAssertEqual(screen.name.string, "")
+            XCTAssertIdentical(screen.picture.image, CloudInviteViewController.linkGlyph, "a link, not an empty disc")
+            XCTAssertEqual(screen.primary.title, account == nil ? "Close" : "Show My Servers", "one way out, and no Join")
+            XCTAssertFalse(screen.primary.isHidden)
+            XCTAssertTrue(screen.primary.isEnabled)
+            XCTAssertEqual(frames(screen), loading, "nothing moved for the refusal")
+        }
+        let asked = await paths(http)
+        XCTAssertEqual(asked, ["/v1/invites/preview", "/v1/invites/preview"])
+    }
+
+    /// A link at the invite's place without a token that could be one:
+    /// the invite that doesn't work, and nothing asked of the network.
+    func testAnInvalidLinkIsRefusedWithoutARequest() async throws {
+        let http = CloudHTTP()
+        let (screen, _) = inviteScreen(http, account: nil, link: try XCTUnwrap(CloudInviteLink(url: URL(string: "happy://cloud/join#short")!)))
+        XCTAssertEqual(screen.phase, .refused(.invalid))
+        XCTAssertEqual(screen.titleLabel.string, "Invite unavailable")
+        XCTAssertEqual(screen.status.string, "This invite link doesn’t work. Ask for a new one.")
+        XCTAssertEqual(screen.primary.title, "Close")
+        XCTAssertTrue(screen.primary.isEnabled)
+        try await Task.sleep(for: .milliseconds(100))
+        let asked = await paths(http)
+        XCTAssertEqual(asked, [], "a link that can't be an invite asks nothing")
+    }
+
+    /// The API out of reach: Try Again asks for the invite again; and when
+    /// it is the join that failed, Try Again joins again.
+    func testTryAgainRepeatsWhatFailed() async throws {
+        let http = CloudHTTP()
+        await http.answer("POST /v1/invites/preview", 503, #"{"code":"unavailable","error":"Try again in a moment."}"#)
+        let (screen, navigation) = inviteScreen(http, account: CloudAccount.preview(token: "account", http: http))
+        let connecting = UIViewController()
+        screen.connecting = { _, _ in connecting }
         let loading = frames(screen)
         await settle { screen.phase != .loading }
         screen.view.layoutIfNeeded()
-        XCTAssertEqual(screen.titleLabel.string, "Invite unavailable")
-        XCTAssertEqual(screen.bodyLabel.alpha, 0, "no “you’ve been invited” over a refusal")
-        XCTAssertEqual(screen.status.string, "This invite has expired. Ask for a new link.")
-        XCTAssertEqual(screen.name.string, "")
-        XCTAssertIdentical(screen.picture.image, CloudInviteViewController.linkGlyph, "a link, not an empty disc")
-        XCTAssertEqual(screen.primary.title, "Show My Servers")
-        XCTAssertFalse(screen.primary.isHidden)
-        XCTAssertEqual(frames(screen), loading, "nothing moved for the refusal")
+        XCTAssertEqual(screen.phase, .failed("Try again in a moment."))
+        XCTAssertEqual(screen.primary.title, "Try Again")
+        XCTAssertEqual(frames(screen), loading, "nothing moved for the failure")
+
+        await http.answer("POST /v1/invites/preview", 200, Self.offer)
+        screen.primary.tapped()
+        XCTAssertEqual(screen.phase, .loading)
+        await settle { screen.phase != .loading }
+        guard case .offered = screen.phase else { return XCTFail("\(screen.phase)") }
+
+        await http.answer("POST /v1/invites/accept", 503, #"{"code":"unavailable","error":"Try again in a moment."}"#)
+        screen.primary.tapped()
+        await settle { if case .failed = screen.phase { true } else { false } }
+        screen.view.layoutIfNeeded()
+        XCTAssertEqual(screen.phase, .failed("Try again in a moment."))
+        XCTAssertEqual(screen.name.string, "Acme", "the server stays")
+        XCTAssertEqual(screen.primary.title, "Try Again")
+        XCTAssertFalse(screen.primary.isLoading)
+        XCTAssertEqual(frames(screen), loading)
+
+        await http.answer("POST /v1/invites/accept", 200, Self.joined)
+        screen.primary.tapped()
+        guard case .joining = screen.phase else { return XCTFail("Try Again after a failed join joins: \(screen.phase)") }
+        await settle { navigation.topViewController === connecting }
+        XCTAssertTrue(navigation.topViewController === connecting)
+        let all = await paths(http)
+        XCTAssertEqual(all, ["/v1/invites/preview", "/v1/invites/preview", "/v1/invites/accept", "/v1/invites/accept"])
+    }
+
+    /// The account's sign-in over when Join is tapped: the invite again,
+    /// signed out, saying so.
+    func testAJoinWhoseSignInEndedOffersTheInviteSignedOut() async throws {
+        let http = CloudHTTP()
+        await http.answer("POST /v1/invites/preview", 200, Self.offer)
+        await http.answer("POST /v1/invites/accept", 401, #"{"code":"unauthorized","error":"Sign in."}"#)
+        let (screen, navigation) = inviteScreen(http, account: CloudAccount.preview(token: "account", http: http))
+        await settle { screen.phase != .loading }
+        screen.view.layoutIfNeeded()
+        let offered = frames(screen)
+        screen.primary.tapped()
+        await settle { if case .offered = screen.phase { true } else { false } }
+        screen.view.layoutIfNeeded()
+        guard case .offered = screen.phase else { return XCTFail("\(screen.phase)") }
+        XCTAssertNil(CloudScreens.account)
+        XCTAssertTrue(navigation.topViewController === screen)
+        XCTAssertEqual(screen.primary.title, "Sign in to join")
+        XCTAssertFalse(screen.primary.isLoading)
+        XCTAssertEqual(screen.status.string, "Your Happy Cloud sign-in has ended. Sign in again.")
+        XCTAssertEqual(screen.name.string, "Acme")
+        XCTAssertEqual(frames(screen), offered)
+        screen.primary.tapped()
+        await settle { navigation.topViewController is CloudWelcomeViewController && navigation.transitionCoordinator == nil }
+        XCTAssertTrue(navigation.topViewController is CloudWelcomeViewController)
+        XCTAssertEqual(CloudScreens.pendingJoin?.invite, Self.invite)
     }
 
     /// Where the title, line, picture, status and button sit.
@@ -619,21 +844,27 @@ final class CloudScreensTests: XCTestCase {
         [screen.titleLabel, screen.bodyLabel, screen.picture, screen.name, screen.status, screen.primary].map { $0.convert($0.bounds, to: screen.view) }
     }
 
-    /// An invite for another email: Use Another Account goes back to the
-    /// welcome, the invite kept for the next sign-in, which opens on it.
-    func testAnInviteForAnotherEmailSignsInAgainAndComesBackToIt() async throws {
+    /// An invite for another email: Sign in with another email signs the
+    /// account out and opens the sign-in over the invite, and whoever signs
+    /// in then takes it.
+    func testAnInviteForAnotherEmailSignsInAgainAndTakesIt() async throws {
         let http = CloudHTTP()
-        await http.answer("POST /v1/invites/preview", 200, #"{"server":{"name":"acme","displayName":null,"image":null},"inviter":{"name":null,"image":null},"roleName":"Member","expiresAt":"2026-11-19T09:28:08Z"}"#)
+        await http.answer("POST /v1/invites/preview", 200, #"{"server":{"name":"acme","displayName":null,"image":null},"inviter":{"name":null,"image":null},"roleName":"Member","expiresAt":null}"#)
         await http.answer("POST /v1/invites/accept", 403, #"{"code":"email_mismatch","error":"This invitation is for another email address.","emailHint":"s…@…"}"#)
-        let account = CloudAccount.preview(token: "account", http: http)
-        CloudScreens.account = account
-        defer { CloudScreens.account = nil; CloudScreens.pendingInvite = nil }
-        let navigation = UINavigationController(rootViewController: CloudScreens.first(context: context(), invite: Self.invite))
-        let screen = try XCTUnwrap(navigation.topViewController as? CloudInviteViewController, "signed in: the invite at once")
+        CloudScreens.account = CloudAccount.preview(token: "account", http: http)
+        CloudScreens.inviteHTTP = http
+        addTeardownBlock { @MainActor in
+            CloudScreens.account = nil
+            CloudScreens.pendingJoin = nil
+            CloudScreens.inviteHTTP = NoRedirectURLSessionTransport()
+        }
+        let navigation = UINavigationController(rootViewController: CloudScreens.first(context: context(), invite: .invite(Self.invite)))
+        let screen = try XCTUnwrap(navigation.topViewController as? CloudInviteViewController, "the invite at once")
         show(navigation)
         await settle { screen.primary.isEnabled }
         screen.view.layoutIfNeeded()
         let offered = frames(screen)
+        XCTAssertEqual(screen.status.string, "You’ll join as Member.", "no time it ends: none said")
         screen.primary.tapped()
         await settle { screen.phase == .refused(.emailMismatch(hint: "s…@…")) }
         screen.view.layoutIfNeeded()
@@ -645,19 +876,31 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertEqual(screen.titleLabel.string, "Use your invited email")
         XCTAssertEqual(screen.bodyLabel.alpha, 1)
         XCTAssertEqual(screen.status.string, "This invite was sent to s…@… Sign in with that email to join.")
-        XCTAssertEqual(screen.primary.title, "Use Another Account")
+        XCTAssertEqual(screen.primary.title, "Sign in with another email")
+        XCTAssertFalse(screen.primary.isLoading)
         screen.primary.tapped()
         await settle { navigation.topViewController is CloudWelcomeViewController && navigation.transitionCoordinator == nil }
-        XCTAssertTrue(navigation.topViewController is CloudWelcomeViewController)
-        XCTAssertNil(CloudScreens.account)
-        XCTAssertEqual(CloudScreens.pendingInvite, Self.invite)
+        let welcome = try XCTUnwrap(navigation.topViewController as? CloudWelcomeViewController)
+        XCTAssertEqual(welcome.note.string, "", "signed out on purpose: nothing ended")
+        XCTAssertNil(CloudScreens.account, "the account that didn't fit is signed out")
+        XCTAssertEqual(CloudScreens.pendingJoin?.invite, Self.invite)
+        XCTAssertTrue(navigation.viewControllers.first === screen)
+        guard case .offered = screen.phase else { return XCTFail("under the sign-in the invite is as offered: \(screen.phase)") }
 
-        let welcome = try XCTUnwrap(navigation.topViewController)
+        // The other account's accept is refused as well: nothing goes on to a server here.
+        await http.answer("POST /v1/invites/accept", 410, #"{"code":"accepted","error":"This invitation has already been accepted."}"#)
         CloudScreens.signedIn(CloudAccount.preview(token: "other", http: http), context: context(), from: welcome)
+        XCTAssertNil(CloudScreens.pendingJoin, "taken up once")
         await settle { navigation.topViewController is CloudInviteViewController && navigation.transitionCoordinator == nil }
-        XCTAssertTrue(navigation.topViewController is CloudInviteViewController)
-        XCTAssertNotIdentical(navigation.topViewController, screen)
-        XCTAssertNil(CloudScreens.pendingInvite, "taken up once")
+        let again = try XCTUnwrap(navigation.topViewController as? CloudInviteViewController)
+        XCTAssertNotIdentical(again, screen)
+        await settle { again.phase == .refused(.accepted) }
+        XCTAssertEqual(again.phase, .refused(.accepted))
+        XCTAssertEqual(again.primary.title, "Show My Servers")
+        let sent = await http.requests
+        XCTAssertEqual(sent.last?.url.path, "/v1/invites/accept")
+        XCTAssertEqual(sent.last?.headers["Authorization"], "Bearer other", "the new account takes it, with no second tap")
+        XCTAssertEqual(sent.filter { $0.url.path == "/v1/invites/preview" }.count, 1)
     }
 
     /// No server yet: Bootstrap a server leads, says so, and Back from it
@@ -719,8 +962,9 @@ final class CloudScreensTests: XCTestCase {
 
         await http.answer("POST /v1/invites/preview", 200, #"{"server":{"name":"acme","displayName":null,"image":null},"inviter":null,"roleName":"Member","expiresAt":"2026-11-19T09:28:08Z"}"#)
         await http.answer("POST /v1/invites/accept", 200, #"{"server":{"id":"s1","name":"acme","displayName":"acme","url":"https://acme.happy-clusters.com/","image":null}}"#)
-        let invite = CloudInviteViewController(context: context(), account: account, invite: Self.invite)
-        invite.connecting = { CloudConnectingViewController(context: self.context(), account: account, server: $0, startsAtOnce: false) }
+        let invite = CloudInviteViewController(context: context(), link: .invite(Self.invite))
+        invite.http = http
+        invite.connecting = { CloudConnectingViewController(context: self.context(), account: $0, server: $1, startsAtOnce: false) }
         navigation.setViewControllers([start, invite], animated: false)
         await settle { invite.primary.isEnabled && navigation.transitionCoordinator == nil }
         invite.primary.tapped()
@@ -728,7 +972,11 @@ final class CloudScreensTests: XCTestCase {
         navigation.setViewControllers([UIViewController()], animated: false)
         await settle { navigation.transitionCoordinator == nil }
         XCTAssertIdentical(CloudScreens.account, account, "nor an invite's")
-        XCTAssertTrue(CloudScreens.first(context: context(), invite: Self.invite) is CloudInviteViewController, "the next invite link opens on Join")
+        CloudScreens.inviteHTTP = http
+        defer { CloudScreens.inviteHTTP = NoRedirectURLSessionTransport() }
+        let next = try XCTUnwrap(CloudScreens.first(context: context(), invite: .invite(Self.invite)) as? CloudInviteViewController)
+        next.loadViewIfNeeded()
+        XCTAssertEqual(next.primary.title, "Join", "the next invite link opens on Join")
     }
 
     /// An account pass for `audience`, as the accounts service signs one.

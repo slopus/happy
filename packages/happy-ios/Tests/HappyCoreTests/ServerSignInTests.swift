@@ -1263,49 +1263,150 @@ final class WebSocketTunnelTests: XCTestCase {
 final class CloudInviteTests: XCTestCase {
     private static let token = "q7Xk2_bN-9vLmR4tY8wE1zA6sD3fG5hJ0kP2oI9uYtR"
 
-    /// An invite link is the invite host with the token in the fragment,
-    /// or the web app's older `/join`; anything else isn't one.
-    func testInviteLinksParse() {
+    /// An invite link is `/join` on the web host, or `happy://cloud/join`,
+    /// with the token in the fragment.
+    func testBothLinkFormsAreInvites() {
         let token = Self.token
         XCTAssertEqual(token.count, 43)
-        XCTAssertEqual(CloudInvite(url: URL(string: "https://join.happy.engineering/#\(token)")!)?.token, token)
-        XCTAssertEqual(CloudInvite(url: URL(string: "https://join.happy.engineering#\(token)")!)?.token, token)
-        XCTAssertEqual(CloudInvite(url: URL(string: "https://JOIN.happy.engineering/#\(token)")!)?.token, token)
-        XCTAssertEqual(CloudInvite(url: URL(string: "https://happybases.com/join#\(token)")!)?.token, token)
         for link in [
-            "http://join.happy.engineering/#\(token)",
-            "https://join.happy.engineering/",
-            "https://join.happy.engineering/#\(token.dropLast())",
-            "https://join.happy.engineering/#\(token)A",
-            "https://join.happy.engineering/#\(token.dropLast())=",
-            "https://join.happy.engineering/x#\(token)",
-            "https://join.happy.engineering/?t=1#\(token)",
-            "https://join.happy.engineering:8443/#\(token)",
-            "https://user@join.happy.engineering/#\(token)",
-            "https://happybases.com/#\(token)",
-            "https://acme.happybases.com/join#\(token)",
-            "https://evil.example/#\(token)",
-            "https://app.happy.engineering/bot/invite/\(token)",
+            "https://happybases.com/join#\(token)",
+            "https://happybases.com/join/#\(token)",
+            "https://HappyBases.com/join#\(token)",
+            "HTTPS://happybases.com/join#\(token)",
+            "happy://cloud/join#\(token)",
+            "happy://cloud/join/#\(token)",
+            "happy://CLOUD/join#\(token)",
         ] {
-            XCTAssertNil(CloudInvite(url: URL(string: link)!), link)
+            let url = URL(string: link)!
+            XCTAssertEqual(CloudInviteLink(url: url), CloudInvite(token: token).map { .invite($0) }, link)
+            XCTAssertEqual(CloudInvite(url: url)?.token, token, link)
         }
     }
 
-    /// Preview and accept send the token in the body to the API under the
-    /// account's session; what they answer, and each refusal, read as the
-    /// app shows them.
+    /// At the invite's place without a token that could be one (none, a
+    /// misshapen one, one in a query, a query beside it): an invite link
+    /// that doesn't work, never an invite.
+    func testAnInviteLinkWithoutAGoodTokenIsInvalid() {
+        let token = Self.token
+        for link in [
+            "https://happybases.com/join",
+            "https://happybases.com/join/",
+            "https://happybases.com/join#",
+            "https://happybases.com/join#\(token.dropLast())",
+            "https://happybases.com/join#\(token)A",
+            "https://happybases.com/join#\(token.dropLast())=",
+            "https://happybases.com/join#\(token.dropLast())%41",
+            "https://happybases.com/join?token=\(token)",
+            "https://happybases.com/join?\(token)",
+            "https://happybases.com/join?t=1#\(token)",
+            "https://happybases.com/join?#\(token)",
+            "happy://cloud/join",
+            "happy://cloud/join#short",
+            "happy://cloud/join?token=\(token)",
+            "happy://cloud/join?x=1#\(token)",
+        ] {
+            let url = URL(string: link)!
+            XCTAssertEqual(CloudInviteLink(url: url), .invalid, link)
+            XCTAssertNil(CloudInvite(url: url), link)
+        }
+    }
+
+    /// Another host, another path, another scheme: not an invite link at
+    /// all.
+    func testOtherLinksAreNotInviteLinks() {
+        let token = Self.token
+        for link in [
+            "http://happybases.com/join#\(token)",
+            "https://happybases.com/#\(token)",
+            "https://happybases.com#\(token)",
+            "https://happybases.com/join/x#\(token)",
+            "https://happybases.com/joined#\(token)",
+            "https://happybases.com/Join#\(token)",
+            "https://happybases.com/x/join#\(token)",
+            "https://happybases.com:8443/join#\(token)",
+            "https://user@happybases.com/join#\(token)",
+            "https://user:pass@happybases.com/join#\(token)",
+            "https://acme.happybases.com/join#\(token)",
+            "https://happybases.com.evil.example/join#\(token)",
+            "https://evil.example/join#\(token)",
+            "https://app.happy.engineering/bot/invite/\(token)",
+            "happy://cloud/#\(token)",
+            "happy://cloud#\(token)",
+            "happy://cloud/join/x#\(token)",
+            "happy://join#\(token)",
+            "happy://terminal/join#\(token)",
+            "happy://cloud:1/join#\(token)",
+            "happy://user@cloud/join#\(token)",
+            "happy:///cloud/join#\(token)",
+            "other://cloud/join#\(token)",
+        ] {
+            let url = URL(string: link)!
+            XCTAssertNil(CloudInviteLink(url: url), link)
+            XCTAssertNil(CloudInvite(url: url), link)
+        }
+    }
+
+    /// A token is 43 of `A-Z a-z 0-9 _ -`, nothing else.
+    func testATokensShape() {
+        XCTAssertEqual(CloudInvite(token: Self.token)?.token, Self.token)
+        XCTAssertNotNil(CloudInvite(token: String(repeating: "-", count: 43)))
+        XCTAssertNotNil(CloudInvite(token: String(repeating: "_", count: 43)))
+        let short = String(Self.token.dropLast())
+        let wrong: [String] = ["", short, Self.token + "A", short + "=", short + " ", short + ".", short + "/", short + "+", short + "é", short + "٣"]
+        for token in wrong {
+            XCTAssertNil(CloudInvite(token: token), token)
+        }
+    }
+
+    /// The preview asks the API with the token in the body and no session
+    /// (it is shown before any sign-in); the accept goes under the
+    /// account's. What they answer, and each refusal, read as the app shows
+    /// them.
     func testInvitePreviewAcceptAndRefusals() async throws {
         let api = HappyCloud.api
         let http = ScriptedHTTP()
         let account = CloudAccount.preview(token: "pass", http: http)
-        let invite = CloudInvite(url: URL(string: "https://join.happy.engineering/#\(Self.token)")!)!
+        let invite = CloudInvite(url: URL(string: "https://happybases.com/join#\(Self.token)")!)!
         http.json(api + "/v1/invites/preview", #"{"server":{"name":"acme","displayName":"Acme","image":"data:image/png;base64,iVBORw0KGgo="},"roleName":"Viewer","expiresAt":"2026-11-19T09:28:08.851234Z","inviter":{"name":"Steve K","image":null}}"#)
-        let preview = try await account.preview(invite)
-        XCTAssertEqual(preview, CloudInvitePreview(server: .init(name: "acme", displayName: "Acme", image: "data:image/png;base64,iVBORw0KGgo="), roleName: "Viewer",
-                                                   inviter: .init(name: "Steve K")))
+        let preview = try await CloudAccount.preview(invite, http: http)
+        XCTAssertEqual(preview.server, .init(name: "acme", displayName: "Acme", image: "data:image/png;base64,iVBORw0KGgo="))
+        XCTAssertEqual(preview.roleName, "Viewer")
+        XCTAssertEqual(preview.inviter, .init(name: "Steve K"))
+        // 2026-11-19T09:28:08Z, the fraction kept or dropped.
+        XCTAssertEqual(preview.expiresAt?.timeIntervalSince1970 ?? 0, 1_795_080_488.851234, accuracy: 1)
         XCTAssertNil(preview.inviter?.imageData)
         XCTAssertEqual(preview.server.imageData, Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+        XCTAssertEqual(http.requests.last?.method, "POST")
+        XCTAssertEqual(http.requests.last?.url.absoluteString, api + "/v1/invites/preview", "the token isn't in the address")
+        XCTAssertNil(http.requests.last?.headers["Authorization"], "the preview needs no session and gets none")
         XCTAssertEqual(try JSONSerialization.jsonObject(with: http.requests.last?.body ?? Data()) as? [String: String], ["token": Self.token])
+
+        // Times as the cluster writes them, and one that isn't a time.
+        XCTAssertEqual(CloudInvitePreview.date("2026-11-19T09:28:08Z")?.timeIntervalSince1970, 1_795_080_488)
+        XCTAssertEqual(CloudInvitePreview.date("2026-11-19T10:28:08+01:00")?.timeIntervalSince1970, 1_795_080_488)
+        XCTAssertEqual(CloudInvitePreview.date("2026-11-19T09:28:08.851Z")?.timeIntervalSince1970 ?? 0, 1_795_080_488.851, accuracy: 1)
+        XCTAssertEqual(CloudInvitePreview.date("2026-11-19T09:28:08.851234567Z")?.timeIntervalSince1970 ?? 0, 1_795_080_488.851, accuracy: 1)
+        XCTAssertNil(CloudInvitePreview.date("soon"))
+        http.json(api + "/v1/invites/preview", #"{"server":{"name":"acme","displayName":null,"image":null},"inviter":null,"roleName":"Member","expiresAt":"soon"}"#)
+        let undated = try await CloudAccount.preview(invite, http: http)
+        XCTAssertEqual(undated, CloudInvitePreview(server: .init(name: "acme"), roleName: "Member"))
+
+        // A preview refused says why; a 401 there is no session's end.
+        let closed: [(Int, String, any Error)] = [
+            (410, #"{"code":"invalid","error":"Invalid invitation."}"#, CloudInviteError.invalid),
+            (410, #"{"code":"expired","error":"Expired."}"#, CloudInviteError.expired),
+            (410, #"{"code":"revoked","error":"Revoked."}"#, CloudInviteError.revoked),
+            (410, #"{"code":"exhausted","error":"Used up."}"#, CloudInviteError.exhausted),
+            (410, #"{"code":"accepted","error":"Already accepted."}"#, CloudInviteError.accepted),
+            (503, #"{"code":"unavailable","error":"Try again."}"#, CloudAccountError.refused(status: 503, code: "unavailable", message: "Try again.")),
+            (401, #"{"code":"unauthorized","error":"Sign in."}"#, CloudAccountError.refused(status: 401, code: "unauthorized", message: "Sign in.")),
+        ]
+        for (status, body, expected) in closed {
+            http.json(api + "/v1/invites/preview", status: status, body)
+            await XCTAssertThrowsAsync(try await CloudAccount.preview(invite, http: http)) {
+                XCTAssertEqual("\($0)", "\(expected)", body)
+            }
+        }
 
         http.json(api + "/v1/invites/accept", #"{"server":{"id":"6f1c","name":"acme","displayName":"acme","url":"https://acme.happy-clusters.com/","webUrl":"https://acme.happybases.com/","image":null,"createdAt":"2026-11-12T09:28:08Z"}}"#)
         let server = try await account.accept(invite)
@@ -1335,8 +1436,10 @@ final class CloudInviteTests: XCTestCase {
 
     /// The token never prints.
     func testInviteDoesNotPrintItsToken() {
-        let invite = CloudInvite(url: URL(string: "https://join.happy.engineering/#\(Self.token)")!)!
+        let invite = CloudInvite(url: URL(string: "happy://cloud/join#\(Self.token)")!)!
         XCTAssertEqual("\(invite)", "CloudInvite(…)")
         XCTAssertEqual(String(reflecting: invite), "CloudInvite(…)")
+        XCTAssertFalse("\(CloudInviteLink.invite(invite))".contains(Self.token))
+        XCTAssertFalse(String(reflecting: CloudInviteLink.invite(invite)).contains(Self.token))
     }
 }

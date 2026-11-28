@@ -108,9 +108,9 @@ split contract (v1, frozen 2026-11-15).
   A Cloud flow reached anyway opens and works: a signed-out cloud server's
   Sign In, an invite link that reaches the app, a `servers` settings link,
   and the welcome's test account. "Sign Out of Happy Cloud" stays in the
-  account menu while the account is signed in. The App Store app's
-  entitlements leave out `applinks:join.happy.engineering` until Happy
-  Cloud ships, so its invite links open the browser. The switch is a
+  account menu while the account is signed in. Invite links are claimed
+  and opened by every variant, the App Store app included, whatever the
+  switch says (Invite links, below). The switch is a
   card above Privacy in Settings, in developer mode only (ten taps on
   Version), and nowhere else: outside developer mode no card, footer or
   search result (home's search included), never on Start or in onboarding.
@@ -177,6 +177,33 @@ split contract (v1, frozen 2026-11-15).
        after each code sent, its title counting down ("Resend code in
        0:42"); Change email goes back to the address, kept.
 
+       iOS offers a code over the keyboard only from Messages and Apple
+       Mail, so for one read anywhere else (Gmail's app, say) the step
+       has:
+       - **Paste**, a filled pill at the field's right end: iOS's own
+         `UIPasteControl` (`PasteControl`), so tapping it reads the
+         pasteboard with no "Allow Paste" prompt, and nothing reads the
+         pasteboard before the tap. It is always there; iOS dims it
+         while the pasteboard holds no text. What it hands over goes
+         through `EmailCode.find`: the first run of exactly six digits
+         ("Your code is 428913."), else the text's digits when they are
+         six in all (`123 456`), is put in the field and checked as the
+         sixth typed digit is. Text without one says "No 6-digit code to
+         paste. Copy it from the email first." under the field and
+         changes nothing. The control knows its size only once iOS has
+         drawn it, a moment after it is made; it keeps a pill's room
+         until then and the field is laid out again when the size comes
+         (`CloudFieldLayout`).
+       - **Open Mail** (`message://`) and, when Gmail is installed,
+         **Open Gmail** (`googlegmail://`), quiet links in one row with
+         Change email (`CloudLinksLayout`). Which are there is asked
+         once, before the step shows (`canOpenURL`, with both schemes in
+         every Info.plist's `LSApplicationQueriesSchemes`), and the row
+         is one line whatever it holds, so the step is laid out the same
+         on every phone and nothing on it comes or goes. Back in Happy
+         the step is as it was left, and its field takes the keyboard
+         again (`cameBack`).
+
     Refusals are `{ code, error }`, said under the field: `400
     invalid_email`, `400 invalid_code` and `502 unavailable` in the
     service's words (ours when it gives none); a wrong code is cleared.
@@ -218,10 +245,10 @@ split contract (v1, frozen 2026-11-15).
   appears once one is in and opens the last joined. Under the list, a
   quiet link: Bootstrap a new one. An account with no server opens on
   Bootstrap a server instead. There is no join with a code: an invite is a
-  private link (`https://happybases.com/join#<token>`) accepted on the web,
-  so the list loads again whenever the app comes back to the foreground,
-  and the first Bootstrap gives way to the list once the account has a
-  server. Back from Join a server,
+  private link, which opens on a screen of its own (Invite links, below);
+  one may also be accepted elsewhere, so the list loads again whenever the
+  app comes back to the foreground, and the first Bootstrap gives way to
+  the list once the account has a server. Back from Join a server,
   or from that first Bootstrap, signs the account out (revokes the session),
   so Continue can use another. The picture is the ThumbHash at once, then
   the bytes from the listed image `url` under the session's token (only
@@ -234,7 +261,82 @@ split contract (v1, frozen 2026-11-15).
   free, `POST /v1/servers`, then straight into it. Connecting takes the
   step's place (over Join a server when there is one), so Back never
   returns to a step that is done.
-- **Connecting** (after Bootstrap; Join on the list does the
+- **Invite links** (`CloudInviteLink`, `CloudInviteViewController`). An
+  invite is a private link in one of two forms, and both open in the app
+  and finish there, with no browser but a provider's own sign-in sheet:
+  - `https://happybases.com/join#<token>`, the link people are sent: a
+    universal link. Every variant claims `applinks:happybases.com` (the
+    web host, `HappyCloud.web`); the host's
+    `/.well-known/apple-app-site-association` lists the apps for `/join`
+    only, so its other pages (the server picker at `/`) stay the
+    browser's, and until that file is deployed the https form opens
+    Safari. An entitlement can't narrow a domain to a path, so the app
+    takes `/join` alone and ignores anything else that arrives.
+  - `happy://cloud/join#<token>`, what the web page's Open in Happy
+    opens; it needs no association file.
+
+  The token is 43 of `A-Za-z0-9_-` and only ever the fragment: it is
+  never logged or printed (`CloudInvite` describes itself as
+  `CloudInvite(…)`), never put in a query, and sent only in the bodies of
+  the API's two invite calls. A link at the invite's place without a
+  token that could be one (none, a misshapen one, a query beside it) is
+  an invite link that doesn't work: it opens the invite's screen as
+  refused, and nothing is asked of the network. Another host
+  (`<name>.happybases.com`, a server's web app) or another path is not an
+  invite link. The debug stand-in `-HappyCloudWeb` moves the https form
+  with the web host.
+
+  The screen, the same order on every client:
+
+  ```
+  link ─ no token that could be one ──────────▶ refused (invalid), no request
+   ▼
+  loading ── 410 ──▶ refused                    one way out, no Join
+   │    └── network, 5xx ──▶ failed ── Try Again ──▶ loading
+   ▼ 200
+  offered ─ signed in:  Join            ─ tap ─▶ joining
+          └ signed out: Sign in to join ─ tap ─▶ the welcome, pushed over the invite
+  the welcome ── signed in ──▶ joining            (the tap was the consent)
+              └─ Back ──▶ offered, signed out
+  joining ── 200 ──▶ Connecting; or the server opens when it is on the phone
+          ├─ 403 email_mismatch ──▶ Use your invited email
+          │        └ Sign in with another email ─▶ the account signed out ─▶ the welcome
+          ├─ 410 ──▶ refused
+          ├─ 401 ──▶ offered, signed out, saying the sign-in ended
+          └─ network, 5xx ──▶ failed ── Try Again ──▶ joining
+  ```
+
+  - The invite is shown **before any sign-in**: `POST /v1/invites/preview`
+    `{ token }` needs no session and gets none (`CloudAccount.preview`),
+    and answers the server (its picture, name and `@name`), who invited
+    the person, the role's name and `expiresAt`: "You’ll join as Member.
+    This invite expires Dec 5, 2026 at 3:36 AM."
+  - **Nothing is taken without a tap** on Join or Sign in to join:
+    opening a link never joins, and what the preview names never stands
+    in for the tap (it is unauthenticated and says nothing about the
+    account). `POST /v1/invites/accept` `{ token }` goes under the
+    account's session.
+  - **Sign in to join** pushes the welcome over the invite
+    (`CloudScreens.pendingJoin`). Whoever signs in, by any way, takes the
+    invite at once: a new invite screen, joining, takes the place of the
+    invite and every sign-in step (`CloudScreens.signedIn`), showing what
+    was offered without asking for it again. Back from the welcome is
+    the invite as offered, and the tap is forgotten: a later sign-in
+    joins nothing.
+  - A server already on the phone opens after the accept
+    (`CloudScreens.connection`); no second connection is made.
+  - A **refused** invite keeps the screen and says why under the title
+    "Invite unavailable" (`Strings.CloudConnect.invite`); its one button
+    is Show My Servers, or Close while the account is signed out. One
+    for another email reads "Use your invited email" with the hinted
+    address, and Sign in with another email signs the account out and
+    opens the welcome over the invite, as Sign in to join does.
+  - A second link takes the place of the invite on screen
+    (`AppCoordinator.open`, `AccountAdding.connectToCloud`).
+  - Every state is one layout (`CloudInviteLayout`): the title and the
+    button only change their words, and the status line keeps the room of
+    the longest it can say.
+- **Connecting** (after Bootstrap or an invite; Join on the list does the
   same in place) asks the API for the server's own tokens,
   `POST /v1/servers/:id/token` under the session: no browser. The access
   token's `aud` must be `https://<name>.<base>/`, built from the listed
@@ -671,18 +773,35 @@ a test account's, and email's two requests with every refusal and the
 `429` wait from the body or the header. `CloudEmailScreensTests`
 (HappyUIKitTests) covers email's steps: the welcome's button, Send code,
 the code field, Resend code's and a `429`'s countdowns, Change email, and
-the servers after the right code.
+the servers after the right code; and the code read elsewhere: Paste in
+the field, pasted text with and without a code, the mail apps' row, and
+the field focused on coming back. `EmailCodeTests` holds which pasted
+text has a code, `CloudCodeStepLayoutTests` the field's and the row's
+frames.
+
+Invite links: `CloudInviteTests` (in `ServerSignInTests.swift`) holds the
+two forms, the invalid ones and every link that isn't an invite, and the
+preview's and the accept's requests and refusals. `CloudScreensTests`
+holds the screen's order: shown before any sign-in, Sign in to join then
+joining with no second tap, Back to the invite, the mismatch, the 401,
+Try Again, and an invalid link asking nothing. `HostedCloudSwitchOffTests`
+opens both forms through the coordinator in the App Store variant with
+the switch off.
 
 `scripts/cloud-email-mock/server.mjs` plays the accounts service's email
 routes (`/v2/auth/email/*`, identity tokens; `/v1/auth/*` answers `410
-update_required`) and the API's session, `/token`, `/revoke` and servers
-list over plain HTTP on 8790 (a fixed code, `123456`; special addresses
-for each refusal; a `429` after three codes a minute or three wrong
-codes). `scripts/cloud-email-mock/run-device-test.sh` (on a Mac) starts it
+update_required`) and the API's session, `/token`, `/revoke`, servers
+list and the two invite calls over plain HTTP on 8790 (a fixed code,
+`123456`; special addresses for each refusal; a `429` after three codes a
+minute or three wrong codes; an invite token's first letters pick a
+refusal). `scripts/cloud-email-mock/run-device-test.sh` (on a Mac) starts it
 and runs `CloudEmailSignInUITests` on a connected phone or a simulator
 (`DEVICE`) in the chat harness, whose `-cloudAccounts <origin>` sends the
 welcome's sign-ins and the API's calls there, then exports the
-screenshots. On a
+screenshots. Its second test opens an invite (`-cloudScreen invite
+-cloudName happy://cloud/join#<token>`), signs in by email with the code
+copied in another app and pasted with a real tap on Paste, and ends on
+Connecting. On a
 phone whose UI automation can't be turned on, the harness's own
 `-cloudScreen email -cloudName <address> -cloudSend -cloudCode <code>`
 fills the address, taps Send code and types the code through the same
