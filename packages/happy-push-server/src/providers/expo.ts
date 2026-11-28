@@ -48,6 +48,13 @@ export function buildExpoMessage(message: PushMessage, device: DeviceRecord): Re
     if (message.mutableContent !== undefined) expo.mutableContent = message.mutableContent;
     if (message.interruptionLevel !== undefined) expo.interruptionLevel = message.interruptionLevel;
     if (message.contentAvailable !== undefined) expo._contentAvailable = message.contentAvailable;
+    if (message.collapseId !== undefined) {
+        // Expo's `collapseId` is `apns-collapse-id` on iOS but FCM's
+        // `collapse_key` on Android, which is avoided for the reason given in
+        // buildFcmMessage; `tag` is Expo's replace-on-screen field there.
+        if (device.platform === 'ios') expo.collapseId = message.collapseId;
+        else expo.tag = message.collapseId;
+    }
     // threadId has no Expo equivalent and is dropped.
     return expo;
 }

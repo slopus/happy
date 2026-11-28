@@ -108,6 +108,12 @@ export const pushMessageSchema = z.strictObject({
     channelId: z.string().max(256).optional(),
     categoryId: z.string().max(256).optional(),
     threadId: z.string().max(256).optional(),
+    /**
+     * A later notification with the same value replaces the earlier one on the
+     * device. 64 bytes is APNs' limit for `apns-collapse-id`; the alphabet is
+     * ASCII so bytes and characters are the same count.
+     */
+    collapseId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, 'collapseId must be 1 to 64 characters of A-Z, a-z, 0-9, _ or -').optional(),
     /** Defaults to 'high' for visible alerts and 'normal' for data-only pushes. */
     priority: pushPrioritySchema.optional(),
     /** Seconds the provider may hold an undeliverable message; 0 = deliver now or drop. */
