@@ -12,7 +12,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 vi.mock('@/lib', () => ({ logger: { debug: vi.fn(), debugLargeJson: vi.fn() } }));
 vi.mock('@/ui/logger', () => ({ logger: { debug: vi.fn() } }));
 vi.mock('./utils/claudeCheckSession', () => ({ claudeCheckSession: () => true }));
-vi.mock('./utils/systemPrompt', () => ({ systemPrompt: 'fixture system prompt' }));
+vi.mock('./utils/systemPrompt', () => ({ getSystemPrompt: async () => 'fixture system prompt' }));
 
 const cwd = resolve('fixture session');
 const sessionId = '11111111-2222-4333-8444-555555555555';

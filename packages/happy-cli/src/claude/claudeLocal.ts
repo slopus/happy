@@ -9,7 +9,7 @@ import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";
 import { projectPath } from "@/projectPath";
-import { systemPrompt } from "./utils/systemPrompt";
+import { getSystemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
 
@@ -184,6 +184,8 @@ export async function claudeLocal(opts: {
             }
         }
     };
+
+    const systemPrompt = await getSystemPrompt(opts.path);
 
     // Spawn the process
     try {
