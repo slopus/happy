@@ -23,18 +23,17 @@ public enum HappyCloud {
     /// and every token after sign-in, refreshed and revoked here.
     public static var api: String { stand(in: "HappyCloudAPI") ?? "https://api.\(base)" }
     /// The web app, where a server's settings the phone has no page for
-    /// are: `acme`'s under `https://acme.<web>/#/settings/`. Change it here only.
+    /// are: `acme`'s under `https://acme.<web>/#/settings/`. Invite links
+    /// point at its `/join` and nowhere else (`CloudInviteLink`), so it is
+    /// the app's associated domain. Change it here and in the entitlements
+    /// only.
     public static var web: String { stand(in: "HappyCloudWeb") ?? "happybases.com" }
-    /// Where invite links point, `https://<invite>/#<token>`; the app's
-    /// associated domain. Change it here and in the entitlements only.
-    public static var invite: String { stand(in: "HappyCloudInvite") ?? "join.happy.engineering" }
 
-    private static let standInKeys = ["HappyCloudAccounts", "HappyCloudAPI", "HappyCloudBase", "HappyCloudWeb", "HappyCloudInvite"]
+    private static let standInKeys = ["HappyCloudAccounts", "HappyCloudAPI", "HappyCloudBase", "HappyCloudWeb"]
 
     /// A debug build's stand-ins for the above, for a scratch deployment:
     /// launched once with `-HappyCloudAccounts <origin>` (and
-    /// `-HappyCloudAPI`, `-HappyCloudBase`, `-HappyCloudWeb`,
-    /// `-HappyCloudInvite`), kept here
+    /// `-HappyCloudAPI`, `-HappyCloudBase`, `-HappyCloudWeb`), kept here
     /// at launch for later launches, such as one from an invite link; an
     /// empty value forgets one. Other builds have none.
     public static func keepStandIns() {

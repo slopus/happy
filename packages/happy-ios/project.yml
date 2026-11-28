@@ -88,10 +88,10 @@ targets:
         CODE_SIGN_STYLE: Automatic
         # Every variant has aps-environment "development", as the RN app's
         # expo-notifications plugin writes it; signing for distribution
-        # replaces it with the profile's "production". Development and
-        # preview open Happy Cloud's invite links (join.happy.engineering);
-        # production has app.happy.engineering and link.happy.page, and gets
-        # join.happy.engineering back when Happy Cloud ships.
+        # replaces it with the profile's "production". Every variant
+        # opens Happy Cloud's invite links (applinks:happybases.com, whose
+        # site association lists /join only); production also has
+        # app.happy.engineering and link.happy.page.
         #
         # HAPPY_GOOGLE_CLIENT is the variant's own iOS OAuth client for
         # Continue with Google (public, not a secret): the Info.plists make

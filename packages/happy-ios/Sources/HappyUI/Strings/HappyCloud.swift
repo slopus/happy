@@ -25,7 +25,7 @@ extension Strings {
         }
         static let signOut = "Sign Out of Happy Cloud"
         /// Settings' Happy Cloud switch.
-        static let switchFooter = "Offers Happy Cloud on the first screen and in the account menu, and opens its invite links in the app. Servers already on this phone keep working either way."
+        static let switchFooter = "Offers Happy Cloud on the first screen and in the account menu. Invite links and servers already on this phone work either way."
         static let unreachable = "Happy Cloud couldn’t be reached. Check your connection and try again."
 
         /// A name as typed, with the `@` people see in front of it dropped.

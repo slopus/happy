@@ -108,9 +108,9 @@ split contract (v1, frozen 2026-11-15).
   A Cloud flow reached anyway opens and works: a signed-out cloud server's
   Sign In, an invite link that reaches the app, a `servers` settings link,
   and the welcome's test account. "Sign Out of Happy Cloud" stays in the
-  account menu while the account is signed in. The App Store app's
-  entitlements leave out `applinks:join.happy.engineering` until Happy
-  Cloud ships, so its invite links open the browser. The switch is a
+  account menu while the account is signed in. Invite links are claimed
+  and opened by every variant, the App Store app included, whatever the
+  switch says (Invite links, below). The switch is a
   card above Privacy in Settings, in developer mode only (ten taps on
   Version), and nowhere else: outside developer mode no card, footer or
   search result (home's search included), never on Start or in onboarding.
@@ -218,10 +218,10 @@ split contract (v1, frozen 2026-11-15).
   appears once one is in and opens the last joined. Under the list, a
   quiet link: Bootstrap a new one. An account with no server opens on
   Bootstrap a server instead. There is no join with a code: an invite is a
-  private link (`https://happybases.com/join#<token>`) accepted on the web,
-  so the list loads again whenever the app comes back to the foreground,
-  and the first Bootstrap gives way to the list once the account has a
-  server. Back from Join a server,
+  private link, which opens on a screen of its own (Invite links, below);
+  one may also be accepted elsewhere, so the list loads again whenever the
+  app comes back to the foreground, and the first Bootstrap gives way to
+  the list once the account has a server. Back from Join a server,
   or from that first Bootstrap, signs the account out (revokes the session),
   so Continue can use another. The picture is the ThumbHash at once, then
   the bytes from the listed image `url` under the session's token (only
@@ -234,7 +234,82 @@ split contract (v1, frozen 2026-11-15).
   free, `POST /v1/servers`, then straight into it. Connecting takes the
   step's place (over Join a server when there is one), so Back never
   returns to a step that is done.
-- **Connecting** (after Bootstrap; Join on the list does the
+- **Invite links** (`CloudInviteLink`, `CloudInviteViewController`). An
+  invite is a private link in one of two forms, and both open in the app
+  and finish there, with no browser but a provider's own sign-in sheet:
+  - `https://happybases.com/join#<token>`, the link people are sent: a
+    universal link. Every variant claims `applinks:happybases.com` (the
+    web host, `HappyCloud.web`); the host's
+    `/.well-known/apple-app-site-association` lists the apps for `/join`
+    only, so its other pages (the server picker at `/`) stay the
+    browser's, and until that file is deployed the https form opens
+    Safari. An entitlement can't narrow a domain to a path, so the app
+    takes `/join` alone and ignores anything else that arrives.
+  - `happy://cloud/join#<token>`, what the web page's Open in Happy
+    opens; it needs no association file.
+
+  The token is 43 of `A-Za-z0-9_-` and only ever the fragment: it is
+  never logged or printed (`CloudInvite` describes itself as
+  `CloudInvite(…)`), never put in a query, and sent only in the bodies of
+  the API's two invite calls. A link at the invite's place without a
+  token that could be one (none, a misshapen one, a query beside it) is
+  an invite link that doesn't work: it opens the invite's screen as
+  refused, and nothing is asked of the network. Another host
+  (`<name>.happybases.com`, a server's web app) or another path is not an
+  invite link. The debug stand-in `-HappyCloudWeb` moves the https form
+  with the web host.
+
+  The screen, the same order on every client:
+
+  ```
+  link ─ no token that could be one ──────────▶ refused (invalid), no request
+   ▼
+  loading ── 410 ──▶ refused                    one way out, no Join
+   │    └── network, 5xx ──▶ failed ── Try Again ──▶ loading
+   ▼ 200
+  offered ─ signed in:  Join            ─ tap ─▶ joining
+          └ signed out: Sign in to join ─ tap ─▶ the welcome, pushed over the invite
+  the welcome ── signed in ──▶ joining            (the tap was the consent)
+              └─ Back ──▶ offered, signed out
+  joining ── 200 ──▶ Connecting; or the server opens when it is on the phone
+          ├─ 403 email_mismatch ──▶ Use your invited email
+          │        └ Sign in with another email ─▶ the account signed out ─▶ the welcome
+          ├─ 410 ──▶ refused
+          ├─ 401 ──▶ offered, signed out, saying the sign-in ended
+          └─ network, 5xx ──▶ failed ── Try Again ──▶ joining
+  ```
+
+  - The invite is shown **before any sign-in**: `POST /v1/invites/preview`
+    `{ token }` needs no session and gets none (`CloudAccount.preview`),
+    and answers the server (its picture, name and `@name`), who invited
+    the person, the role's name and `expiresAt`: "You’ll join as Member.
+    This invite expires Dec 5, 2026 at 3:36 AM."
+  - **Nothing is taken without a tap** on Join or Sign in to join:
+    opening a link never joins, and what the preview names never stands
+    in for the tap (it is unauthenticated and says nothing about the
+    account). `POST /v1/invites/accept` `{ token }` goes under the
+    account's session.
+  - **Sign in to join** pushes the welcome over the invite
+    (`CloudScreens.pendingJoin`). Whoever signs in, by any way, takes the
+    invite at once: a new invite screen, joining, takes the place of the
+    invite and every sign-in step (`CloudScreens.signedIn`), showing what
+    was offered without asking for it again. Back from the welcome is
+    the invite as offered, and the tap is forgotten: a later sign-in
+    joins nothing.
+  - A server already on the phone opens after the accept
+    (`CloudScreens.connection`); no second connection is made.
+  - A **refused** invite keeps the screen and says why under the title
+    "Invite unavailable" (`Strings.CloudConnect.invite`); its one button
+    is Show My Servers, or Close while the account is signed out. One
+    for another email reads "Use your invited email" with the hinted
+    address, and Sign in with another email signs the account out and
+    opens the welcome over the invite, as Sign in to join does.
+  - A second link takes the place of the invite on screen
+    (`AppCoordinator.open`, `AccountAdding.connectToCloud`).
+  - Every state is one layout (`CloudInviteLayout`): the title and the
+    button only change their words, and the status line keeps the room of
+    the longest it can say.
+- **Connecting** (after Bootstrap or an invite; Join on the list does the
   same in place) asks the API for the server's own tokens,
   `POST /v1/servers/:id/token` under the session: no browser. The access
   token's `aud` must be `https://<name>.<base>/`, built from the listed

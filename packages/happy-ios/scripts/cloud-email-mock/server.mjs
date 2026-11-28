@@ -18,6 +18,13 @@
 //  - POST /token (refresh_token grant, form) rotates the session; POST
 //    /revoke ends it.
 //  - GET /v1/servers under the session's access token: two servers.
+//  - POST /v1/invites/preview {token}, with no session: the invite to
+//    @acme, as Member, from Steve Korshakov, ending in a week. A token that
+//    starts with `expired`, `revoked`, `exhausted`, `accepted` or `invalid`
+//    is 410 with that code.
+//  - POST /v1/invites/accept {token} under the session's access token:
+//    @acme, joined. An account whose address starts with `other` is 403
+//    email_mismatch; without the session 401.
 //  - /v1/auth/*: 410 update_required, as the accounts service answers an
 //    earlier build after the split.
 //  - POST /control/reset forgets the counts.
@@ -30,7 +37,9 @@ const HOST = process.env.HOST ?? "0.0.0.0";
 const CODE = process.env.CODE ?? "123456";
 const ACCOUNTS = "https://auth.happy.engineering";
 const API = process.env.API ?? "https://api.happy-clusters.com";
-const state = { sent: new Map(), wrong: new Map(), identities: new Map(), tokens: new Set(), refresh: new Map() };
+const state = { sent: new Map(), wrong: new Map(), identities: new Map(), tokens: new Map(), refresh: new Map() };
+const CLOSED = ["expired", "revoked", "exhausted", "accepted", "invalid"];
+const ACME = { id: "srv-acme", name: "acme", url: "https://acme.happy-clusters.com/", displayName: "Acme", image: null };
 
 const b64 = (object) => Buffer.from(JSON.stringify(object)).toString("base64url");
 const jwt = (claims) => `${b64({ alg: "RS256", typ: "JWT" })}.${b64(claims)}.c2ln`;
@@ -45,7 +54,7 @@ function identity(email) {
 function session(email) {
     const access = jwt({ iss: API, aud: `${API}/`, sub: email, iat: now(), exp: now() + 3600, jti: crypto.randomUUID() });
     const refresh = `mock-refresh-${crypto.randomUUID()}`;
-    state.tokens.add(access);
+    state.tokens.set(access, email);
     state.refresh.set(refresh, email);
     return { access_token: access, refresh_token: refresh, token_type: "Bearer", expires_in: 3600 };
 }
@@ -125,6 +134,24 @@ const server = http.createServer(async (req, res) => {
             { id: "srv-acme", name: "acme", url: "https://acme.happy-clusters.com/", role: "owner", displayName: "Acme" },
             { id: "srv-globex", name: "globex-labs", url: "https://globex-labs.happy-clusters.com/", role: "member", displayName: "Globex Labs" },
         ] });
+    }
+    if (req.method === "POST" && (path === "/v1/invites/preview" || path === "/v1/invites/accept")) {
+        const token = typeof body.token === "string" ? body.token : "";
+        const closed = CLOSED.find((code) => token.startsWith(code));
+        if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return answer(res, 410, { code: "invalid", error: "Invalid invitation." });
+        if (path === "/v1/invites/preview") {
+            if (closed) return answer(res, 410, { code: closed, error: `This invitation is ${closed}.` });
+            return answer(res, 200, {
+                server: { name: ACME.name, displayName: ACME.displayName, image: null },
+                inviter: { name: "Steve Korshakov", image: null }, roleName: "Member",
+                expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+            });
+        }
+        const who = state.tokens.get((req.headers.authorization ?? "").replace(/^Bearer /, ""));
+        if (!who) return answer(res, 401, { code: "unauthorized", error: "Sign in again." });
+        if (closed) return answer(res, 410, { code: closed, error: `This invitation is ${closed}.` });
+        if (who.startsWith("other")) return answer(res, 403, { code: "email_mismatch", error: "This invitation is for another email address.", emailHint: "s…@example.com" });
+        return answer(res, 200, { server: ACME });
     }
     if (req.method === "POST" && path === "/control/reset") {
         state.sent.clear();

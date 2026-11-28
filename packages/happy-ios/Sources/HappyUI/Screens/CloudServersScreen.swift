@@ -38,7 +38,8 @@ protocol CloudTyping: UIViewController {
 /// 2. Join a server: each of the account's servers with Join; several can
 ///    be joined, then Continue opens the last. Bootstrap a new one under
 ///    them. An account with none starts at Bootstrap. An invite is a link,
-///    accepted on the web; the list loads again when the app comes back.
+///    opened in the app on a screen of its own (`CloudInviteViewController`),
+///    before any of these; the list loads again when the app comes back.
 /// 3. Bootstrap a server: then straight into it
 ///    (Connecting: a token for the server from the accounts API, no
 ///    browser).
@@ -59,35 +60,42 @@ enum CloudScreens {
     /// The name Apple gave this sign-in, which it gives only the first
     /// time: what "What's your name?" offers. In memory only.
     static var appleName: String?
-    /// An invite link opened while signed out, taken up once the account
-    /// signs in. In memory only.
-    static var pendingInvite: CloudInvite?
+    /// Where an invite opened from a link asks what it offers; a test's
+    /// fake API.
+    static var inviteHTTP: any HTTPTransport = NoRedirectURLSessionTransport()
+    /// The invite whose Sign in to join was tapped, and what it offered:
+    /// taken once the account signs in, without a second tap. Forgotten
+    /// when the person comes back to the invite instead, and whenever the
+    /// flow starts again. In memory only.
+    static var pendingJoin: (invite: CloudInvite, offer: CloudInvitePreview)?
 
-    /// The first screen of the flow: an invite's, or the servers, while the
-    /// account's pass lasts; the welcome otherwise, `invite` kept for after.
-    static func first(context: AppContext, invite: CloudInvite? = nil) -> UIViewController {
+    /// The first screen of the flow: an invite link's invite, whether or
+    /// not the account is signed in; else the servers while the account's
+    /// pass lasts, or the welcome.
+    static func first(context: AppContext, invite: CloudInviteLink? = nil) -> UIViewController {
         CloudAccount.forgetKeptGrant(backend: SecurityKeychainBackend())
-        pendingInvite = invite
-        if let account, account.isLive() { return next(account, context: context) }
-        account = nil
+        pendingJoin = nil
+        if let account, !account.isLive() { self.account = nil }
+        if let invite { return CloudInviteViewController(context: context, link: invite) }
+        if let account { return CloudServersViewController(context: context, account: account) }
         return CloudWelcomeViewController(context: context)
     }
 
-    /// Signed in, however: the invite waiting, else the servers, in the
-    /// place of the welcome and every sign-in step, so Back leaves Happy
-    /// Cloud (and signs the account out) rather than going back to a
-    /// sign-in that is over.
+    /// Signed in, however: the invite Sign in to join was tapped on, taken
+    /// now, else the servers, in the place of the welcome and every
+    /// sign-in step (and of the invite under them), so Back leaves Happy
+    /// Cloud rather than going back to a sign-in that is over.
     static func signedIn(_ account: CloudAccount, context: AppContext, from controller: UIViewController) {
         self.account = account
         replace(from: controller, with: next(account, context: context))
     }
 
-    /// What a signed-in account sees first: the invite waiting, taken up
-    /// once, else its servers.
+    /// What a signed-in account sees first: the invite it signed in to
+    /// take, joining, once; else its servers.
     private static func next(_ account: CloudAccount, context: AppContext) -> UIViewController {
-        guard let invite = pendingInvite else { return CloudServersViewController(context: context, account: account) }
-        pendingInvite = nil
-        return CloudInviteViewController(context: context, account: account, invite: invite)
+        guard let join = pendingJoin else { return CloudServersViewController(context: context, account: account) }
+        pendingJoin = nil
+        return CloudInviteViewController(context: context, link: .invite(join.invite), joining: join.offer)
     }
 
     /// Back to the welcome when the account's pass has ended, which says
@@ -1783,7 +1791,9 @@ final class CloudField: UIView {
 /// (five, two of them joined: taller than a phone's room),
 /// `empty` (none: Bootstrap), `live` (the account's, under the token),
 /// `create`, `connecting`, `email` and `code` (email's two steps,
-/// the address in `name`). `http` is where the welcome's sign-ins go. On
+/// the address in `name`), and `invite` (the invite link in `name`, signed
+/// out; `inviteSignedIn` under the token). `http` is where the welcome's
+/// sign-ins and the invite's requests go. On
 /// `email`, `send` taps Send code once the address is in, and `code` is
 /// then typed into the code step, as a person would: the phone's run
 /// against scripts/cloud-email-mock, where UI tests can't drive it.
@@ -1791,8 +1801,8 @@ public enum CloudScreensPreview {
     @MainActor
     public static func make(context: AppContext, token: String, screen: String, name: String?,
                             http: any HTTPTransport = NoRedirectURLSessionTransport(), send: Bool = false, code: String? = nil) -> UINavigationController {
-        let account = CloudAccount.preview(token: token, expiresAt: nil)
-        CloudScreens.account = screen == "expired" ? nil : account
+        let account = CloudAccount.preview(token: token, expiresAt: nil, http: http)
+        CloudScreens.account = screen == "expired" || screen == "invite" ? nil : account
         let welcome = CloudWelcomeViewController(context: context, expired: screen == "expired")
         welcome.http = http
         let navigation = UINavigationController(rootViewController: welcome)
@@ -1845,6 +1855,10 @@ public enum CloudScreensPreview {
             if screen == "code" {
                 navigation.pushViewController(CloudEmailCodeViewController(context: context, email: name ?? "you@example.com", http: http, sentAt: Date()), animated: false)
             }
+        case "invite", "inviteSignedIn":
+            let invite = CloudInviteViewController(context: context, link: name.flatMap(URL.init(string:)).flatMap(CloudInviteLink.init(url:)) ?? .invalid)
+            invite.http = http
+            navigation.setViewControllers([invite], animated: false)
         default: break
         }
         AppCoordinator.applyAppearance(to: navigation.navigationBar)

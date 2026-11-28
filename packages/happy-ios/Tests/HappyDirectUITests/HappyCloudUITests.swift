@@ -668,42 +668,45 @@ final class HappyCloudUITests: XCTestCase {
         return nil
     }
 
-    /// An invite link (`TEST_RUNNER_INVITE_URL`) opened from Notes opens
-    /// the app on Happy Cloud's welcome; the test account signs in, the
-    /// invite shows its server, and Join lands on that server's home. The
-    /// first launch points the app at the deployment in `CLOUD_ACCOUNTS`,
-    /// `CLOUD_BASE`, `CLOUD_WEB` and `CLOUD_INVITE` (and `CLOUD_API`, else
-    /// `https://api.<CLOUD_BASE>`), kept for the launch
+    /// An invite link (`TEST_RUNNER_INVITE_URL`, either form) opened from
+    /// Notes opens the app on the invite itself, shown before any sign-in;
+    /// Sign in to join opens Happy Cloud's welcome, the test account signs
+    /// in, and the invite is taken with no second tap, landing on that
+    /// server's home. The first launch points the app at the deployment in
+    /// `CLOUD_ACCOUNTS`, `CLOUD_BASE` and `CLOUD_WEB` (and `CLOUD_API`,
+    /// else `https://api.<CLOUD_BASE>`), kept for the launch
     /// the link makes. Then each link in `INVITE_STATES`
     /// (`name=url,name=url`, `mismatch` joined to see its refusal) opens on
     /// the same layout: the title, the status line and the button sit where
     /// they sat when the first invite was ready. Every step is filmed.
     func testInviteLinkOpensTheAppAndJoins() throws {
         guard let link = env["INVITE_URL"].flatMap(URL.init(string:)), let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"],
-              let accounts = env["CLOUD_ACCOUNTS"], let base = env["CLOUD_BASE"], let web = env["CLOUD_WEB"], let invite = env["CLOUD_INVITE"]
+              let accounts = env["CLOUD_ACCOUNTS"], let base = env["CLOUD_BASE"], let web = env["CLOUD_WEB"]
         else { throw XCTSkip("no invite run") }
         app.launchArguments = ["-HappyCloudAccounts", accounts, "-HappyCloudAPI", env["CLOUD_API"] ?? "https://api.\(base)", "-HappyCloudBase", base,
-                               "-HappyCloudWeb", web, "-HappyCloudInvite", invite, "-happy-cloud", "YES"]
+                               "-HappyCloudWeb", web, "-happy-cloud", "YES"]
         app.launch()
         require(first([element("account-switcher"), app.buttons["start-cloud"]], timeout: 30) != nil, "the app didn't start")
         app.terminate()
 
         openFromNotes(link)
-        let title = app.staticTexts["Happy Cloud"]
-        film("a-link-opens", seconds: 40) { self.app.state == .runningForeground && title.exists }
-        require(title.exists, "the link didn't open Happy Cloud's welcome in the app")
-        capture("i3-opened-signed-out")
-        signInWithTestAccount(login: login, password: password, openingCloud: false)
-
         let join = element("cloud-invite-join")
-        film("b-invite-loads", seconds: 30) { join.exists && join.isEnabled }
-        require(join.isEnabled, "the invite never loaded")
+        film("a-link-opens", seconds: 40) { self.app.state == .runningForeground && join.exists && join.isEnabled }
+        require(join.exists && join.isEnabled, "the link didn't open its invite in the app")
+        XCTAssertEqual(join.label, "Sign in to join", "the invite is shown before any sign-in")
         Thread.sleep(forTimeInterval: 1)
-        capture("i4-invite")
-        tree("i4-invite", app)
+        capture("i3-invite-signed-out")
+        tree("i3-invite-signed-out", app)
         let ready = inviteFrames()
         report("ready", ready)
         join.tap()
+
+        let title = app.staticTexts["Happy Cloud"]
+        film("b-sign-in-opens", seconds: 20) { title.exists }
+        require(title.exists, "Sign in to join didn't open Happy Cloud's welcome")
+        capture("i4-welcome")
+        // Signed in, the invite is taken at once: no second tap on Join.
+        signInWithTestAccount(login: login, password: password, openingCloud: false)
 
         let name = element("cloud-profile-name")
         let switcher = element("account-switcher")
@@ -750,17 +753,54 @@ final class HappyCloudUITests: XCTestCase {
         }
     }
 
+    /// An invite link (`TEST_RUNNER_INVITE_LOOK`, either form) on a phone
+    /// signed in nowhere, with Settings' Happy Cloud switch off, opens the
+    /// app on the invite itself: no sign-in before it, and no test account
+    /// needed. A made-up token is enough: what the cloud says of it is
+    /// shown on that screen. With `TEST_RUNNER_INVITE_LOOK_FROM=outside`
+    /// the test opens nothing and waits for the link from outside
+    /// (`xcrun simctl openurl <udid> <link>`), answering iOS's "Open in
+    /// Happy?".
+    func testAnInviteLinkOpensItsInviteWithNoSignIn() throws {
+        guard let link = env["INVITE_LOOK"].flatMap(URL.init(string:)) else { throw XCTSkip("no invite look") }
+        app.launchArguments = ["-happy-cloud", "NO"]
+        app.launch()
+        require(first([element("account-switcher"), app.buttons["start-button"]], timeout: 30) != nil, "the app didn't start")
+        capture("l1-before")
+        if env["INVITE_LOOK_FROM"] != "outside" { XCUIDevice.shared.system.open(link) }
+        let ask = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Open"]
+        let invite = element("cloud-invite"), join = element("cloud-invite-join"), status = element("cloud-invite-status")
+        let deadline = Date().addingTimeInterval(120)
+        while Date() < deadline, !invite.exists {
+            if ask.exists { ask.tap() }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        require(invite.exists, "the link didn't open its invite")
+        // Loading ends in the invite offered or in why it can't be taken.
+        let loaded = Date().addingTimeInterval(30)
+        while Date() < loaded, !(join.exists && join.isEnabled) { Thread.sleep(forTimeInterval: 0.5) }
+        require(join.exists && join.isEnabled, "the invite never finished loading")
+        Thread.sleep(forTimeInterval: 1)
+        capture("l2-invite")
+        tree("l2-invite", app)
+        XCTAssertTrue(["Sign in to join", "Close"].contains(join.label), "signed out, it reads \(join.label)")
+        let seen = XCTAttachment(string: "title: \(element("cloud-invite-title").label)\nstatus: \(status.label)\nbutton: \(join.label)")
+        seen.name = "l2-invite-says"
+        seen.lifetime = .keepAlways
+        add(seen)
+    }
+
     /// An account with no server bootstraps its first, which connects and
     /// lands on its home; then Happy Cloud, from the switcher, and an
-    /// invite link both open still signed in: the servers list and Join,
-    /// not the welcome. Runs with `TEST_RUNNER_FIRST_LOGIN`/`_PASSWORD`
+    /// invite link both open still signed in: the servers list, and Join
+    /// rather than Sign in to join. Runs with `TEST_RUNNER_FIRST_LOGIN`/`_PASSWORD`
     /// (an account with no server), `CLOUD_*` and `INVITE_URL`.
     func testAFirstBootstrapKeepsTheAccountSignedIn() throws {
         guard let login = env["FIRST_LOGIN"], let password = env["FIRST_PASSWORD"], let link = env["INVITE_URL"].flatMap(URL.init(string:)),
-              let accounts = env["CLOUD_ACCOUNTS"], let base = env["CLOUD_BASE"], let web = env["CLOUD_WEB"], let invite = env["CLOUD_INVITE"]
+              let accounts = env["CLOUD_ACCOUNTS"], let base = env["CLOUD_BASE"], let web = env["CLOUD_WEB"]
         else { throw XCTSkip("no first-bootstrap run") }
         app.launchArguments = ["-HappyCloudAccounts", accounts, "-HappyCloudAPI", env["CLOUD_API"] ?? "https://api.\(base)", "-HappyCloudBase", base,
-                               "-HappyCloudWeb", web, "-HappyCloudInvite", invite, "-happy-cloud", "YES"]
+                               "-HappyCloudWeb", web, "-happy-cloud", "YES"]
         app.launch()
         signInWithTestAccount(login: login, password: password)
         let name = element("cloud-create-name")
@@ -805,10 +845,11 @@ final class HappyCloudUITests: XCTestCase {
 
         XCUIDevice.shared.system.open(link)
         let join = element("cloud-invite-join")
-        film("f-invite", seconds: 30) { join.exists || welcome.exists }
+        film("f-invite", seconds: 30) { join.exists && join.isEnabled }
         Thread.sleep(forTimeInterval: 1.5)
         capture("b4-invite-link")
-        XCTAssertTrue(join.exists, "an invite link opened the welcome: the first Bootstrap signed the account out")
+        XCTAssertTrue(join.exists, "an invite link didn't open its invite")
+        XCTAssertEqual(join.label, "Join", "the invite asks to sign in: the first Bootstrap signed the account out")
     }
 
     /// The invite screen's title, status line and button, where they are.

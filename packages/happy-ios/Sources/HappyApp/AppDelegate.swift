@@ -98,12 +98,15 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) { open(userActivity) }
 
-    /// A universal link (Happy-Production.entitlements): a bot invitation on
-    /// app.happy.engineering, a Happy Cloud invite, or a link.happy.page
-    /// share link, which opens as the instance link it carries.
+    /// A universal link (the entitlements): a bot invitation on
+    /// app.happy.engineering, a Happy Cloud invite (`/join` on the web
+    /// host, every variant), or a link.happy.page share link, which opens
+    /// as the instance link it carries. The web host's other pages aren't
+    /// the app's (its site association lists `/join` only); one that
+    /// arrives anyway opens nothing.
     private func open(_ activity: NSUserActivity) {
         guard activity.activityType == NSUserActivityTypeBrowsingWeb, let url = activity.webpageURL,
-              GuestInvitation(url: url) != nil || CloudInvite(url: url) != nil || HappyShareLink.parse(url.absoluteString) != nil else { return }
+              GuestInvitation(url: url) != nil || CloudInviteLink(url: url) != nil || HappyShareLink.parse(url.absoluteString) != nil else { return }
         open(url)
     }
 

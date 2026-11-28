@@ -716,8 +716,10 @@ identical and checks the variant keys:
 - `HappyAppVariant`;
 - ATS: local networking everywhere, arbitrary loads outside production.
 
-Every variant asks for push (`aps-environment`). Production adds associated
-domains; development and preview add Sign in with Apple for Happy Cloud.
+Every variant asks for push (`aps-environment`) and claims Happy Cloud's
+invite links (`applinks:happybases.com`; docs/SERVER-SIGN-IN.md, "Invite
+links"). Production adds its other associated domains; development and
+preview add Sign in with Apple for Happy Cloud.
 Each variant has its own Google iOS client for Continue with Google:
 `HAPPY_GOOGLE_CLIENT` in `project.yml`'s Happy target, which the plists
 turn into `GIDClientID` and its reversed-client-ID URL scheme. xtool doesn't
