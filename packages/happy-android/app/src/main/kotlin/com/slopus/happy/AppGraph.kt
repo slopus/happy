@@ -495,11 +495,6 @@ class AppGraph(
         scope.launch { agentConnections.endSessions { connection, credential -> HappyCloud.isServer(connection.server) && credential.refreshToken != null && !account.issued(credential) } }
     }
 
-    init {
-        // Happy Cloud's invite links open the app only while Settings' switch is on.
-        if (cloudAccount != null) scope.launch(Dispatchers.IO) { happyCloud.enabled.collect { com.slopus.happy.config.HappyCloudSetting.applyLinks(appContext, it) } }
-    }
-
     /**
      * The open agent connection's id, or null when a Happy account (or
      * nothing) is open. Only one account of either kind is open at a time.

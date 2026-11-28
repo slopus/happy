@@ -34,6 +34,11 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="*/*" />
         </intent>
+        <!-- Whether the phone has a mail app, for the email code step's "Open email app" (ui/connection/CloudConnect.kt). -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.APP_EMAIL" />
+        </intent>
     </queries>
 
     <application
@@ -57,8 +62,9 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
-            <!-- app.config.js scheme: happy://terminal?<key> (ui/connect/DeepLinks.kt), and
-                 happy://oauth/callback, team server sign-in's redirect URI (MainActivity.oauthCallback) -->
+            <!-- app.config.js scheme: happy://terminal?<key> (ui/connect/DeepLinks.kt),
+                 happy://oauth/callback, team server sign-in's redirect URI (MainActivity.oauthCallback), and
+                 happy://cloud/join#<token>, a Happy Cloud invite from the web join page -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -73,6 +79,17 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="app.happy.engineering" android:pathPrefix="/bot/invite/" />
             </intent-filter>
+            <!-- A Happy Cloud invite, https://WEB/join#<token> (connection/CloudInvite.kt): this one path, in every
+                 build and whatever Settings' Happy Cloud switch says, which only hides Cloud's ways in. The host's
+                 `/` is the server picker and <name>.WEB the servers' web apps: neither is claimed. It verifies
+                 once https://WEB/.well-known/assetlinks.json lists the build's package and signing certificate;
+                 the web join page's "Open in Happy", happy://cloud/join#<token>, comes in by the scheme above. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="${happyCloudWebHost}" android:path="/join" />
+            </intent-filter>
         </activity>
         <!-- The launcher entry. The React Native app's was com.ex3ndr.happy.MainActivity, and
              home-screen icons store that component: some launchers drop an icon whose
@@ -84,28 +101,6 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        <!-- Happy Cloud's invite links, https://INVITE/#<token> and the older https://WEB/join#<token>:
-             off until Settings' Happy Cloud switch is on (config/HappyCloudSetting.kt), so they open the
-             browser instead. Each host's /.well-known/assetlinks.json must list the build's package and
-             signing certificate to verify. -->
-        <activity-alias
-            android:name=".HappyCloudLinks"
-            android:enabled="false"
-            android:exported="true"
-            android:targetActivity=".MainActivity">
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="https" android:host="${happyCloudInviteHost}" android:path="/" />
-            </intent-filter>
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="https" android:host="${happyCloudWebHost}" android:path="/join" />
             </intent-filter>
         </activity-alias>
         <!-- Our QR scanner (ui/connect/QrScanner.kt): a full-screen camera, started for a result. -->

@@ -72,6 +72,9 @@
     <string name="cloud_email_resend_in">Resend in %1$s</string>
     <string name="cloud_email_resent">We sent you a new code.</string>
     <string name="cloud_email_change">Change email</string>
+    <string name="cloud_email_paste">Paste</string>
+    <string name="cloud_email_paste_none">There’s no 6-digit code on the clipboard.</string>
+    <string name="cloud_email_open_mail">Open email app</string>
     <string name="cloud_email_invalid">That doesn’t look like an email address.</string>
     <string name="cloud_email_code_wrong">That code is wrong or has expired.</string>
     <string name="cloud_email_unavailable">Email sign-in isn’t working right now. Try again in a moment.</string>
@@ -81,15 +84,20 @@
     <string name="cloud_invite_detail">Join %1$s on Happy Cloud.</string>
     <string name="cloud_invite_sign_in">Sign in to join</string>
     <string name="cloud_invite_wrong_email">Use your invited email</string>
-    <string name="cloud_invite_unavailable">Invite unavailable</string>
+    <string name="cloud_invite_title_invalid">Invalid invitation</string>
+    <string name="cloud_invite_title_expired">Invitation expired</string>
+    <string name="cloud_invite_title_revoked">Invitation revoked</string>
+    <string name="cloud_invite_title_used_up">Invitation used up</string>
+    <string name="cloud_invite_title_accepted">Invitation already accepted</string>
     <string name="cloud_invite_expired">This invite has expired. Ask whoever sent it for a new link.</string>
     <string name="cloud_invite_revoked">This invite was withdrawn. Ask whoever sent it for a new link.</string>
     <string name="cloud_invite_used_up">This invite has already been used. Ask whoever sent it for a new link.</string>
+    <string name="cloud_invite_accepted">This invite has already been accepted. If it was you, the server is in your list.</string>
     <string name="cloud_invite_unknown">This invite link isn’t valid. Check that you opened the whole link.</string>
     <string name="cloud_invite_email_mismatch">This invite was sent to %1$s Sign in with that email to join.</string>
     <string name="cloud_invite_email_mismatch_unknown">This invite was sent to another email. Sign in with that email to join.</string>
-    <string name="cloud_invite_other_account">Sign in with another account</string>
+    <string name="cloud_invite_other_email">Sign in with another email</string>
     <string name="cloud_invite_not_now">Not now</string>
     <string name="cloud_invite_inviter">%1$s invited you</string>
-    <string name="cloud_switch_footer">Offers Happy Cloud on the first screen and in the account menu, and opens its invite links in the app. Servers already on this phone keep working either way.</string>
+    <string name="cloud_switch_footer">Offers Happy Cloud on the first screen and in the account menu. Invite links and servers already on this phone keep working either way.</string>
 </resources>

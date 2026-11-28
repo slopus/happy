@@ -35,10 +35,7 @@ object HappyCloud {
     /** The web app's domain, [BuildConfig.HAPPY_CLOUD_WEB]: the server named `acme`'s settings are under `https://acme.WEB/#/settings/`. */
     private val web: String = BuildConfig.HAPPY_CLOUD_WEB
 
-    /** Where invite links live, [BuildConfig.HAPPY_CLOUD_INVITE] (`https://INVITE/#<token>`); null wherever [base] is. */
-    val inviteHost: String? = base?.let { BuildConfig.HAPPY_CLOUD_INVITE.lowercase() }
-
-    /** The web app's own host, for older invite links (`https://WEB/join#<token>`); null wherever [base] is. */
+    /** The web app's own host, where invite links live (`https://WEB/join#<token>`, [CloudInviteLink.of]); null wherever [base] is. */
     val webHost: String? = base?.let { web.lowercase() }
 
     /**

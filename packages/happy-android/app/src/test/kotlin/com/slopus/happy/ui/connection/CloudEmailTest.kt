@@ -65,6 +65,9 @@ class CloudEmailTest {
         )
     }
 
+    private var mailApp by mutableStateOf(false)
+    private var pasteMissed by mutableStateOf(false)
+
     private fun codeStep() = rule.setHappyContent {
         var code by androidx.compose.runtime.remember { mutableStateOf("") }
         CloudEmailCodeScreen(
@@ -79,6 +82,9 @@ class CloudEmailTest {
             onResend = { taps += "resend" },
             onChangeEmail = { taps += "change" },
             onBack = { taps += "back" },
+            onPaste = { taps += "paste" },
+            pasteMissed = pasteMissed,
+            onOpenMail = if (mailApp) ({ taps += "mail" }) else null,
         )
     }
 
@@ -175,6 +181,104 @@ class CloudEmailTest {
         assertEquals(listOf("verify 123456", "resend", "change", "back"), taps)
     }
 
+    /**
+     * Paste sits inside the field at its end, as tall as the field and 48
+     * or more across, and moves nothing: the field is as wide as the column
+     * and 56 tall with it, as the address step's is without. It only hands
+     * the press over; the clipboard is the caller's to read then.
+     */
+    @Test
+    fun pasteIsInsideTheFieldAndMovesNothing() {
+        codeStep()
+        val field = rule.node(CloudTags.EMAIL_CODE).bounds
+        assertDp("field as wide as the column", (PHONE_WIDTH - 48).dp, field.width)
+        assertDp("field 56 tall", 56.dp, field.height)
+        val paste = rule.node(CloudTags.EMAIL_PASTE).bounds
+        label(CloudTags.EMAIL_PASTE, "Paste")
+        assertDp("paste ends with the field", field.right, paste.right)
+        assertDp("paste as tall as the field", field.top, paste.top)
+        assertDp("paste as tall as the field", field.bottom, paste.bottom)
+        assertEquals("a target at least 48 across", true, paste.width >= 48.dp)
+        assertEquals(emptyList<String>(), taps)
+        rule.node(CloudTags.EMAIL_PASTE).performClick()
+        assertEquals(listOf("paste"), taps)
+        // Typing doesn't move it, and a check holds it.
+        rule.node(CloudTags.EMAIL_CODE).performTextInput("123456")
+        assertEquals(paste, rule.node(CloudTags.EMAIL_PASTE).bounds)
+        busy = true
+        rule.node(CloudTags.EMAIL_PASTE).assertIsNotEnabled()
+        busy = false
+        // Nothing to paste: said under the field, quietly, until something else is.
+        pasteMissed = true
+        rule.onNodeWithText("There’s no 6-digit code on the clipboard.").assertExists()
+        outcome = EmailSignIn.InvalidCode
+        rule.onNodeWithText("There’s no 6-digit code on the clipboard.").assertDoesNotExist()
+        rule.onNodeWithText("That code is wrong or has expired.").assertExists()
+    }
+
+    /**
+     * With a mail app on the phone, "Open email app" sits beside Change
+     * email on one line under the field, 8 apart and centred in the column;
+     * with none it is left out and Change email is where it was, alone.
+     * The field and both buttons are where they are without it.
+     */
+    @Test
+    fun openEmailAppSitsBesideChangeEmail() {
+        codeStep()
+        rule.node(CloudTags.OPEN_MAIL).assertDoesNotExist()
+        val alone = rule.node(CloudTags.CHANGE_EMAIL).bounds
+        val field = rule.node(CloudTags.EMAIL_CODE).bounds
+        val verify = rule.node(CloudTags.PRIMARY).bounds
+        val resend = rule.node(CloudTags.SECONDARY).bounds
+        assertDp("change email centred", (PHONE_WIDTH / 2f).dp, (alone.left + alone.right) / 2)
+        assertDp("change email at least 280 wide", 280.dp, alone.width)
+
+        mailApp = true
+        rule.waitForIdle()
+        val mail = rule.node(CloudTags.OPEN_MAIL).bounds
+        val change = rule.node(CloudTags.CHANGE_EMAIL).bounds
+        label(CloudTags.OPEN_MAIL, "Open email app")
+        assertDp("on one line", mail.top, change.top)
+        assertDp("as tall as each other", mail.bottom, change.bottom)
+        assertDp("8 apart", mail.right + 8.dp, change.left)
+        assertDp("the pair centred", (PHONE_WIDTH / 2f).dp, (mail.left + change.right) / 2)
+        assertDp("where change email was", alone.top, change.top)
+        assertDp("as tall as change email was", alone.bottom, change.bottom)
+        assertEquals("nothing else moved", listOf(field, verify, resend), listOf(rule.node(CloudTags.EMAIL_CODE).bounds, rule.node(CloudTags.PRIMARY).bounds, rule.node(CloudTags.SECONDARY).bounds))
+        rule.node(CloudTags.OPEN_MAIL).performClick()
+        rule.node(CloudTags.CHANGE_EMAIL).performClick()
+        assertEquals(listOf("mail", "change"), taps)
+        // Opening the mail app never waits on a check.
+        busy = true
+        rule.node(CloudTags.OPEN_MAIL).assertIsEnabled()
+    }
+
+    /** The clipboard is read by [clipboardText] alone, which only Paste's press calls; the phone's mail app is found through the manifest's queries. */
+    @Test
+    fun theClipboardAndTheMailApp() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+        assertEquals(null, CloudEmail.pastedCode(clipboardText(context)))
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("mail", "Your Happy code is 493 021? No: 493021. It expires in 10 minutes."))
+        assertEquals("493021", CloudEmail.pastedCode(clipboardText(context)))
+
+        assertEquals("no mail app, no action", null, mailAppIntent(context))
+        val mail = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_APP_EMAIL)
+        org.robolectric.Shadows.shadowOf(context.packageManager).addResolveInfoForIntent(
+            mail,
+            android.content.pm.ResolveInfo().apply { activityInfo = android.content.pm.ActivityInfo().apply { packageName = "com.example.mail"; name = "Inbox" } },
+        )
+        val intent = mailAppIntent(context)!!
+        assertEquals(android.content.Intent.ACTION_MAIN, intent.action)
+        assertEquals(setOf(android.content.Intent.CATEGORY_APP_EMAIL), intent.categories)
+        assertEquals("a task of its own", android.content.Intent.FLAG_ACTIVITY_NEW_TASK, intent.flags and android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        assertEquals("the system picks the app", null, intent.component)
+
+        // API 30 and later show the app a mail app only because the manifest asks.
+        val manifest = java.io.File("src/main/AndroidManifest.xml").readText().replace(Regex("\\s+"), " ")
+        assertEquals(true, """<intent> <action android:name="android.intent.action.MAIN" /> <category android:name="android.intent.category.APP_EMAIL" /> </intent>""" in manifest)
+    }
+
     @Test
     fun theCodeStepSaysWhyItWasRefused() {
         codeStep()
@@ -221,6 +325,21 @@ class CloudEmailTest {
         assertEquals(false, CloudEmail.plausible("@example.com"))
         assertEquals(false, CloudEmail.plausible("ada"))
         assertEquals("123456", CloudEmail.typedCode("123 456 789"))
+        // Paste: the first run of exactly six digits, wherever it is in what was copied.
+        assertEquals("493021", CloudEmail.pastedCode("493021"))
+        assertEquals("493021", CloudEmail.pastedCode("  493021\n"))
+        assertEquals("493021", CloudEmail.pastedCode("Your code is 493021."))
+        assertEquals("493021", CloudEmail.pastedCode("Sign in to Happy\n\n493021\n\nThis code expires in 10 minutes."))
+        assertEquals("493021", CloudEmail.pastedCode("Order 12345, code 493021, then 777777"))
+        assertEquals("a longer number holds no code", "493021", CloudEmail.pastedCode("+1 4155550100 1234567 493021"))
+        assertEquals(null, CloudEmail.pastedCode("1234567"))
+        assertEquals(null, CloudEmail.pastedCode("493 021"))
+        assertEquals(null, CloudEmail.pastedCode("12345"))
+        assertEquals(null, CloudEmail.pastedCode("no digits"))
+        assertEquals(null, CloudEmail.pastedCode(""))
+        assertEquals(null, CloudEmail.pastedCode(null))
+        // Only ASCII digits are a code, as the field takes.
+        assertEquals(null, CloudEmail.pastedCode("٤٩٣٠٢١"))
         assertEquals("0:05", CloudEmail.countdown(5))
         assertEquals("15:00", CloudEmail.countdown(900))
         assertEquals("a\u2060@\u2060b", CloudEmail.unbroken("a@b"))

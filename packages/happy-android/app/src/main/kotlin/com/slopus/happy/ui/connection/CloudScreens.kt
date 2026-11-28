@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -105,6 +106,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -168,6 +170,8 @@ object CloudTags {
     const val EMAIL_CODE = "cloud.email.code"
     const val EMAIL_SIGN_IN = "cloud.email.signIn"
     const val CHANGE_EMAIL = "cloud.email.change"
+    const val EMAIL_PASTE = "cloud.email.paste"
+    const val OPEN_MAIL = "cloud.email.openMail"
     fun server(name: String) = "cloud.server.$name"
     fun join(name: String) = "cloud.join.$name"
     fun member(accountId: String) = "cloud.member.$accountId"
@@ -190,6 +194,11 @@ object CloudSpec {
     val joinWidth = 104.dp
     val fieldRadius = 16.dp
     val fieldMinHeight = 56.dp
+    /** Either side of a field's own action (Paste), which is as tall as the field and never narrower than a touch target. */
+    val fieldActionPadding = 16.dp
+    val fieldActionMin = 48.dp
+    /** Between two quiet actions that share a line, and between their lines when they don't. */
+    val linkGap = 8.dp
     val spinner = 28.dp
     /** Over the welcome's button, its note. */
     val noteGap = 12.dp
@@ -804,7 +813,7 @@ private fun GoogleButton(action: CloudAction, modifier: Modifier = Modifier) {
 
 /** A quiet action in a screen's column: a surface pill, as the cards and the secondary buttons are, never bare text. */
 @Composable
-private fun CloudLink(action: CloudAction, tag: String) {
+private fun CloudLink(action: CloudAction, tag: String, minWidth: Dp = StartSpec.connectMinWidth) {
     val dark = HappyTheme.colors.dark
     RoundButton(
         title = action.title,
@@ -813,7 +822,7 @@ private fun CloudLink(action: CloudAction, tag: String) {
         display = RoundButtonDisplay.Inverted,
         contentColor = if (dark) StartSpec.darkText else StartSpec.lightText,
         modifier = Modifier
-            .widthIn(min = StartSpec.connectMinWidth)
+            .widthIn(min = minWidth)
             .width(IntrinsicSize.Max)
             .clip(RoundedCornerShape(percent = 50))
             .background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))
@@ -942,14 +951,17 @@ fun CloudCreateScreen(
 }
 
 /**
- * An invite link's Join screen: the server's picture in the scene's place,
- * who invited the person, the server's `@name` and the role it gives, then
- * Join, which signs in to Happy Cloud first when [signedIn] isn't. Every
- * step keeps one layout, so nothing jumps as it loads, joins or fails: room
- * for the picture, the same title, a two-line body, a line each for the
- * server and the inviter, a note's room for why it can't go on, and two
- * buttons as wide as the column. Another address's invite offers another
- * account.
+ * An invite link's screen: the server's picture in the scene's place, who
+ * invited the person, the server's `@name` and the role it gives, all
+ * before any sign-in, then Join, or "Sign in to join" when [signedIn]
+ * isn't, which signs in to Happy Cloud first. An invite that can't be used
+ * is titled by why (invalid, expired, revoked, used up, already accepted)
+ * with OK as its one way out; another address's offers signing in with
+ * another email. An accept that couldn't be asked reads Try again on the
+ * same button. Every step keeps one layout, so nothing jumps as it loads,
+ * joins or fails: room for the picture, a title, a two-line body, a line
+ * each for the server and the inviter, a note's room for why it can't go
+ * on, and two buttons as wide as the column.
  */
 @Composable
 fun CloudInviteScreen(
@@ -974,15 +986,23 @@ fun CloudInviteScreen(
         CloudInviteRefusal.Expired -> stringResource(R.string.cloud_invite_expired)
         CloudInviteRefusal.Revoked -> stringResource(R.string.cloud_invite_revoked)
         CloudInviteRefusal.UsedUp -> stringResource(R.string.cloud_invite_used_up)
+        CloudInviteRefusal.Accepted -> stringResource(R.string.cloud_invite_accepted)
         CloudInviteRefusal.Unknown -> stringResource(R.string.cloud_invite_unknown)
         is CloudInviteRefusal.EmailMismatch -> refusal.emailHint?.let { stringResource(R.string.cloud_invite_email_mismatch, CloudEmail.unbroken(it)) }
             ?: stringResource(R.string.cloud_invite_email_mismatch_unknown)
     }
     val joining = (step as? CloudInviteStep.Ready)?.joining == true || step is CloudInviteStep.Joined
-    val join = stringResource(if (signedIn) R.string.cloud_join_button else R.string.cloud_invite_sign_in)
+    val join = stringResource(
+        when {
+            !signedIn -> R.string.cloud_invite_sign_in
+            // The accept couldn't be asked (offline, the service down): the same press asks it again.
+            step is CloudInviteStep.Ready && step.failure != null && step.failure != CloudException.Reason.SignInRequired -> R.string.team_server_try_again
+            else -> R.string.cloud_join_button
+        },
+    )
     val notNow = CloudAction(stringResource(R.string.cloud_invite_not_now), onBack, enabled = !joining)
     val (primary, secondary) = when {
-        refusal is CloudInviteRefusal.EmailMismatch -> CloudAction(stringResource(R.string.cloud_invite_other_account), onOtherAccount) to notNow
+        refusal is CloudInviteRefusal.EmailMismatch -> CloudAction(stringResource(R.string.cloud_invite_other_email), onOtherAccount) to notNow
         refusal != null -> CloudAction(stringResource(R.string.common_ok), onBack) to null
         step is CloudInviteStep.Unloaded -> CloudAction(stringResource(R.string.team_server_try_again), onRetry) to notNow
         else -> CloudAction(join, onJoin, enabled = step is CloudInviteStep.Ready && !joining, loading = joining) to notNow
@@ -994,7 +1014,11 @@ fun CloudInviteScreen(
                 null -> R.string.cloud_invite_title
                 // The invite is fine; it's the account that isn't the one invited.
                 is CloudInviteRefusal.EmailMismatch -> R.string.cloud_invite_wrong_email
-                else -> R.string.cloud_invite_unavailable
+                CloudInviteRefusal.Unknown -> R.string.cloud_invite_title_invalid
+                CloudInviteRefusal.Expired -> R.string.cloud_invite_title_expired
+                CloudInviteRefusal.Revoked -> R.string.cloud_invite_title_revoked
+                CloudInviteRefusal.UsedUp -> R.string.cloud_invite_title_used_up
+                CloudInviteRefusal.Accepted -> R.string.cloud_invite_title_accepted
             },
         ),
         body = preview?.let { stringResource(R.string.cloud_invite_detail, it.server.title) } ?: "",
@@ -1103,10 +1127,15 @@ fun CloudEmailScreen(
  * typed (or filled in by the keyboard's one-time code) and checked as its
  * sixth digit comes, or with Verify (`POST /v2/auth/email/verify`). The
  * field stays enabled through a check, so the keyboard stays up for the
- * next try. Resend code under it waits a minute after each code
- * ([resendWait]); Change email goes back to the address. While the service
- * asks to wait ([wait]), Verify and Resend both say how long.
+ * next try. Paste, inside the field at its end, takes the code from what
+ * was copied in a mail app ([CloudEmail.pastedCode]) and checks it as
+ * typing does. Under the field, "Open email app" where the phone has one
+ * and Change email, which goes back to the address: side by side where
+ * both fit, else stacked. Resend code under them waits a minute after each
+ * code ([resendWait]). While the service asks to wait ([wait]), Verify and
+ * Resend both say how long.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CloudEmailCodeScreen(
     email: String,
@@ -1120,6 +1149,12 @@ fun CloudEmailCodeScreen(
     onResend: () -> Unit,
     onChangeEmail: () -> Unit,
     onBack: () -> Unit,
+    /** Paste, at the field's end: the caller reads the clipboard then, never before. */
+    onPaste: () -> Unit = {},
+    /** The clipboard had no code when Paste was pressed: said under the field. */
+    pasteMissed: Boolean = false,
+    /** "Open email app"; null where the phone has none, and the action is left out. */
+    onOpenMail: (() -> Unit)? = null,
 ) {
     val resendIn = maxOf(wait, resendWait)
     CloudFrame(
@@ -1149,9 +1184,24 @@ fun CloudEmailCodeScreen(
             KeyboardType.NumberPassword,
             ImeAction.Done,
             autofill = ContentType.SmsOtpCode,
+            trailing = CloudAction(stringResource(R.string.cloud_email_paste), onPaste, enabled = !busy),
+            trailingTag = CloudTags.EMAIL_PASTE,
         )
-        EmailNote(outcome)
-        CloudLink(CloudAction(stringResource(R.string.cloud_email_change), onChangeEmail, enabled = !busy), CloudTags.CHANGE_EMAIL)
+        if (pasteMissed && outcome == null) NotePill(stringResource(R.string.cloud_email_paste_none), null) else EmailNote(outcome)
+        val change = CloudAction(stringResource(R.string.cloud_email_change), onChangeEmail, enabled = !busy)
+        if (onOpenMail == null) {
+            CloudLink(change, CloudTags.CHANGE_EMAIL)
+        } else {
+            // Side by side where both fit the column, else one over the other: decided by their words, so it never changes while the screen is up.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(CloudSpec.linkGap, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(CloudSpec.linkGap),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                CloudLink(CloudAction(stringResource(R.string.cloud_email_open_mail), onOpenMail), CloudTags.OPEN_MAIL, minWidth = 0.dp)
+                CloudLink(change, CloudTags.CHANGE_EMAIL, minWidth = 0.dp)
+            }
+        }
     }
 }
 
@@ -1184,8 +1234,17 @@ internal object CloudEmail {
         return at > 0 && at < email.trim().length - 1
     }
 
-    /** A code as typed or pasted: its digits, at most six. */
+    /** A code as typed into the field: its digits, at most six. */
     fun typedCode(text: String): String = text.filter { it in '0'..'9' }.take(CODE_LENGTH)
+
+    /**
+     * The code in what Paste found on the clipboard (a whole email, a
+     * subject line, the code alone): the first run of exactly six digits,
+     * never six out of a longer number. Null when there is none.
+     */
+    fun pastedCode(text: CharSequence?): String? = text?.let(SIX_DIGITS::find)?.value
+
+    private val SIX_DIGITS = Regex("(?<![0-9])[0-9]{$CODE_LENGTH}(?![0-9])")
 
     /** [email] kept on one line: word joiners between its characters, so it never breaks at its dot or @. */
     fun unbroken(email: String): String = email.toList().joinToString("\u2060")
@@ -1351,14 +1410,24 @@ internal fun CloudField(
     autofill: ContentType? = null,
     /** The keyboard's action key. */
     onIme: (() -> Unit)? = null,
+    /** A text action inside the field at its end (Paste), which the typed text stops short of. */
+    trailing: CloudAction? = null,
+    trailingTag: String? = null,
 ) {
+    val trailingStyle = happyTextStyle(fontSize = 16, lineHeight = 22, weight = FontWeight.Medium)
+    // Measured here, so the field's text is inset by it from its first frame.
+    val measurer = rememberTextMeasurer()
+    val trailingWidth = trailing?.let { action ->
+        (with(LocalDensity.current) { measurer.measure(action.title, trailingStyle, maxLines = 1).size.width.toDp() } + CloudSpec.fieldActionPadding * 2)
+            .coerceAtLeast(CloudSpec.fieldActionMin)
+    }
     Box(Modifier.fillMaxWidth().clearOfFades().clip(RoundedCornerShape(CloudSpec.fieldRadius)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))) {
         HappyTextField(
             value = value,
             onValueChange = onChange,
             placeholder = placeholder,
             textStyle = happyTextStyle(fontSize = 18, lineHeight = 24),
-            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
+            contentPadding = PaddingValues(start = 18.dp, top = 16.dp, end = trailingWidth ?: 18.dp, bottom = 16.dp),
             minHeight = CloudSpec.fieldMinHeight,
             cornerRadius = CloudSpec.fieldRadius,
             singleLine = true,
@@ -1368,6 +1437,20 @@ internal fun CloudField(
             keyboardActions = KeyboardActions(onAny = { onIme?.invoke() }),
             modifier = Modifier.testTag(tag).then(if (autofill == null) Modifier else Modifier.semantics { contentType = autofill }),
         )
+        if (trailing != null && trailingWidth != null) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .then(if (trailingTag == null) Modifier else Modifier.testTag(trailingTag))
+                    .heightIn(min = CloudSpec.fieldMinHeight)
+                    .width(trailingWidth)
+                    .alpha(if (trailing.enabled) 1f else 0.5f)
+                    .clickable(enabled = trailing.enabled, role = Role.Button, onClick = trailing.onClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(trailing.title, style = trailingStyle, color = HappyTheme.colors.textLink, maxLines = 1, softWrap = false)
+            }
+        }
     }
 }
 

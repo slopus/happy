@@ -53,19 +53,37 @@ class DeepLinksTest {
         assertEquals(DeepLink.GuestInvite(link), DeepLinks.pending.value)
     }
 
-    /** A Happy Cloud invite opens its Join screen, from the build's invite host; its token never prints. */
+    /** A Happy Cloud invite opens its invite screen from both of its forms, and from nothing else; its token never prints. */
     @Test
-    fun aCloudInviteOpensItsJoinScreen() {
+    fun aCloudInviteOpensItsInviteScreen() {
         val token = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcde"
-        val host = com.slopus.happy.connection.HappyCloud.inviteHost!!
-        val link = "https://$host/#$token"
+        val host = com.slopus.happy.connection.HappyCloud.webHost!!
+        assertEquals("happybases.com", host)
         val invite = DeepLink.CloudServerInvite(com.slopus.happy.connection.CloudInvite(token))
-        assertEquals(invite, parseDeepLink(link))
-        assertEquals(invite, parseDeepLink("https://${com.slopus.happy.connection.HappyCloud.webHost}/join#$token"))
-        assertEquals("CloudServerInvite(invite=CloudInvite(…))", parseDeepLink(link).toString())
-        assertNull(parseDeepLink("https://$host/#short"))
-        assertTrue(DeepLinks.offer(Intent(Intent.ACTION_VIEW, Uri.parse(link))))
-        assertEquals(invite, DeepLinks.pending.value)
+        val web = "https://$host/join#$token"
+        val scheme = "happy://cloud/join#$token"
+        assertEquals(invite, parseDeepLink(web))
+        assertEquals(invite, parseDeepLink(scheme))
+        assertEquals("CloudServerInvite(invite=CloudInvite(…))", parseDeepLink(web).toString())
+        for (link in listOf(web, scheme)) {
+            assertTrue(DeepLinks.offer(Intent(Intent.ACTION_VIEW, Uri.parse(link))))
+            assertEquals(invite, DeepLinks.pending.value)
+            DeepLinks.consume(invite)
+        }
+        // At the invite's address with no usable token: its screen still, to say the invitation is invalid.
+        val malformed = DeepLink.CloudServerInvite(com.slopus.happy.connection.CloudInviteLink.Malformed)
+        assertEquals(malformed, parseDeepLink("https://$host/join#short"))
+        assertEquals(malformed, parseDeepLink("https://$host/join"))
+        assertEquals(malformed, parseDeepLink("https://$host/join?token=$token"))
+        assertEquals(malformed, parseDeepLink("happy://cloud/join#short"))
+        assertEquals(malformed, parseDeepLink("happy://cloud/join?token=$token"))
+        // Any other host or path is no invite: the web's own, or an app path with no screen.
+        assertNull(parseDeepLink("https://$host/#$token"))
+        assertNull(parseDeepLink("https://$host/"))
+        assertNull(parseDeepLink("https://acme.$host/join#$token"))
+        assertNull(parseDeepLink("https://join.$host/#$token"))
+        assertEquals(DeepLink.Home, parseDeepLink("happy://cloud/other#$token"))
+        assertEquals(DeepLink.Home, parseDeepLink("happy://cloud#$token"))
     }
 
     @Test

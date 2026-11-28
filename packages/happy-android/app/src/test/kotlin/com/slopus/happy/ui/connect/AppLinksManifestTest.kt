@@ -69,6 +69,64 @@ class AppLinksManifestTest {
         }
     }
 
+    /**
+     * A Happy Cloud invite link opens the app in every build: its filter is
+     * in the main manifest, on MainActivity itself, verified, and takes the
+     * web host's `/join` alone (`/` is the server picker). No alias holds
+     * it and nothing enables or disables one, so Settings' Happy Cloud
+     * switch, which only hides Cloud's ways in, has no say in it.
+     */
+    @Test
+    fun everyBuildClaimsCloudInviteLinksWhateverTheSwitchSays() {
+        val manifest = File("src/main/AndroidManifest.xml")
+        val document = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder().parse(manifest)
+        fun elements(tag: String) = document.getElementsByTagName(tag).let { nodes -> (0 until nodes.length).map { nodes.item(it) as Element } }
+        val main = elements("activity").single { it.getAttributeNS(ANDROID, "name") == ".MainActivity" }
+        // Never switched off in the manifest, and the launcher's alias is the only alias there is.
+        assertEquals("", main.getAttributeNS(ANDROID, "enabled"))
+        assertEquals(listOf("com.ex3ndr.happy.MainActivity"), elements("activity-alias").map { it.getAttributeNS(ANDROID, "name") })
+
+        val mainFilters = main.getElementsByTagName("intent-filter").let { nodes -> (0 until nodes.length).map { nodes.item(it) as Element } }
+        fun Element.data() = getElementsByTagName("data").let { nodes -> (0 until nodes.length).map { nodes.item(it) as Element } }
+            .map { data -> listOf("scheme", "host", "path", "pathPrefix", "pathPattern").mapNotNull { name -> data.getAttributeNS(ANDROID, name).takeIf { it.isNotEmpty() }?.let { name to it } }.toMap() }
+        val invite = mainFilters.single { filter -> filter.data().any { it["host"] == "\${happyCloudWebHost}" } }
+        assertEquals("true", invite.getAttributeNS(ANDROID, "autoVerify"))
+        assertEquals(listOf(mapOf("scheme" to "https", "host" to "\${happyCloudWebHost}", "path" to "/join")), invite.data())
+        val all = filters(manifest.path)
+        val claimed = all.single { filter -> filter.data.any { it["host"] == "\${happyCloudWebHost}" } }
+        assertEquals(setOf(Intent.ACTION_VIEW), claimed.actions)
+        assertEquals(setOf(Intent.CATEGORY_BROWSABLE, Intent.CATEGORY_DEFAULT), claimed.categories)
+        // The web join page's "Open in Happy" comes in by the app's own scheme, also on MainActivity.
+        assertTrue(mainFilters.any { filter -> filter.data() == listOf(mapOf("scheme" to "happy")) })
+
+        // There is no invite host of its own any more: no manifest and no build setting names one, and nothing toggles a component.
+        for (source in listOf("src/main/AndroidManifest.xml", "src/debug/AndroidManifest.xml", "src/release/AndroidManifest.xml", "src/bench/AndroidManifest.xml", "build.gradle.kts")) {
+            val text = File(source).readText()
+            assertTrue(source, "happyCloudInviteHost" !in text && "HAPPY_CLOUD_INVITE" !in text && "happy.cloudInvite" !in text)
+        }
+        val setting = File("src/main/kotlin/com/slopus/happy/config/HappyCloudSetting.kt").readText()
+        assertTrue("setComponentEnabledSetting" !in setting && "PackageManager" !in setting)
+    }
+
+    /** Both forms of an invite link, as the system hands them over, reach the invite; the built manifest takes the web one at the default host. */
+    @Test
+    fun bothInviteLinkFormsResolveToTheAppAndOpenTheInvite() {
+        val token = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcde"
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        for (link in listOf("https://happybases.com/join#$token", "happy://cloud/join#$token")) {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(context.packageName)
+            val handlers = context.packageManager.queryIntentActivities(intent, 0).map { it.activityInfo.name }
+            assertEquals(link.replace(token, "…"), listOf("com.slopus.happy.MainActivity"), handlers)
+            assertTrue(DeepLinks.offer(intent))
+            assertEquals(DeepLink.CloudServerInvite(com.slopus.happy.connection.CloudInvite(token)), DeepLinks.pending.value)
+        }
+        // The host's other paths are the web's.
+        for (link in listOf("https://happybases.com/", "https://happybases.com/#$token", "https://acme.happybases.com/join#$token")) {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(context.packageName)
+            assertEquals(link.replace(token, "…"), emptyList<String>(), context.packageManager.queryIntentActivities(intent, 0).map { it.activityInfo.name })
+        }
+    }
+
     @Test
     fun whatTheAppCopiesIsWhatTheFilterTakesAndOpens() {
         for ((link, role) in listOf(

@@ -63,18 +63,13 @@ val happyCloudApi = providers.environmentVariable("HAPPY_CLOUD_API").orNull?.tak
     ?: "https://api.$happyCloudBase"
 
 // Happy Cloud's web app, where a server's settings the phone has no page for
-// are (<name>.WEB/#/settings/<page>). HAPPY_CLOUD_WEB or -Phappy.cloudWeb points
-// a build at another one.
+// are (<name>.WEB/#/settings/<page>), and whose /join is where invite links
+// live (https://WEB/join#<token>), which every build claims (the main
+// manifest's MainActivity). HAPPY_CLOUD_WEB or -Phappy.cloudWeb points a build
+// at another one.
 val happyCloudWeb = providers.environmentVariable("HAPPY_CLOUD_WEB").orNull?.takeIf { it.isNotBlank() }
     ?: providers.gradleProperty("happy.cloudWeb").orNull?.takeIf { it.isNotBlank() }
     ?: "happybases.com"
-
-// Happy Cloud's invite links (https://INVITE/#<token>), which open the app
-// while Settings' Happy Cloud switch is on (the main manifest's HappyCloudLinks).
-// HAPPY_CLOUD_INVITE or -Phappy.cloudInvite points a build at another host.
-val happyCloudInvite = providers.environmentVariable("HAPPY_CLOUD_INVITE").orNull?.takeIf { it.isNotBlank() }
-    ?: providers.gradleProperty("happy.cloudInvite").orNull?.takeIf { it.isNotBlank() }
-    ?: "join.happy.engineering"
 
 // Sign in with Google for the Happy Cloud account: the accounts service's web
 // OAuth client (project happy-coder-9fe36), which Google's ID tokens are issued
@@ -161,8 +156,6 @@ android {
         buildConfigField("String", "HAPPY_CLOUD_ACCOUNTS", groovy.json.JsonOutput.toJson(happyCloudAccounts))
         buildConfigField("String", "HAPPY_CLOUD_API", groovy.json.JsonOutput.toJson(happyCloudApi))
         buildConfigField("String", "HAPPY_CLOUD_WEB", groovy.json.JsonOutput.toJson(happyCloudWeb))
-        buildConfigField("String", "HAPPY_CLOUD_INVITE", groovy.json.JsonOutput.toJson(happyCloudInvite))
-        manifestPlaceholders["happyCloudInviteHost"] = happyCloudInvite
         manifestPlaceholders["happyCloudWebHost"] = happyCloudWeb
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", groovy.json.JsonOutput.toJson(happyCloudGoogleClientId))
         buildConfigField("String", "REVENUE_CAT_GOOGLE_KEY", groovy.json.JsonOutput.toJson(revenueCatGoogleKey))

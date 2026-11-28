@@ -1324,7 +1324,10 @@ release build adds app.config.js's production intent filter for
 `public/.well-known/assetlinks.json`) already lists `com.ex3ndr.happy` with
 one fingerprint, presumably Play's app-signing key that the React Native app
 verifies with, so a Play-distributed build should verify as it does; a build
-signed with only the upload key won't. Signed out, only the screens that need
+signed with only the upload key won't. A Happy Cloud invite is no app path:
+`https://<HAPPY_CLOUD_WEB>/join#<token>`, which every build's main manifest
+claims, and `happy://cloud/join#<token>` open its invite screen, signed in
+or out (`CloudInviteLink.of`; see "Happy Cloud, the one exception"). Signed out, only the screens that need
 no account (server, restore, troubleshoot, changelog, onboarding settings)
 open; other links are dropped rather than pushed onto empty signed-in screens.
 A terminal link is never dropped: with an agent connection open, or none,
@@ -1370,7 +1373,7 @@ change its wire behaviour on Android alone.
   one domain, `BuildConfig.HAPPY_CLOUD_BASE` (`happy-clusters.com`; `HAPPY_CLOUD_BASE` or
   `-Phappy.cloudBase`): the server named `acme` is `https://acme.BASE`.
   Every build has it, and offers its ways in (Use Happy Cloud, the account
-  menu's +, invite links) only while Settings' Happy Cloud switch is on
+  menu's +) only while Settings' Happy Cloud switch is on
   (`config/HappyCloudSetting`, Kirill): this phone's own, never synced. Its
   value is an override over the build's default (`HappyCloud.offeredByDefault`:
   on in `debug` and `preview`, off in `release` and `bench`), kept in prefs
@@ -1382,11 +1385,13 @@ change its wire behaviour on Android alone.
   changes nothing but whether it shows. While developer mode is on, About's
   footer opens with a line saying so and that ten more taps on Version turn
   it off (`settings_developer_mode_footer`).
-  Its invite links' intent filters sit on the main manifest's disabled
-  `HappyCloudLinks` alias, which the switch enables; servers already added
-  keep working either way. The switch only hides the ways in (Kirill): a
-  Cloud flow reached anyway works with it off. An invite link that reaches
-  the app opens on its invite (`DeepLinkEffect`'s `cloudInvites` is
+  The switch is cosmetic (Kirill): it only hides the ways in, and has no say
+  in link claiming, the invite flow, sign-in or sign-out. Servers already
+  added keep working either way, and a Cloud flow reached anyway works with
+  it off. Invite links are claimed by every build whatever it says (their
+  filter is on `MainActivity` in the main manifest; no alias, and nothing
+  enables or disables a component, whose state would outlive an update), and
+  one opens on its invite (`DeepLinkEffect`'s `cloudInvites` is
   whether the build has Happy Cloud), a `servers` settings link opens
   Happy Cloud, and signing in again on a cloud server works as ever. While
   the + is left out and the account is signed in, the account menu's last
@@ -1433,8 +1438,16 @@ change its wire behaviour on Android alone.
   /v2/auth/email/verify`, checked as its sixth digit comes; the field
   carries the one-time-code autofill hint), for the same session as the
   password sign-in below (`CloudAccount.startEmail`/`verifyEmail`,
-  `EmailSignIn`). Resend waits 60 s after each code and Change email goes
-  back. `invalid_email`, `invalid_code` and `unavailable` read in our words;
+  `EmailSignIn`). For a code read in Gmail or another mail app, the field
+  has Paste inside it at its end: it takes the first run of exactly six
+  digits on the clipboard (`CloudEmail.pastedCode`) and checks it as typing
+  does, or says there is no code there. The clipboard is read on that press
+  and never before (Android 12 and later tell the person at each read).
+  "Open email app" beside Change email opens the mail app in its own task
+  (`mailAppIntent`: `ACTION_MAIN` with `CATEGORY_APP_EMAIL`, which the
+  manifest's `<queries>` lets the app see), so the step is as it was on the
+  way back; it is left out on a phone with none. Resend waits 60 s after
+  each code and Change email goes back. `invalid_email`, `invalid_code` and `unavailable` read in our words;
   `unsupported_provider` and `429 rate_limited` show the service's own
   `error`, and a 429 holds Send code, Verify and Resend for its
   `Retry-After` (else `retryAfter`, else 60 s), counting down in m:ss. The
@@ -1459,25 +1472,47 @@ change its wire behaviour on Android alone.
   typed after an `@`, checked with `GET /v1/servers/availability` as the
   person pauses, then `POST /v1/servers`), going straight into its server.
   An account with no servers opens on Bootstrap (`CloudCreateRoute(first)`).
-  There is no join with a code: an invite is a private link,
-  `https://INVITE/#<token>` (`HAPPY_CLOUD_INVITE`, default
-  join.happy.engineering) or the older `https://WEB/join#<token>`, the
-  token 43 characters of base64url in the fragment (`CloudInvite.parse`).
-  In debug and preview (the builds with Happy Cloud) both hosts are
-  `autoVerify` app links (`src/debug` and `src/preview` manifests, alike),
-  verified when the host's `assetlinks.json` lists the build's package and
-  signing certificate; elsewhere the browser's join page takes it. In the
-  app, `DeepLink.CloudServerInvite` hands the token to `CloudInvites` (in
-  memory only, never a route or saved state; it never prints) and opens
-  `CloudInviteRoute`: `CloudInviteFlow` previews it (`POST
-  /v1/invites/preview` at the API, no session) and shows the server and role
-  with Join. Join accepts (`POST /v1/invites/accept`, the session)
-  and opens the server as Join on the list does; signed out, it goes
-  through the Cloud sign-in, which hands back to the invite once signed in
-  (`Cloud` pops to `CloudInviteRoute`), and accepts with the same token.
-  Expired, revoked, used up, unknown and another address's invites say so
-  (`CloudInviteRefusal`); another address's offers signing in with another
-  account. Join a server also loads its list again each time the app comes
+  There is no join with a code: an invite is a private link, in exactly two
+  forms: `https://WEB/join#<token>` (`HAPPY_CLOUD_WEB`, happybases.com: the
+  link people are sent) and `happy://cloud/join#<token>` (the web join
+  page's "Open in Happy"), the token 43 characters of base64url and only
+  ever the fragment (`CloudInviteLink.of`, `CloudInvite`). There is no
+  separate invite host. Every build
+  claims `/join` on the web host as an `autoVerify` app link, on
+  `MainActivity` in the main manifest, and that path only (`/` is the
+  server picker, `<name>.WEB` the servers' web apps); it verifies once
+  `https://WEB/.well-known/assetlinks.json` lists the build's package and
+  signing certificate, and until then the browser's join page takes it and
+  hands over by the scheme. Android 11 and older verify an app's links all
+  or nothing, so that file must be live before a store build with this
+  filter ships, or those phones lose app.happy.engineering's verification
+  too. An installed app never sends an invite to a browser: the only
+  browser is a provider's sign-in. In the app, `DeepLink.CloudServerInvite`
+  hands the link to `CloudInvites` (in memory only, never a route or saved
+  state; it never prints, and the token goes nowhere but the two API calls)
+  and opens `CloudInviteRoute`, the one invite screen: a second link
+  replaces what it shows, over any sign-in the first had started.
+  `CloudInviteFlow` is the state machine all clients share
+  (iOS, desktop). A link at the address with no usable token (none,
+  misshapen, in the query) is "Invalid invitation" with nothing asked.
+  Otherwise it previews (`POST /v1/invites/preview` at the API, no session)
+  and offers the server, who invited and the role before any sign-in, with
+  Join, or "Sign in to join" signed out. Nothing is accepted without that
+  press. Join accepts (`POST /v1/invites/accept`, the session) and opens
+  the server as Join on the list does, or the connection the phone already
+  has. "Sign in to join" goes through the Cloud sign-in, which hands back
+  to the invite once signed in (`Cloud` pops to `CloudInviteRoute`) and
+  accepts with the same token by itself, that press being the consent;
+  coming back from the sign-in without one leaves the offer and spends the
+  consent (`signInGivenUp`). A 401 on the accept is the offer again, signed
+  out. A preview or an accept that couldn't be asked offers Try again for
+  that same step. An invite that can't be used is titled by why
+  (`CloudInviteRefusal`: "Invalid invitation", "Invitation expired",
+  "Invitation revoked", "Invitation used up", "Invitation already
+  accepted", the words of every client and the web page) with OK as its one
+  way out; another address's ("Use your invited email") offers "Sign in
+  with another email", which signs the account out and signs in again.
+  Join a server also loads its list again each time the app comes
   back to the foreground (`serversOnReturn`), and the first Bootstrap gives
   way to the list, still signed in, once the account has a server.
   Back on Join a server, or on that first Bootstrap, signs the account out,

@@ -70,6 +70,9 @@
     <string name="cloud_email_resend_in">Torna a enviar d’aquí a %1$s</string>
     <string name="cloud_email_resent">T’hem enviat un codi nou.</string>
     <string name="cloud_email_change">Canvia el correu</string>
+    <string name="cloud_email_paste">Enganxa</string>
+    <string name="cloud_email_paste_none">No hi ha cap codi de 6 xifres al porta-retalls.</string>
+    <string name="cloud_email_open_mail">Obre l\'app de correu</string>
     <string name="cloud_email_invalid">No sembla una adreça de correu.</string>
     <string name="cloud_email_code_wrong">El codi és incorrecte o ha caducat.</string>
     <string name="cloud_email_unavailable">L’inici de sessió per correu no funciona ara mateix. Torna-ho a provar d’aquí a una estona.</string>
@@ -79,15 +82,20 @@
     <string name="cloud_invite_detail">Uneix-te a %1$s a Happy Cloud.</string>
     <string name="cloud_invite_sign_in">Inicia la sessió per unir-te</string>
     <string name="cloud_invite_wrong_email">Fes servir el correu convidat</string>
-    <string name="cloud_invite_unavailable">Invitació no disponible</string>
+    <string name="cloud_invite_title_invalid">Invitació no vàlida</string>
+    <string name="cloud_invite_title_expired">Invitació caducada</string>
+    <string name="cloud_invite_title_revoked">Invitació revocada</string>
+    <string name="cloud_invite_title_used_up">Invitació esgotada</string>
+    <string name="cloud_invite_title_accepted">Invitació ja acceptada</string>
     <string name="cloud_invite_expired">Aquesta invitació ha caducat. Demana un enllaç nou a qui te la va enviar.</string>
     <string name="cloud_invite_revoked">Aquesta invitació s\'ha retirat. Demana un enllaç nou a qui te la va enviar.</string>
     <string name="cloud_invite_used_up">Aquesta invitació ja s\'ha fet servir. Demana un enllaç nou a qui te la va enviar.</string>
+    <string name="cloud_invite_accepted">Aquesta invitació ja s\'ha acceptat. Si vas ser tu, el servidor és a la teva llista.</string>
     <string name="cloud_invite_unknown">Aquest enllaç d\'invitació no és vàlid. Comprova que has obert l\'enllaç sencer.</string>
     <string name="cloud_invite_email_mismatch">Aquesta invitació es va enviar a %1$s Inicia la sessió amb aquest correu per unir-te.</string>
     <string name="cloud_invite_email_mismatch_unknown">Aquesta invitació es va enviar a un altre correu. Inicia la sessió amb aquest correu per unir-te.</string>
-    <string name="cloud_invite_other_account">Inicia la sessió amb un altre compte</string>
+    <string name="cloud_invite_other_email">Inicia la sessió amb un altre correu</string>
     <string name="cloud_invite_not_now">Ara no</string>
     <string name="cloud_invite_inviter">%1$s t\'ha convidat</string>
-    <string name="cloud_switch_footer">Mostra Happy Cloud a la primera pantalla i al menú de comptes, i obre els seus enllaços d\'invitació a l\'app. Els servidors que ja són en aquest telèfon continuen funcionant igualment.</string>
+    <string name="cloud_switch_footer">Mostra Happy Cloud a la primera pantalla i al menú de comptes. Els enllaços d\'invitació i els servidors que ja són en aquest telèfon continuen funcionant igualment.</string>
 </resources>

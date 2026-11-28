@@ -3,7 +3,7 @@ package com.slopus.happy.ui.connect
 import android.content.Intent
 import com.slopus.happy.agent.HappyLink
 import com.slopus.happy.agent.HappyUrls
-import com.slopus.happy.connection.CloudInvite
+import com.slopus.happy.connection.CloudInviteLink
 import com.slopus.happy.guest.GuestInvitation
 import com.slopus.happy.push.ACTION_OPEN_PUSH
 import com.slopus.happy.push.EXTRA_PUSH_SESSION_ID
@@ -86,11 +86,13 @@ sealed interface DeepLink {
     }
 
     /**
-     * A Happy Cloud server's private invite ([CloudInvite]): its Join
-     * screen, signed in to Happy Cloud first if need be. Opens whether or
-     * not the app has an account. The token never prints.
+     * A Happy Cloud server's private invite, `https://WEB/join#<token>` or
+     * `happy://cloud/join#<token>` ([CloudInviteLink.of]): its invite
+     * screen, which shows the invite before any sign-in; one with no
+     * usable token opens there too, as an invalid invitation. Opens whether
+     * or not the app has an account. The token never prints.
      */
-    data class CloudServerInvite(val invite: CloudInvite) : DeepLink
+    data class CloudServerInvite(val invite: CloudInviteLink) : DeepLink
 
     /** `/`, and app paths with no screen on Android (excluded features, or none at all): Home. */
     data object Home : DeepLink
@@ -111,7 +113,7 @@ sealed interface DeepLink {
 fun parseDeepLink(link: String): DeepLink? {
     if (HappyCode.isAgentPairing(link)) return DeepLink.AgentPairing(link.trim())
     GuestInvitation.parse(link)?.let { return DeepLink.GuestInvite(it.url) }
-    CloudInvite.parse(link)?.let { return DeepLink.CloudServerInvite(it) }
+    CloudInviteLink.of(link)?.let { return DeepLink.CloudServerInvite(it) }
     // A link.happy.page share link opens as the instance link it carries; any other address on that host is the web's.
     com.slopus.happy.agent.HappyShareLinks.parse(link.trim())?.let { share ->
         return HappyUrls.parse(share.url)?.let { url -> url.instanceId?.let { DeepLink.Instance(it, url.link) } }

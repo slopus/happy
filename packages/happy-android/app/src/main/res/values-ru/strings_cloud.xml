@@ -70,6 +70,9 @@
     <string name="cloud_email_resend_in">Отправить ещё раз через %1$s</string>
     <string name="cloud_email_resent">Мы отправили новый код.</string>
     <string name="cloud_email_change">Изменить email</string>
+    <string name="cloud_email_paste">Вставить</string>
+    <string name="cloud_email_paste_none">В буфере обмена нет 6-значного кода.</string>
+    <string name="cloud_email_open_mail">Открыть почту</string>
     <string name="cloud_email_invalid">Это не похоже на адрес email.</string>
     <string name="cloud_email_code_wrong">Код неверный или устарел.</string>
     <string name="cloud_email_unavailable">Вход по email сейчас не работает. Попробуйте чуть позже.</string>
@@ -79,15 +82,20 @@
     <string name="cloud_invite_detail">Присоединяйтесь к %1$s в Happy Cloud.</string>
     <string name="cloud_invite_sign_in">Войти и присоединиться</string>
     <string name="cloud_invite_wrong_email">Войдите с приглашённой почтой</string>
-    <string name="cloud_invite_unavailable">Приглашение недоступно</string>
+    <string name="cloud_invite_title_invalid">Недействительное приглашение</string>
+    <string name="cloud_invite_title_expired">Срок приглашения истёк</string>
+    <string name="cloud_invite_title_revoked">Приглашение отозвано</string>
+    <string name="cloud_invite_title_used_up">Приглашение исчерпано</string>
+    <string name="cloud_invite_title_accepted">Приглашение уже принято</string>
     <string name="cloud_invite_expired">Срок действия приглашения истёк. Попросите отправителя прислать новую ссылку.</string>
     <string name="cloud_invite_revoked">Приглашение отозвано. Попросите отправителя прислать новую ссылку.</string>
     <string name="cloud_invite_used_up">Приглашение уже использовано. Попросите отправителя прислать новую ссылку.</string>
+    <string name="cloud_invite_accepted">Это приглашение уже принято. Если это были вы, сервер уже в вашем списке.</string>
     <string name="cloud_invite_unknown">Ссылка-приглашение недействительна. Проверьте, что вы открыли её целиком.</string>
     <string name="cloud_invite_email_mismatch">Приглашение отправлено на %1$s Войдите с этой почтой, чтобы присоединиться.</string>
     <string name="cloud_invite_email_mismatch_unknown">Приглашение отправлено на другую почту. Войдите с ней, чтобы присоединиться.</string>
-    <string name="cloud_invite_other_account">Войти с другим аккаунтом</string>
+    <string name="cloud_invite_other_email">Войти с другой почтой</string>
     <string name="cloud_invite_not_now">Не сейчас</string>
     <string name="cloud_invite_inviter">%1$s приглашает вас</string>
-    <string name="cloud_switch_footer">Happy Cloud появляется на первом экране и в меню аккаунтов, а его приглашения открываются в приложении. Серверы, уже добавленные на этот телефон, работают в любом случае.</string>
+    <string name="cloud_switch_footer">Happy Cloud появляется на первом экране и в меню аккаунтов. Ссылки-приглашения и серверы, уже добавленные на этот телефон, работают в любом случае.</string>
 </resources>

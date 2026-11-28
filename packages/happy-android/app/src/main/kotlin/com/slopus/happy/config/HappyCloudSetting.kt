@@ -1,9 +1,6 @@
 package com.slopus.happy.config
 
-import android.content.ComponentName
-import android.content.Context
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,9 +8,11 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * Settings' Happy Cloud switch: whether the app offers Happy Cloud's ways in
  * (the first screen's Use Happy Cloud, the account menu's Connect to Happy
- * Cloud, claiming its invite links). It only hides them: a Cloud flow
- * reached anyway opens and works, and signing out stays. This phone's own,
- * never an account's or a server's; a logout doesn't reset it.
+ * Cloud). It only hides them: an invite link opens the app and its invite
+ * whatever it says (the manifest claims the links in every build, and
+ * nothing here turns that off), a Cloud flow reached anyway works, and
+ * signing out stays. This phone's own, never an account's or a server's; a
+ * logout doesn't reset it.
  *
  * An override over [default], the build's ([com.slopus.happy.connection.HappyCloud.offeredByDefault]):
  * nothing is kept until the switch is turned, so a person who never turns
@@ -35,18 +34,5 @@ class HappyCloudSetting(private val prefs: SharedPreferences, private val defaul
     companion object {
         const val PREFS_NAME = "happy-cloud"
         private const val KEY = "offered"
-
-        /** The manifest's alias that holds Happy Cloud's invite-link intent filters, off until the switch is on. */
-        private const val LINKS = "com.slopus.happy.HappyCloudLinks"
-
-        /** Lets Happy Cloud's invite links open the app while [on], or leaves them to the browser. */
-        fun applyLinks(context: Context, on: Boolean) {
-            val links = ComponentName(context, LINKS)
-            val state = if (on) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
-            val packages = context.packageManager
-            runCatching {
-                if (packages.getComponentEnabledSetting(links) != state) packages.setComponentEnabledSetting(links, state, PackageManager.DONT_KILL_APP)
-            }
-        }
     }
 }

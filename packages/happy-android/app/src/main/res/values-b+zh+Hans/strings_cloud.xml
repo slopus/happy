@@ -70,6 +70,9 @@
     <string name="cloud_email_resend_in">%1$s 后重新发送</string>
     <string name="cloud_email_resent">已向你发送新的验证码。</string>
     <string name="cloud_email_change">更换邮箱</string>
+    <string name="cloud_email_paste">粘贴</string>
+    <string name="cloud_email_paste_none">剪贴板中没有 6 位验证码。</string>
+    <string name="cloud_email_open_mail">打开邮件应用</string>
     <string name="cloud_email_invalid">这看起来不像邮箱地址。</string>
     <string name="cloud_email_code_wrong">验证码错误或已过期。</string>
     <string name="cloud_email_unavailable">邮箱登录暂时无法使用，请稍后再试。</string>
@@ -79,15 +82,20 @@
     <string name="cloud_invite_detail">加入 Happy Cloud 上的 %1$s。</string>
     <string name="cloud_invite_sign_in">登录后加入</string>
     <string name="cloud_invite_wrong_email">请使用受邀邮箱</string>
-    <string name="cloud_invite_unavailable">邀请不可用</string>
+    <string name="cloud_invite_title_invalid">邀请无效</string>
+    <string name="cloud_invite_title_expired">邀请已过期</string>
+    <string name="cloud_invite_title_revoked">邀请已撤回</string>
+    <string name="cloud_invite_title_used_up">邀请次数已用完</string>
+    <string name="cloud_invite_title_accepted">邀请已被接受</string>
     <string name="cloud_invite_expired">此邀请已过期。请向发送者索取新的链接。</string>
     <string name="cloud_invite_revoked">此邀请已被撤回。请向发送者索取新的链接。</string>
     <string name="cloud_invite_used_up">此邀请已被使用。请向发送者索取新的链接。</string>
+    <string name="cloud_invite_accepted">此邀请已被接受。如果是你接受的，该服务器已在你的列表中。</string>
     <string name="cloud_invite_unknown">此邀请链接无效。请确认你打开的是完整的链接。</string>
     <string name="cloud_invite_email_mismatch">此邀请发送给了 %1$s。请用该邮箱登录后加入。</string>
     <string name="cloud_invite_email_mismatch_unknown">此邀请发送给了另一个邮箱。请用该邮箱登录后加入。</string>
-    <string name="cloud_invite_other_account">使用其他账号登录</string>
+    <string name="cloud_invite_other_email">使用其他邮箱登录</string>
     <string name="cloud_invite_not_now">暂不</string>
     <string name="cloud_invite_inviter">%1$s 邀请了你</string>
-    <string name="cloud_switch_footer">在首屏和账户菜单中提供 Happy Cloud，并在应用中打开其邀请链接。已在此手机上的服务器始终可用。</string>
+    <string name="cloud_switch_footer">在首屏和账户菜单中提供 Happy Cloud。邀请链接和已在此手机上的服务器始终可用。</string>
 </resources>
