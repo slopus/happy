@@ -1529,31 +1529,36 @@ change its wire behaviour on Android alone.
   `Unreachable` (`ServerAuthClient.token`) and keeps the grant; only other
   4xx end a session. Happy Cloud out of reach reads "Happy Cloud couldn't
   be reached…" (`cloud_unreachable`), never a server address's words. A cloud server's
-  Settings has Members (`CloudMembers.kt`, `agent/AgentMembers.kt`). Since
-  the roles cutover the team is the server's (members contract): `GET
-  /v0/members` with each role's name from `GET /v0/roles` (a built-in one in
-  the app's words where roles can't be read), read again on every connect,
-  `member.*`, `role.*` and `profile.updated`, since a member's name is
+  Settings has Members (`CloudMembers.kt`, `agent/AgentMembers.kt`). Roles
+  are gone for teams (happy-cluster docs/teams.md): `GET /v0/members` gives
+  each person's direct custom teams and owner flag, named from `GET
+  /v0/teams`, and a row reads "Owner" and their teams ("Owner, Design"), or
+  "Member" in none (`memberStanding`). A server from before teams sends
+  `role` alone, named from `GET /v0/roles` (a built-in one in the app's
+  words where roles can't be read). They are read again on every connect,
+  `member.*`, `team.*`, `role.*` and `profile.updated`, since a member's name is
   their profile's (there is no `member.added`); Leave server is `POST
   /v0/members/leave`, confirmed, then the server is removed here too, and
   its last owner gets `409 last_owner`. No account pass is needed. A
   member with a `userId` opens their profile (`MemberProfile.kt`,
   `agent/MemberProfiles.kt`; cluster `GET /v0/users/:id/profile`, Happy
   Cloud only): the agent page's header and tiles with their picture round,
-  job title and team role, Usage (tasks, active tasks, active days of the
+  job title and their teams and owner flag (from `/v0/members`; the
+  profile's `teamRole` until that is read), Usage (tasks, active tasks, active days of the
   last 30, last active), Tokens per window (input plus output, which
   already hold cache and reasoning, summed over providers and models) and
   Recent activity, their latest ten tasks, each opening its conversation. The
   API lists servers without a role now (`CloudServer.role` is
   optional; the picker shows a role only where one is listed).
-  A cloud server's team roles gate what shows (`agent/AgentPermissions.kt`):
-  `GET /v0/permissions`'s `granted`, read on every connect, `role.*` and
-  `member.updated`
+  What a cloud server's teams grant gates what shows (`agent/AgentPermissions.kt`):
+  `GET /v0/permissions`'s `granted` (beside the caller's `owner` and
+  `teams`, which gate nothing: owners are granted everything), read on every
+  connect, `team.*`, `role.*` and `member.updated`
   event (`AgentSession.permissions`), and nothing granted until it is read
   or when reading fails; any other server gates nothing. Without
   `content.write` there is no compose, voice call, todo or document
   editing, adding or moving calendar events, or vault changes, and a chat
-  says "your role can't send messages" in the composer's place; the Chief
+  says it can't send messages in the composer's place; the Chief
   of Staff's chat and settings' asks of it need `bots.manage`. A vault
   Surface's `access` (`none` locks it: its name, and nothing asked;
   `read` hides every change) and `policyVault` (its `Global` and
@@ -1562,7 +1567,16 @@ change its wire behaviour on Android alone.
   snapshot, read again on `vault.settings.updated`. A `403 forbidden`
   reads "You don't have permission to do that." (`Problem.Forbidden`,
   `IntentRefusal.FORBIDDEN`), never the server's words. Mobile edits no
-  roles or access rules; iOS matches field for field.
+  teams or access rules; iOS matches field for field. Where the copy used
+  to say "team" for the whole server, it says "server" (docs/teams.md §10);
+  a wire value that says `team` for it (a secret's owner, a provider
+  connection's scope) is still sent, and `server` is read as the same.
+  Settings › Zones (`ui/connection/CloudMetadata.kt`, Happy Cloud only, read
+  only) lists Zones v2 (docs/zones.md): Restricted zone where it is, its
+  description, who may join (people by name, teams by `/v0/teams` name;
+  everyone for an open zone) and its internet and compute settings. A
+  server from before Zones v2 reads too: `critical` is restricted, bare
+  member IDs are users, a default zone is just a zone.
   People read a cloud server's address as `@name`, like a username, until
   Happy Cloud has its own domain (`HappyCloud.handle`: the picker, create,
   join, the server sign-in screen, the account menu); the URL is used as
@@ -2847,17 +2861,17 @@ words are `strings_plugins.xml` in every locale.
   tablets keep the row too (Steve).
 - **Wire:** `PluginsBackend` (`ClusterPlugins`) reads the catalog and the
   installations (`canManage` from that answer, else `mcp.manage`);
-  `PluginsSource` reads again on `plugins.changed`, role changes, each
+  `PluginsSource` reads again on `plugins.changed`, team or role changes, each
   reconnect, after every write and when a page resumes (back from a sign-in
   in the browser). Refusals are a typed `PluginRefusal`; refused setup fields
   show under their field in the server's words.
 - **Pages:** the list (Installed, then Available, then Features: feature
-  plugins not installed, apart so the role note under Available isn't
+  plugins not installed, apart so the permission note under Available isn't
   read as theirs), a plugin (Install, Install
   again where it may be installed more than once, its installations and
   tools), an installation (Set up by OAuth in a Custom Tab or by fields,
   Signed in with per-account Disconnect, Remove; each confirmed). Someone
-  whose role can't manage plugins reads them. `NavHostController.openPlugin`
+  without `mcp.manage` reads them. `NavHostController.openPlugin`
   opens one plugin from anywhere (Gen UI's `plugin` action).
 - **Feature plugins** (happy-cluster API.md, "Feature plugins"): a catalog
   entry of `kind: "feature"` (`Plugin.feature`) is one of the app's own
