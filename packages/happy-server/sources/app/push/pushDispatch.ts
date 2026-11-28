@@ -60,7 +60,13 @@ async function fetchTokensAndSend(params: {
             body: params.body,
             data: params.data,
             sound: 'default' as const,
-            channelId: params.channelId
+            channelId: params.channelId,
+            // The session, so on Android a later push for a session replaces
+            // the earlier one. Expo's `collapseId` (the same on iOS) is not
+            // sent: it becomes the notification's identifier there, and
+            // released apps open a session only on the first tap of each
+            // identifier.
+            tag: params.sessionId
         }))
     );
 

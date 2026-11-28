@@ -89,7 +89,7 @@ validation (params → body → querystring, before auth), `R` = zod response sc
 - [x] `POST /v1/push-tokens` A S R
 - [x] `DELETE /v1/push-tokens/:token` A S R
 - [x] `GET /v1/push-tokens` A
-- [x] `POST /v1/sessions/:sessionId/push-event` A S R — `session-event` ephemeral, presence suppression, Expo send (8 s deadline)
+- [x] `POST /v1/sessions/:sessionId/push-event` A S R — `session-event` ephemeral, presence suppression, Expo send (8 s deadline; `tag` = the session id, so on Android a later push for a session replaces the earlier one)
 
 ### Connect (`connectRoutes.ts`)
 - [x] `GET /v1/connect/github/params` A R — ephemeral state token (5 min)
