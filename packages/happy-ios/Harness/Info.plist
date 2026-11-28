@@ -8,6 +8,11 @@
 	<string>$(HAPPY_CALL_AGENT_V3_ID)</string>
 	<key>HappyRevenueCatAppleKey</key>
 	<string>$(HAPPY_REVENUE_CAT_APPLE_KEY)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>message</string>
+		<string>googlegmail</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoadsInWebContent</key>

@@ -296,6 +296,80 @@ public enum CloudColumnLayout {
     }
 }
 
+/// A row of quiet links side by side in a step's column (the code step's
+/// Open Mail, Open Gmail and Change email), each a small text action
+/// (`RoundButton`, `.small`, `.inverted`): as wide as its words and the
+/// button's own padding, as tall as the button, 4 apart, the row centred
+/// in the column. Together wider than the column, every link gives up the
+/// same share of its width, so the row fills the column exactly. A row
+/// with fewer links (no Gmail on the phone) is the same row, as tall.
+public struct CloudLinksLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let size: RoundButtonSize = .small
+        public static let gap: CGFloat = 4
+        /// The row's height whatever it holds.
+        public static var height: CGFloat { RoundButtonMetrics.of(size).height }
+    }
+
+    /// Each link's frame, in the order given.
+    public var links: [CGRect]
+
+    /// `labels` are the links' words' own widths; `origin.y` the row's top
+    /// in whatever holds it, the column starting at `origin.x`.
+    public init(labels: [CGFloat], width: CGFloat, origin: CGPoint = .zero) {
+        typealias M = Metrics
+        let metrics = RoundButtonMetrics.of(M.size)
+        let natural = labels.map { max(RoundButtonMetrics.minimumWidth, $0 + metrics.paddingHorizontal * 2) }
+        let gaps = M.gap * CGFloat(max(0, natural.count - 1))
+        let sum = natural.reduce(0, +)
+        let room = max(0, width - gaps)
+        let scale = sum > room && sum > 0 ? room / sum : 1
+        var x = origin.x + (width - sum * scale - gaps) / 2
+        var frames: [CGRect] = []
+        for link in natural {
+            frames.append(CGRect(x: x, y: origin.y, width: link * scale, height: metrics.height))
+            x += link * scale + M.gap
+        }
+        links = frames
+    }
+}
+
+/// A large field on the gradient (`CloudField`): an optional prefix such
+/// as `@` 18 in, the text after it (1 after the prefix), and an optional
+/// accessory at the right (the code step's Paste): its own size, centred
+/// down the field, 10 in from the right edge, the text ending 8 before it.
+/// Without one the text ends 12 from the edge.
+public struct CloudFieldLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let leading: CGFloat = 18
+        public static let prefixGap: CGFloat = 1
+        public static let trailing: CGFloat = 12
+        public static let accessoryTrailing: CGFloat = 10
+        public static let accessoryGap: CGFloat = 8
+    }
+
+    public var prefix: CGRect
+    public var text: CGRect
+    /// Zero without one.
+    public var accessory: CGRect
+
+    /// `prefix` is the prefix's own width, zero without one; `accessory`
+    /// the accessory's own size, zero without one.
+    public init(size: CGSize, prefix prefixWidth: CGFloat = 0, accessory accessorySize: CGSize = .zero) {
+        typealias M = Metrics
+        prefix = CGRect(x: M.leading, y: 0, width: prefixWidth, height: size.height)
+        let x = prefixWidth > 0 ? prefix.maxX + M.prefixGap : M.leading
+        if accessorySize.width > 0, accessorySize.height > 0 {
+            let width = min(accessorySize.width, max(0, size.width - M.accessoryTrailing - M.accessoryGap - x))
+            accessory = CGRect(x: size.width - M.accessoryTrailing - width, y: (size.height - accessorySize.height) / 2, width: width, height: accessorySize.height)
+            text = CGRect(x: x, y: 0, width: max(0, accessory.minX - M.accessoryGap - x), height: size.height)
+        } else {
+            accessory = .zero
+            text = CGRect(x: x, y: 0, width: max(0, size.width - x - M.trailing), height: size.height)
+        }
+    }
+}
+
 /// A server in Join a server's list (desktop's server row): its picture,
 /// its name over `@name`, and Join, or Joined, at the right.
 public struct CloudServerRowLayout: Equatable, Sendable {

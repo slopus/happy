@@ -1750,6 +1750,15 @@ final class CloudField: UIView {
     private let glass = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
     private let prefix = UILabel()
     let text = UITextField()
+    /// A control at the field's right end (the code step's Paste), at its
+    /// own size; the text ends before it.
+    var accessory: UIView? {
+        didSet {
+            oldValue?.removeFromSuperview()
+            if let accessory { addSubview(accessory) }
+            setNeedsLayout()
+        }
+    }
 
     init(prefix: String?, placeholder: String) {
         super.init(frame: .zero)
@@ -1778,9 +1787,11 @@ final class CloudField: UIView {
         super.layoutSubviews()
         glass.frame = bounds
         let prefixWidth = prefix.text == nil ? 0 : ceil(prefix.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: bounds.height)).width)
-        prefix.frame = CGRect(x: 18, y: 0, width: prefixWidth, height: bounds.height)
-        let x = prefixWidth > 0 ? prefix.frame.maxX + 1 : 18
-        text.frame = CGRect(x: x, y: 0, width: bounds.width - x - 12, height: bounds.height)
+        let accessorySize = accessory.map { $0.sizeThatFits(bounds.size) } ?? .zero
+        let layout = CloudFieldLayout(size: bounds.size, prefix: prefixWidth, accessory: CGSize(width: ceil(accessorySize.width), height: ceil(accessorySize.height)))
+        prefix.frame = layout.prefix
+        text.frame = layout.text
+        accessory?.setLayoutFrame(layout.accessory)
     }
 }
 

@@ -220,5 +220,179 @@ final class CloudEmailScreensTests: XCTestCase {
         await settle { navigation.topViewController === address }
         XCTAssertTrue(navigation.topViewController === address)
     }
+
+    // MARK: A code read in another mail app
+
+    /// The code step on screen over `http`, with the mail apps `installed`.
+    private func codeStep(_ http: EmailHTTP, installed: Set<String> = []) -> (CloudEmailCodeViewController, UINavigationController, opened: () -> [URL]) {
+        final class Opened { var urls: [URL] = [] }
+        let opened = Opened()
+        let address = CloudEmailViewController(context: context(), http: http)
+        let screen = CloudEmailCodeViewController(context: context(), email: "steve@example.com", http: http, sentAt: Date())
+        screen.canOpen = { installed.contains($0.scheme ?? "") }
+        screen.open = { opened.urls.append($0) }
+        let navigation = UINavigationController(rootViewController: address)
+        navigation.pushViewController(screen, animated: false)
+        show(navigation)
+        screen.view.layoutIfNeeded()
+        return (screen, navigation, { opened.urls })
+    }
+
+    /// Where the step's parts sit, in the screen, once Paste has the size
+    /// iOS gives it a moment after it is made (it draws nothing before).
+    private func restingFrames(_ screen: CloudEmailCodeViewController) async -> [CGRect] {
+        for _ in 0..<100 where screen.paste.intrinsicContentSize.width <= 0 {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        screen.view.layoutIfNeeded()
+        return frames(screen)
+    }
+
+    private func frames(_ screen: CloudEmailCodeViewController) -> [CGRect] {
+        ([screen.titleLabel, screen.bodyLabel, screen.field, screen.field.text, screen.paste, screen.status, screen.change, screen.primary, screen.secondary] as [UIView?])
+            .compactMap { $0 }.map { $0.convert($0.bounds, to: screen.view) }
+    }
+
+    /// Paste is iOS's own control, in the field at its right end, and is
+    /// there from the start: no pasteboard is read to decide it, and the
+    /// text keeps clear of it.
+    func testPasteIsInTheFieldFromTheStart() async {
+        let (screen, _, _) = codeStep(EmailHTTP())
+        XCTAssertIdentical(screen.paste.superview, screen.field)
+        XCTAssertIdentical(screen.paste.target as AnyObject, screen.pasteTarget)
+        XCTAssertFalse(screen.paste.isHidden)
+        XCTAssertEqual(screen.paste.configuration.displayMode, .labelOnly)
+        XCTAssertEqual(screen.pasteTarget.pasteConfiguration?.acceptableTypeIdentifiers.isEmpty, false)
+        XCTAssertEqual(screen.field.text.clearButtonMode, .never, "nothing else sits where Paste is")
+        let paste = screen.paste.frame, text = screen.field.text.frame, field = screen.field.bounds
+        XCTAssertGreaterThan(paste.width, 0)
+        XCTAssertGreaterThanOrEqual(paste.height, 28, "big enough to tap")
+        XCTAssertEqual(paste.maxX, field.maxX - 10, accuracy: 0.5)
+        XCTAssertEqual(paste.midY, field.midY, accuracy: 0.5)
+        XCTAssertEqual(text.maxX, paste.minX - 8, accuracy: 0.5, "the code ends before Paste")
+        XCTAssertGreaterThan(text.width, 150, "six digits have their room")
+    }
+
+    /// What Paste hands over: the code is taken out of whatever was copied
+    /// and checked as a typed one is, with no tap on Verify.
+    func testPastedTextWithACodeIsCheckedAtOnce() async throws {
+        let http = EmailHTTP()
+        await http.answer("POST /v2/auth/email/verify", 400, #"{"code":"invalid_code","error":"That code didn't work."}"#)
+        let (screen, _, _) = codeStep(http)
+        let before = await restingFrames(screen)
+        screen.pasteTarget.paste(itemProviders: [NSItemProvider(object: "Your Happy sign-in code is 428913. It expires in 10 minutes." as NSString)])
+        await settle { await http.requests.count == 1 }
+        let tried = await http.bodies("POST /v2/auth/email/verify")
+        XCTAssertEqual(tried, [["email": "steve@example.com", "code": "428913"]], "the code alone, sent as typing it sends it")
+        await settle { screen.status.string == "That code didn't work." && !screen.primary.isLoading }
+        XCTAssertEqual(screen.status.string, "That code didn't work.")
+        XCTAssertEqual(screen.field.text.text, "", "a wrong code is cleared for the next, as a typed one is")
+        screen.view.layoutIfNeeded()
+        XCTAssertEqual(frames(screen), before, "nothing moved")
+
+        // The right one signs in.
+        let pass = Self.jwt(audience: HappyCloud.api + "/")
+        await http.answer("POST /v2/auth/email/verify", 200, #"{"id_token":"\#(Self.jwt(audience: "happy"))","expires_in":300}"#)
+        await http.answer("POST /v1/session", 200, #"{"access_token":"\#(pass)","refresh_token":"ar1","expires_in":3600}"#)
+        screen.pasted("123 456")
+        XCTAssertEqual(screen.field.text.text, "123456")
+        await settle { CloudScreens.account != nil }
+        XCTAssertNotNil(CloudScreens.account, "signed in from the pasted code")
+        let sent = await http.bodies("POST /v2/auth/email/verify")
+        XCTAssertEqual(sent.last, ["email": "steve@example.com", "code": "123456"])
+    }
+
+    /// Text without a code says so under the field and changes nothing
+    /// else: no request, the field as it was.
+    func testPastedTextWithoutACodeSaysSo() async throws {
+        let http = EmailHTTP()
+        let (screen, _, _) = codeStep(http)
+        let before = await restingFrames(screen)
+        type("12", into: screen.field)
+        for text in ["", "hello", "https://example.com/1234567", "12345", "call 555 0100 2368"] {
+            screen.pasted(text)
+            XCTAssertEqual(screen.status.string, "No 6-digit code to paste. Copy it from the email first.", text)
+            XCTAssertEqual(screen.field.text.text, "12", text)
+        }
+        screen.pasteTarget.paste(itemProviders: [])
+        screen.pasteTarget.paste(itemProviders: [NSItemProvider(object: URL(string: "https://example.com")! as NSURL)])
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(screen.field.text.text, "12")
+        screen.view.layoutIfNeeded()
+        XCTAssertEqual(frames(screen), before, "the line has its room: nothing moved")
+        let asked = await http.requests.count
+        XCTAssertEqual(asked, 0)
+        // Typing on clears it.
+        type("123", into: screen.field)
+        XCTAssertEqual(screen.status.string, "")
+    }
+
+    /// Open Mail, and Open Gmail when Gmail is installed, sit in one row
+    /// with Change email; the row is the same line whatever it holds, so
+    /// the step is laid out the same on every phone.
+    func testTheMailAppsHereAreOfferedInOneRow() async throws {
+        let (none, _, _) = codeStep(EmailHTTP())
+        XCTAssertTrue(none.mailLinks.isEmpty, "no mail app that can be opened: none offered")
+
+        let (mail, _, _) = codeStep(EmailHTTP(), installed: ["message"])
+        XCTAssertEqual(mail.mailLinks.map(\.app), [.mail])
+        XCTAssertEqual(mail.mailLinks.map(\.link.title), ["Open Mail"])
+
+        let (both, _, opened) = codeStep(EmailHTTP(), installed: ["message", "googlegmail"])
+        XCTAssertEqual(both.mailLinks.map(\.app), [.mail, .gmail])
+        XCTAssertEqual(both.mailLinks.map(\.link.title), ["Open Mail", "Open Gmail"])
+        let row = (both.mailLinks.map(\.link) + [both.change]).map { $0.convert($0.bounds, to: both.view) }
+        XCTAssertEqual(Set(row.map(\.minY)).count, 1, "one row: \(row)")
+        XCTAssertEqual(Set(row.map(\.height)).count, 1)
+        for (left, right) in zip(row, row.dropFirst()) { XCTAssertEqual(right.minX, left.maxX + 4, accuracy: 0.5, "side by side, in order") }
+        let column = both.field.convert(both.field.bounds, to: both.view)
+        XCTAssertGreaterThanOrEqual(row[0].minX, column.minX - 0.5, "within the column")
+        XCTAssertLessThanOrEqual(row[2].maxX, column.maxX + 0.5)
+        XCTAssertEqual((row[0].minX + row[2].maxX) / 2, column.midX, accuracy: 0.5, "centred")
+        for link in both.mailLinks.map(\.link) + [both.change] {
+            let label = link.label.convert(link.label.bounds, to: link)
+            XCTAssertGreaterThanOrEqual(label.minX, 0)
+            XCTAssertLessThanOrEqual(label.maxX, link.bounds.maxX + 0.5, "\(link.title) isn't cut short")
+        }
+        // Everything but Change email's own place across the row is where it is with no mail app.
+        var withBoth = await restingFrames(both), withMail = await restingFrames(mail), withNone = await restingFrames(none)
+        let change = 6
+        XCTAssertEqual(withBoth[change].minY, withNone[change].minY)
+        XCTAssertEqual(withBoth[change].height, withNone[change].height)
+        withBoth.remove(at: change); withMail.remove(at: change); withNone.remove(at: change)
+        XCTAssertEqual(withBoth, withNone, "the mail apps move nothing")
+        XCTAssertEqual(withMail, withNone)
+
+        both.mailLinks[0].link.tapped()
+        both.mailLinks[1].link.tapped()
+        XCTAssertEqual(opened().map(\.absoluteString), ["message://", "googlegmail://"])
+    }
+
+    /// Back in Happy from the mail app, the step is as it was left: its
+    /// code, its line, and the keyboard in its field again.
+    func testComingBackLeavesTheStepWithItsFieldFocused() async throws {
+        let (screen, navigation, _) = codeStep(EmailHTTP(), installed: ["googlegmail"])
+        type("12", into: screen.field)
+        screen.say("We sent a new code.", problem: false)
+        screen.field.text.resignFirstResponder()
+        XCTAssertFalse(screen.field.text.isFirstResponder)
+        let before = frames(screen)
+        NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        await settle { screen.field.text.isFirstResponder }
+        XCTAssertTrue(screen.field.text.isFirstResponder, "the field has the keyboard again")
+        XCTAssertEqual(screen.field.text.text, "12")
+        XCTAssertEqual(screen.status.string, "We sent a new code.")
+        XCTAssertTrue(navigation.topViewController === screen)
+        XCTAssertEqual(navigation.viewControllers.count, 2)
+        XCTAssertEqual(frames(screen).count, before.count)
+
+        // Not its business once another step is on top.
+        screen.field.text.resignFirstResponder()
+        navigation.popViewController(animated: false)
+        await settle { navigation.topViewController !== screen && navigation.transitionCoordinator == nil }
+        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        XCTAssertFalse(screen.field.text.isFirstResponder)
+    }
 }
 #endif

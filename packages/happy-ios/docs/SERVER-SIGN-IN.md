@@ -177,6 +177,33 @@ split contract (v1, frozen 2026-11-15).
        after each code sent, its title counting down ("Resend code in
        0:42"); Change email goes back to the address, kept.
 
+       iOS offers a code over the keyboard only from Messages and Apple
+       Mail, so for one read anywhere else (Gmail's app, say) the step
+       has:
+       - **Paste**, a filled pill at the field's right end: iOS's own
+         `UIPasteControl` (`PasteControl`), so tapping it reads the
+         pasteboard with no "Allow Paste" prompt, and nothing reads the
+         pasteboard before the tap. It is always there; iOS dims it
+         while the pasteboard holds no text. What it hands over goes
+         through `EmailCode.find`: the first run of exactly six digits
+         ("Your code is 428913."), else the text's digits when they are
+         six in all (`123 456`), is put in the field and checked as the
+         sixth typed digit is. Text without one says "No 6-digit code to
+         paste. Copy it from the email first." under the field and
+         changes nothing. The control knows its size only once iOS has
+         drawn it, a moment after it is made; it keeps a pill's room
+         until then and the field is laid out again when the size comes
+         (`CloudFieldLayout`).
+       - **Open Mail** (`message://`) and, when Gmail is installed,
+         **Open Gmail** (`googlegmail://`), quiet links in one row with
+         Change email (`CloudLinksLayout`). Which are there is asked
+         once, before the step shows (`canOpenURL`, with both schemes in
+         every Info.plist's `LSApplicationQueriesSchemes`), and the row
+         is one line whatever it holds, so the step is laid out the same
+         on every phone and nothing on it comes or goes. Back in Happy
+         the step is as it was left, and its field takes the keyboard
+         again (`cameBack`).
+
     Refusals are `{ code, error }`, said under the field: `400
     invalid_email`, `400 invalid_code` and `502 unavailable` in the
     service's words (ours when it gives none); a wrong code is cleared.
@@ -746,18 +773,35 @@ a test account's, and email's two requests with every refusal and the
 `429` wait from the body or the header. `CloudEmailScreensTests`
 (HappyUIKitTests) covers email's steps: the welcome's button, Send code,
 the code field, Resend code's and a `429`'s countdowns, Change email, and
-the servers after the right code.
+the servers after the right code; and the code read elsewhere: Paste in
+the field, pasted text with and without a code, the mail apps' row, and
+the field focused on coming back. `EmailCodeTests` holds which pasted
+text has a code, `CloudCodeStepLayoutTests` the field's and the row's
+frames.
+
+Invite links: `CloudInviteTests` (in `ServerSignInTests.swift`) holds the
+two forms, the invalid ones and every link that isn't an invite, and the
+preview's and the accept's requests and refusals. `CloudScreensTests`
+holds the screen's order: shown before any sign-in, Sign in to join then
+joining with no second tap, Back to the invite, the mismatch, the 401,
+Try Again, and an invalid link asking nothing. `HostedCloudSwitchOffTests`
+opens both forms through the coordinator in the App Store variant with
+the switch off.
 
 `scripts/cloud-email-mock/server.mjs` plays the accounts service's email
 routes (`/v2/auth/email/*`, identity tokens; `/v1/auth/*` answers `410
-update_required`) and the API's session, `/token`, `/revoke` and servers
-list over plain HTTP on 8790 (a fixed code, `123456`; special addresses
-for each refusal; a `429` after three codes a minute or three wrong
-codes). `scripts/cloud-email-mock/run-device-test.sh` (on a Mac) starts it
+update_required`) and the API's session, `/token`, `/revoke`, servers
+list and the two invite calls over plain HTTP on 8790 (a fixed code,
+`123456`; special addresses for each refusal; a `429` after three codes a
+minute or three wrong codes; an invite token's first letters pick a
+refusal). `scripts/cloud-email-mock/run-device-test.sh` (on a Mac) starts it
 and runs `CloudEmailSignInUITests` on a connected phone or a simulator
 (`DEVICE`) in the chat harness, whose `-cloudAccounts <origin>` sends the
 welcome's sign-ins and the API's calls there, then exports the
-screenshots. On a
+screenshots. Its second test opens an invite (`-cloudScreen invite
+-cloudName happy://cloud/join#<token>`), signs in by email with the code
+copied in another app and pasted with a real tap on Paste, and ends on
+Connecting. On a
 phone whose UI automation can't be turned on, the harness's own
 `-cloudScreen email -cloudName <address> -cloudSend -cloudCode <code>`
 fills the address, taps Send code and types the code through the same
