@@ -5,7 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { type SessionState, getSessionStateLabel } from '@/utils/sessionUtils';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { storage, type SessionRowData, useAllMachines, useLocalSettingMutable, useLocalSettingUpdater, useSetting } from '@/sync/storage';
+import { type SessionRowData, useAllMachines, useLocalSettingMutable, useLocalSettingUpdater, useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -21,8 +21,6 @@ import { useRouter } from 'expo-router';
 import { useSessionManagementPreferences } from '@/hooks/useSessionManagementPreferences';
 import { useLocalDayRollover } from '@/hooks/useLocalDayRollover';
 import { buildSessionNavigationGroups, buildSessionNavigationTimeGroups } from '@/utils/sessionNavigationGroups';
-import { sync } from '@/sync/sync';
-import { loadPendingPermissionMessageId } from '@/utils/pendingPermission';
 import { ProjectSectionHeader } from './ProjectSectionHeader';
 import { partitionSessionsByPinnedOrder, sortSessionsForList } from '@/utils/sessionPinning';
 import { isSidebarGroupExpanded, setSidebarGroupExpanded } from '@/utils/sidebarGroupExpansion';
@@ -303,7 +301,6 @@ export const CompactSessionRow = React.memo(({ nested = false, onOrganize, sessi
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const navigateToSession = useNavigateToSession();
-    const router = useRouter();
     const organization = useSetting('sidebarOrganization');
     const compactTitle = useWindowDimensions().width < 600;
     const [deleteConfirmationVisible, setDeleteConfirmationVisible] = React.useState(false);
@@ -318,27 +315,13 @@ export const CompactSessionRow = React.memo(({ nested = false, onOrganize, sessi
         .map((tagId) => organization.tags.find((tag) => tag.id === tagId))
         .filter((tag) => !!tag);
 
-    const handlePress = React.useCallback(async () => {
+    const handlePress = React.useCallback(() => {
         if (selectionMode) {
             onToggleSelection?.(session.id);
             return;
         }
-        if (session.state === 'permission_required') {
-            const executionId = session.executionSessionId ?? session.id;
-            const messageId = await loadPendingPermissionMessageId({
-                ensureLoaded: () => sync.ensureMessagesLoaded(executionId),
-                getMessages: () => storage.getState().sessionMessages[executionId]?.messages ?? [],
-            });
-            if (messageId) {
-                if (router.canDismiss()) {
-                    router.dismissTo('/');
-                }
-                router.navigate(`/session/${encodeURIComponent(executionId)}/message/${encodeURIComponent(messageId)}` as any);
-                return;
-            }
-        }
         navigateToSession(session.id);
-    }, [navigateToSession, onToggleSelection, router, selectionMode, session.id, session.executionSessionId, session.state]);
+    }, [navigateToSession, onToggleSelection, selectionMode, session.id]);
 
     const handleContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();

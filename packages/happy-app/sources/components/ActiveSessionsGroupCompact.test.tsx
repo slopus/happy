@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
         pinnedOrder: [] as string[],
         pathname: '/',
         routeNavigate: vi.fn(),
+        navigateToSession: vi.fn(),
     };
     return Object.assign(state, {
         updateExpansion(updater: (current: Record<string, boolean>) => Record<string, boolean>) {
@@ -90,7 +91,7 @@ vi.mock('@/sync/storage', async () => {
         useSettingMutable: () => [true, vi.fn()],
     };
 });
-vi.mock('@/hooks/useNavigateToSession', () => ({ useNavigateToSession: () => vi.fn() }));
+vi.mock('@/hooks/useNavigateToSession', () => ({ useNavigateToSession: () => mocks.navigateToSession }));
 vi.mock('@/hooks/useSessionManagementPreferences', () => ({
     useSessionManagementPreferences: () => ({ preferences: { pinnedOrder: mocks.pinnedOrder, focusOrder: [] } }),
 }));
@@ -176,17 +177,31 @@ describe('ActiveSessionsGroupCompact project expansion persistence', () => {
         act(() => { cell.unmount(); renderer.unmount(); });
     });
 
-    it('opens permissions on the current execution while keeping selection and row actions on the stable chat', async () => {
+    it.each(['projects', 'time'] as const)('opens the stable chat instead of permission details from the %s list', async (layoutMode) => {
         vi.mocked(loadPendingPermissionMessageId).mockImplementation(async reader => { await reader.ensureLoaded(); return 'permission-message'; });
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<ActiveSessionsGroupCompact selectedSessionId="root"
+        act(() => { renderer = TestRenderer.create(<ActiveSessionsGroupCompact layoutMode={layoutMode} selectedSessionId="root"
             sessions={[{ ...session, id: 'root', executionSessionId: 'current', state: 'permission_required' }]} />); });
         const row = renderer.root.findByProps({ testID: 'session-row-root' });
         expect(row.props.accessibilityState.selected).toBe(true);
         await act(async () => { await row.props.onPress(); });
-        expect(sync.ensureMessagesLoaded).toHaveBeenCalledWith('current');
-        expect(mocks.routeNavigate).toHaveBeenCalledExactlyOnceWith('/session/current/message/permission-message');
+        expect(mocks.navigateToSession).toHaveBeenCalledExactlyOnceWith('root');
+        expect(sync.ensureMessagesLoaded).not.toHaveBeenCalled();
+        expect(loadPendingPermissionMessageId).not.toHaveBeenCalled();
+        expect(mocks.routeNavigate).not.toHaveBeenCalled();
         expect(renderer.root.findByType('SessionRowActions').props.sessionId).toBe('root');
+        act(() => renderer.unmount());
+    });
+
+    it('selects a permission-required chat without navigating in selection mode', async () => {
+        const toggle = vi.fn();
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ActiveSessionsGroupCompact selectionMode onToggleSelection={toggle}
+            sessions={[{ ...session, id: 'root', executionSessionId: 'current', state: 'permission_required' }]} />); });
+        await act(async () => { await renderer.root.findByProps({ testID: 'session-row-root' }).props.onPress(); });
+        expect(toggle).toHaveBeenCalledExactlyOnceWith('root');
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
+        expect(loadPendingPermissionMessageId).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 
