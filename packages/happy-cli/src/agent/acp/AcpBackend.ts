@@ -1310,7 +1310,19 @@ export class AcpBackend implements AgentBackend {
           resolve();
         });
       });
-      
+
+      // Drop the `error` / `exit` / `data` listeners that `startSession`
+      // attached so a Gemini mode-switch flow (which disposes the current
+      // backend and immediately spawns a new one) doesn't accumulate dead
+      // closures referencing a torn-down instance. Subsequent kernel
+      // signals against the already-dead PID would otherwise re-invoke
+      // `signalStartupFailure` against a now-null `startupFailureResolver`
+      // — harmless, but it grows the listener list every cycle.
+      this.process?.removeAllListeners();
+      this.process?.stdout?.removeAllListeners();
+      this.process?.stderr?.removeAllListeners();
+      this.process?.stdin?.removeAllListeners();
+
       this.process = null;
     }
 
