@@ -685,7 +685,8 @@
             "verification_failed",
             "nothing_to_restore",
             "pending",
-            "unknown"
+            "unknown",
+            "purchase_in_progress"
           ]
         }
       }

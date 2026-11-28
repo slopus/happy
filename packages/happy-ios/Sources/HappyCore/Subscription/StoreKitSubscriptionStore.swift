@@ -29,18 +29,35 @@ public struct StoreKitSubscriptionStore: SubscriptionStore {
     }
 
     public func purchase(_ id: String, token: UUID) async -> StorePurchase {
-        guard let product = try? await Product.products(for: [id]).first, Self.monthly(product) != nil else { return .failed }
+        let product: Product
+        do {
+            guard let found = try await Product.products(for: [id]).first, Self.monthly(found) != nil else { return .failed(.notOnSale) }
+            product = found
+        } catch {
+            return .failed(Self.failure(error))
+        }
         do {
             switch try await product.purchase(options: [.appAccountToken(token)]) {
-            case .success(let result): return await take(result).map(StorePurchase.purchased) ?? .failed
+            case .success(let result): return await take(result).map(StorePurchase.purchased) ?? .failed(.unverified)
             case .pending: return .pending
             case .userCancelled: return .cancelled
-            @unknown default: return .failed
+            @unknown default: return .failed(.unknown)
             }
         } catch StoreKitError.userCancelled {
             return .cancelled
         } catch {
-            return .failed
+            return .failed(Self.failure(error))
+        }
+    }
+
+    /// What StoreKit threw, as the subscription tells it apart.
+    static func failure(_ error: any Error) -> StoreFailure {
+        switch error {
+        case StoreKitError.networkError, is URLError: .network
+        case StoreKitError.notAvailableInStorefront, Product.PurchaseError.productUnavailable: .notOnSale
+        case StoreKitError.notEntitled, Product.PurchaseError.purchaseNotAllowed: .notAllowed
+        case is Product.PurchaseError: .paymentInvalid
+        default: .unknown
         }
     }
 

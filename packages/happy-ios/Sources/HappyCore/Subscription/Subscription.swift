@@ -59,11 +59,14 @@ public final class Subscription {
         /// Ask to Buy, or a payment to sort out: it comes later, still the buyer's.
         case pending
         case cancelled
-        case failed
+        /// The store's sheet came to nothing, for the reason StoreKit gave.
+        case failed(StoreFailure)
         /// Bought, but RevenueCat hasn't taken it yet: tried again at the next foreground.
         case unconfirmed
-        /// Nothing on sale, or a store sheet is already open.
+        /// Nothing on sale.
         case unavailable
+        /// A store sheet this one opened is still open or coming: nothing more is opened.
+        case inProgress
     }
 
     public enum RestoreResult: Equatable, Sendable {
@@ -94,7 +97,9 @@ public final class Subscription {
     private var monthly: StoreProduct?
     /// Whether the store holds a purchase RevenueCat hasn't taken yet; nothing is sold meanwhile.
     public private(set) var unconfirmed = false
-    private var purchasing = false
+    /// Whether a Subscribe is under way, from the tap until the store and
+    /// RevenueCat have answered; observers are told when it starts and ends.
+    public private(set) var purchasing = false
     private var listening: Task<Void, Never>?
     private var observers: [UUID: @MainActor () -> Void] = [:]
     public private(set) var problem: Problem?
@@ -181,13 +186,18 @@ public final class Subscription {
     /// The store's sheet for the monthly subscription, for the customer it
     /// opens for: what comes of it is that customer's.
     public func buy() async -> PurchaseResult {
-        guard let store, !purchasing, case .onSale = offer, let product = monthly, let token = Self.token(customer) else { return .unavailable }
+        guard !purchasing else { return .inProgress }
+        guard let store, case .onSale = offer, let product = monthly, let token = Self.token(customer) else { return .unavailable }
         purchasing = true
-        defer { purchasing = false }
+        notify()
+        defer {
+            purchasing = false
+            notify()
+        }
         switch await store.purchase(product.id, token: token) {
         case .purchased(let transaction):
             return await work.run {
-                guard let owner = self.owner(of: transaction) else { return .failed }
+                guard let owner = self.owner(of: transaction) else { return .failed(.unknown) }
                 let posted = await self.post(transaction, for: owner, restore: false, source: .purchase, asked: self.generation)
                 if !posted { self.unconfirmed = true }
                 self.notify()
@@ -195,7 +205,7 @@ public final class Subscription {
             }
         case .pending: return .pending
         case .cancelled: return .cancelled
-        case .failed: return .failed
+        case .failed(let failure): return .failed(failure)
         }
     }
 

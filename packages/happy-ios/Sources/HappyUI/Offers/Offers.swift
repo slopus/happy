@@ -148,7 +148,7 @@ public final class Offers {
         case .pending: Alerts.show(Strings.Offer.pendingTitle, Strings.Offer.pendingMessage, on: controller)
         case .failed: Alerts.show(Strings.Offer.failedTitle, Strings.Offer.failedMessage, on: controller)
         case .unconfirmed: Alerts.show(Strings.Offer.unconfirmedTitle, Strings.Offer.unconfirmedMessage, on: controller)
-        case .purchased, .cancelled, .unavailable: break
+        case .purchased, .cancelled, .unavailable, .inProgress: break
         }
     }
 
@@ -174,6 +174,9 @@ public final class Offers {
 
     /// Whether the store holds a purchase RevenueCat hasn't confirmed yet.
     var unconfirmed: Bool { subscription.unconfirmed }
+
+    /// Whether a Subscribe is under way: its store sheet open or coming.
+    var purchasing: Bool { subscription.purchasing }
 
     /// Told when what the subscription says changes, until the token goes.
     func observe(_ handler: @escaping @MainActor () -> Void) -> SubscriptionObservation {

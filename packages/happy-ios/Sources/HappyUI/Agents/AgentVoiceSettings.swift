@@ -18,6 +18,8 @@ struct AgentVoiceStatus: Equatable {
     var offer: CallOffer
     /// Whether the build can restore at all (it has RevenueCat's key).
     var canRestore = false
+    /// A Subscribe is under way: its store sheet is open or coming.
+    var purchasing = false
 
     var subscribed: Bool { offer == .subscribed }
 
@@ -32,7 +34,8 @@ struct AgentVoiceStatus: Equatable {
         let time = now.timeIntervalSince1970
         let remaining = allowance.remaining(at: time)
         let freeAgain = remaining > 0 ? nil : allowance.freeAgain(after: time).flatMap { $0 > time ? Date(timeIntervalSince1970: $0) : nil }
-        return AgentVoiceStatus(remaining: remaining, freeAgain: freeAgain, offer: Offers.shared.offer, canRestore: Offers.shared.canRestore)
+        return AgentVoiceStatus(remaining: remaining, freeAgain: freeAgain, offer: Offers.shared.offer, canRestore: Offers.shared.canRestore,
+                                purchasing: Offers.shared.purchasing)
     }
 
     #if DEBUG
@@ -117,7 +120,11 @@ final class AgentVoiceViewController: SettingsPageViewController {
         if status.subscribed { return [allowance.withFooter(Text.about), [Row(id: "voice-thanks", title: Strings.SupportUs.thankYou, icon: ("heart", .red), accessory: .none)]] }
         let subscribe: Row
         let footer: String
-        if let price = status.offer.price {
+        if let price = status.offer.price, status.purchasing {
+            // The store's sheet takes a moment to come: a second tap opens nothing.
+            subscribe = Row(id: "voice-subscribe", title: Text.subscribe, icon: ("heart", .red), value: Text.perMonth(price), accessory: .none, dimmed: true, hint: Text.buyingHint)
+            footer = Strings.Offer.voiceFooter
+        } else if let price = status.offer.price {
             subscribe = Row(id: "voice-subscribe", title: Text.subscribe, icon: ("heart", .red), value: Text.perMonth(price), action: { [weak self] in self?.buy() })
             footer = if case .preview = status.offer { Text.previewFooter } else { Strings.Offer.voiceFooter }
         } else {

@@ -246,6 +246,25 @@ final class HostedOfferSheetsTests: XCTestCase {
         XCTAssertNil(page.presentedViewController, "buying said something")
     }
 
+    /// While the store's sheet is coming, the Voice page's Subscribe is
+    /// greyed out and takes no second tap; it was a plain row that bought
+    /// again, sent as `store_unavailable`.
+    func testVoicePageTakesNoSecondSubscribeWhileBuying() async throws {
+        let offers = try await hostedOffers("onsale", for: self)
+        let page = AgentVoiceViewController()
+        let (_, window) = try await host(page)
+        page.tapRow("voice-subscribe")
+        try await until { page.shownRow("voice-subscribe")?.dimmed == true }
+        XCTAssertNil(page.shownRow("voice-subscribe")?.action)
+        XCTAssertEqual(page.shownRow("voice-subscribe")?.value, "$19.99/month")
+        XCTAssertTrue(offers.purchasing)
+        try await Task.sleep(for: .milliseconds(150))
+        capture(window, "voice-page-buying")
+        try await until { offers.offer == .subscribed }
+        XCTAssertFalse(offers.purchasing)
+        try await until { page.shownRow("voice-plan")?.value == Strings.Offer.subscribed }
+    }
+
     /// Ask to Buy: Subscribe says it waits for approval, and nothing is granted.
     func testPendingPurchaseSaysSo() async throws {
         let offers = try await hostedOffers("pending", for: self)

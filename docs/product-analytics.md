@@ -101,6 +101,12 @@ Errors and results:
   (`unreachable`), or keeping the credentials (`storage_failed`).
 - `voice_session_error`: voice failed to start or dropped.
 - `paywall_error`: a purchase or restore failed, or a restore found nothing.
+  On iOS `store_unavailable` means nothing was on sale, or the store no
+  longer sells the product; a Subscribe tapped while one is already under
+  way is `purchase_in_progress` (iOS 2026.11.1 sent those as
+  `store_unavailable`). A store refusal is told by StoreKit's reason
+  (`network`, `not_allowed`, `payment_invalid`), and only an unrecognised
+  one is `unknown`.
 
 Usage:
 
