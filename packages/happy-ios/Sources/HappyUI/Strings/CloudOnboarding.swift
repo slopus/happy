@@ -11,12 +11,12 @@ extension Strings {
         static let couldntCheck = "Couldn’t reach the server. Try again."
 
         static let photoTitle = "Add a photo"
-        static let photoBody = "Your team and agents see it next to your name."
+        static let photoBody = "People and agents on the server see it next to your name."
         static let choosePhoto = "Choose Photo"
         static let photoFailed = "Your photo didn’t upload. Try again."
 
         static let botTitle = "Name your admin bot"
-        static let botBody = "This is your server’s admin bot. It can change the server’s settings, connect tools and create other bots, so it can adapt Happy and build a system around how your team works."
+        static let botBody = "This is your server’s admin bot. It can change the server’s settings, connect tools and create other bots, so it can adapt Happy and build a system around how you work."
         static let botNamePlaceholder = "Its name"
         static let botNameFailed = "Couldn’t save the name. Try again."
 
@@ -24,11 +24,11 @@ extension Strings {
         static let inferenceBody = "Your agents think with a model you connect: ChatGPT, Claude, Grok, or your own endpoint."
         static let inferenceFree = "Until then, they use Happy’s free model."
         static let connectProvider = "Connect a Provider"
-        static let inferenceNotAllowed = "Your role can’t connect providers. Ask your admin."
+        static let inferenceNotAllowed = "You can’t connect providers here. Ask someone who manages this server."
 
         static let pluginsTitle = "Connect your tools"
         static func pluginsBody(needed: [String]) -> String {
-            let lead = "Plugins let your agents work in the services your team uses."
+            let lead = "Plugins let your agents work in the services you use."
             return needed.isEmpty
                 ? "\(lead) Set one up now, or later from Plugins."
                 : "\(lead) \(ListFormatter.localizedString(byJoining: needed)) \(needed.count == 1 ? "has" : "have") to be connected first."
@@ -39,7 +39,7 @@ extension Strings {
         static let pluginsFailed = "Couldn’t read the plugins."
         static let tryAgain = "Try Again"
 
-        static let teammatesTitle = "Invite your team"
+        static let teammatesTitle = "Invite people"
         static func teammatesBody(_ handle: String) -> String {
             "Happy works best together. Invite people by email, and they’ll get a link to join \(handle)."
         }
@@ -58,7 +58,7 @@ extension Strings {
         static let inviteFailed = "Couldn’t send the invite. Try again."
 
         static let notificationsTitle = "Turn on notifications"
-        static let notificationsBody = "Know when an agent finishes, needs an answer, or a teammate mentions you, wherever you are."
+        static let notificationsBody = "Know when an agent finishes, needs an answer, or someone mentions you, wherever you are."
         static let turnOnNotifications = "Turn On Notifications"
         static let notificationsOff = "Notifications are off for Happy. Turn them on in Settings, then come back."
         static let openSettings = "Open Settings"
@@ -69,7 +69,7 @@ extension Strings {
         static let updateBody = "This server asks for a step this version of Happy doesn’t know yet."
         static let updateAction = "Open the App Store"
 
-        static let waitingTitle = "Waiting for your admin"
+        static let waitingTitle = "Waiting for setup"
         /// `owners`' names where the server sends them: one or two by name,
         /// more as the owners.
         static func waitingBody(_ steps: [String], owners: [String] = []) -> String {
@@ -104,7 +104,7 @@ extension Strings {
             case .adminBot: "Naming the admin bot"
             case .inference: "Connecting a model provider"
             case .plugins: "Connecting plugins"
-            case .teammates: "Inviting teammates"
+            case .teammates: "Inviting people"
             case .mobileApp: "Installing the mobile app"
             case .paymentMethod: "Adding a payment method"
             case .payment: "Paying for this server"

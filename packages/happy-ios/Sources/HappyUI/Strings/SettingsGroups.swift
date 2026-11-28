@@ -5,6 +5,6 @@ import Foundation
 extension Strings {
     enum SettingsGroups {
         static let agents = "Agents"
-        static let team = "Team"
+        static let team = "Server"
     }
 }

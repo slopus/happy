@@ -55,7 +55,7 @@ extension Strings {
     }
     public static let forbidden = "You don’t have permission to do that."
     /// In the composer's place where the person's role can't write.
-    public static let readOnlyConversation = "You can read this conversation, but your role can’t send messages."
+    public static let readOnlyConversation = "You can read this conversation, but you don’t have permission to send messages."
     /// A Happy Cloud server's refusals to take a bot away
     /// (`409 system_bot_protected`, `409 last_admin_bot`), plainly; nil
     /// for any other error.

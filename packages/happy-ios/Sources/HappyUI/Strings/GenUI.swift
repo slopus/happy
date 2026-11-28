@@ -111,8 +111,8 @@ extension Strings {
         static var nameProblem: String { localized("native.genuiClusterSecret.nameProblem", "Give the secret a name of at most 100 characters, without spaces around it.") }
         static var owner: String { localized("native.genuiClusterSecret.owner", "Owner") }
         static var me: String { localized("native.genuiClusterSecret.me", "Me") }
-        static var team: String { localized("native.genuiClusterSecret.team", "Team") }
-        static var ownerNote: String { localized("native.genuiClusterSecret.ownerNote", "A team secret can be granted to the team’s agents; yours only to your own.") }
+        static var team: String { localized("native.genuiClusterSecret.team", "Server") }
+        static var ownerNote: String { localized("native.genuiClusterSecret.ownerNote", "A server secret can be granted to the server’s agents; yours only to your own.") }
         static var uses: String { localized("native.genuiClusterSecret.uses", "Used for") }
         static func use(_ use: String) -> String {
             switch use {

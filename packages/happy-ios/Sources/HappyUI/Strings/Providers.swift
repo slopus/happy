@@ -7,7 +7,7 @@ extension Strings {
     enum Providers {
         static let title = "Inference"
         static let included = "Included"
-        static let team = "Team"
+        static let team = "Server"
         static let mine = "My account"
         static let empty = "Nothing added yet"
         static let off = "Off"

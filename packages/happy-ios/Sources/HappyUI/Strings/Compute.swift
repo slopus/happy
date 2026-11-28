@@ -18,7 +18,7 @@ extension Strings {
         static var title: String { word("title", "Compute") }
         static var loading: String { word("loading", "Loading…") }
         static var unknown: String { word("unknown", "Unknown") }
-        static var denied: String { word("denied", "Your role can’t use compute on this server.") }
+        static var denied: String { word("denied", "You can’t use compute on this server.") }
         static var missing: String { word("missing", "This computer is no longer listed.") }
         static var failed: String { word("failed", "Couldn’t refresh. Tap to retry.") }
         static var stale: String { word("stale", "Showing the last reading.") }
@@ -29,7 +29,7 @@ extension Strings {
             switch role {
             case .manage: word("computersNoteManage", "Agents choose a computer and join it. Any member’s agents can use a shared computer; only its owner’s can use a private one.")
             case .use: word("computersNoteUse", "Agents choose a computer and join it. You can add a private computer of your own.")
-            case .none: word("computersNoteNone", "Agents choose a computer and join it. Your role can see them but not add one.")
+            case .none: word("computersNoteNone", "Agents choose a computer and join it. You can see them but not add one.")
             }
         }
         static var addComputer: String { word("addComputer", "Add Computer") }
@@ -59,7 +59,7 @@ extension Strings {
         }
         static func accessDescription(_ access: ComputeAccess) -> String {
             switch access {
-            case .shared: word("sharedDescription", "For your team. Any member’s agents can work on it.")
+            case .shared: word("sharedDescription", "For the whole server. Any member’s agents can work on it.")
             case .private: word("privateDescription", "Just for you. Only your agents can join, and you approve each one.")
             }
         }
@@ -98,12 +98,12 @@ extension Strings {
         // Adding a computer.
         static var create: String { word("create", "Create") }
         static var accessNeedsAdmin: String { word("accessNeedsAdmin", "Admin only") }
-        static var accessLockedHint: String { word("accessLockedHint", "Adding a shared computer needs admin permission.") }
+        static var accessLockedHint: String { word("accessLockedHint", "Adding a shared computer needs permission to manage computers.") }
         static var noInstall: String { word("noInstall", "No install command") }
         static var installTitle: String { word("installTitle", "Install") }
         static func installNote(_ access: ComputeAccess) -> String {
             switch access {
-            case .shared: word("installShared", "Run this on the computer your team’s agents will use. It installs the Happy supervisor and joins the computer as a shared one.")
+            case .shared: word("installShared", "Run this on the computer the server’s agents will use. It installs the Happy supervisor and joins the computer as a shared one.")
             case .private: word("installPrivate", "Run this on your own computer, signed in as yourself. It installs the Happy supervisor and joins the computer as yours.")
             }
         }

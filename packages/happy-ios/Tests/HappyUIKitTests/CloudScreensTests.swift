@@ -143,7 +143,7 @@ final class CloudScreensTests: XCTestCase {
         // The server's suggestion, then Back: nothing saved, and why.
         var (screen, profile, navigation) = try await connect(apple: nil)
         XCTAssertEqual(profile.titleLabel.string, "Create your profile")
-        XCTAssertEqual(profile.bodyLabel.string, "This is how your team and agents see you on @acme.")
+        XCTAssertEqual(profile.bodyLabel.string, "This is how people and agents on @acme see you.")
         XCTAssertEqual(profile.nameField.text.text, "Steve K")
         XCTAssertEqual(profile.photoButton.title(for: .normal), "Add photo")
         XCTAssertEqual(profile.seed, "acme", "the server's identity picks the placeholder, never a name")
@@ -667,7 +667,7 @@ final class CloudScreensTests: XCTestCase {
         create.loadViewIfNeeded()
         XCTAssertEqual(navigation.viewControllers.count, 2)
         XCTAssertEqual(create.titleLabel.string, "Bootstrap a server")
-        XCTAssertEqual(create.bodyLabel.string, "Your account has no servers yet. Name your team’s first one.")
+        XCTAssertEqual(create.bodyLabel.string, "Your account has no servers yet. Name your first one.")
         XCTAssertFalse(create.primary.isEnabled, "Bootstrap waits for a free name")
         XCTAssertTrue(create.signsOutOnBack)
         navigation.popViewController(animated: false)

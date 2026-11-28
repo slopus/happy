@@ -25,12 +25,12 @@ extension Strings {
         static let signedOutBody = "Sign in again to see this server’s chats and files. Nothing of it is kept on this phone until you do."
         static let signIn = "Sign In"
         static let nameTitle = "What’s your name?"
-        static let nameMessage = "This is the first time you’re signing in to this server. Your name shows to your team."
+        static let nameMessage = "This is the first time you’re signing in to this server. Your name shows to everyone on it."
         static let namePlaceholder = "Name"
         static let nameLater = "Not Now"
         static let nameNeeded = "This server needs your name before you can use it."
         static let cloudAction = "Connect to Happy Cloud"
-        static let cloudMessage = "Sign in or create an account to add a cloud team. Agents run in the cloud; no computer needed."
+        static let cloudMessage = "Sign in or create an account to add a cloud server. Agents run in the cloud; no computer needed."
 
         static func failure(_ error: any Error) -> String {
             switch error {

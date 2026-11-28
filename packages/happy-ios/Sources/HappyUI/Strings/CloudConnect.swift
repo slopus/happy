@@ -37,8 +37,8 @@ extension Strings {
         static let bootstrapNew = "Bootstrap a new one"
 
         static let createTitle = "Bootstrap a server"
-        static let createMessage = "Name your team’s new server. You can change it later."
-        static let createFirstMessage = "Your account has no servers yet. Name your team’s first one."
+        static let createMessage = "Name your new server. You can change it later."
+        static let createFirstMessage = "Your account has no servers yet. Name your first one."
         static let createAction = "Bootstrap"
         static let namePlaceholder = "acme"
         static let checking = "Checking…"
@@ -93,7 +93,7 @@ extension Strings {
         /// Create your profile, as agreed with desktop: a member's name and
         /// picture before their first server opens.
         static let profileTitle = "Create your profile"
-        static func profileMessage(_ handle: String) -> String { "This is how your team and agents see you on \(handle)." }
+        static func profileMessage(_ handle: String) -> String { "This is how people and agents on \(handle) see you." }
         static let addPhoto = "Add photo"
         static let changePhoto = "Change photo"
         static let profileNamePlaceholder = "Your name"

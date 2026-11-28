@@ -24,13 +24,13 @@ extension Strings {
         static let notInstalledValue = "Not installed"
         /// Happy's own features, on the Plugins page.
         static let features = "Features"
-        static let featuresHint = "Each one is yours: installing or uninstalling it changes it for you in every team you’re in, and for no one else."
+        static let featuresHint = "Each one is yours: installing or uninstalling it changes it for you on every server you’re on, and for no one else."
         static let uninstall = "Uninstall"
         static func uninstallTitle(_ name: String) -> String { "Uninstall \(name)?" }
         static func uninstallKeeps(_ name: String) -> String {
-            "\(name) will be hidden for you in every team you’re in. Nothing is deleted: your team keeps everything made with it, and installing it again brings it all back."
+            "\(name) will be hidden for you on every server you’re on. Nothing is deleted: each server keeps everything made with it, and installing it again brings it all back."
         }
-        static func installBrings(_ name: String) -> String { "Installing \(name) brings it back for you in every team you’re in, with everything as it was." }
+        static func installBrings(_ name: String) -> String { "Installing \(name) brings it back for you on every server you’re on, with everything as it was." }
         static let uninstallFailed = "Couldn’t uninstall the plugin"
         static let status = "Status"
         static func version(_ version: String) -> String { "Version \(version)" }

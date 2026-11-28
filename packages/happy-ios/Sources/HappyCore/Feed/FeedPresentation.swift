@@ -98,7 +98,7 @@ public struct FeedWords: Equatable, Sendable {
     public var you: String { word("you", "You") }
     /// The places that are no one thing: everything, and the team.
     public var everything: String { word("everything", "Everything") }
-    public var team: String { word("team", "Team") }
+    public var team: String { word("team", "Server") }
     public var muted: String { word("muted", "Muted") }
     /// The feed's filter: everything, or its artifacts and tasks.
     public var filter: String { word("filter", "Filter") }

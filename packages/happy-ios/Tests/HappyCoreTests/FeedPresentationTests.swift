@@ -32,7 +32,7 @@ final class FeedPresentationTests: XCTestCase {
     func testEnglishIsTheCatalogsEnglish() {
         let written = Self.sayings(.english)
         XCTAssertEqual(written, Self.sayings(FeedWords(reading: .english)))
-        XCTAssertEqual(written[17...18], ["Everything", "Team"])
+        XCTAssertEqual(written[17...18], ["Everything", "Server"])
         XCTAssertEqual(written[23...27], ["Created", "Created · 2 new versions", "1 new todo", "3 edits", "Changed"])
         XCTAssertEqual(written[28...30], ["Ann", "Ann and Bo", "Ann and 3 others"])
         XCTAssertEqual(written[31...32], ["Muted", "Mute Research"])
