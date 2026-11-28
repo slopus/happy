@@ -11,8 +11,9 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * Settings' Happy Cloud switch: whether the app offers Happy Cloud's ways in
  * (the first screen's Use Happy Cloud, the account menu's Connect to Happy
- * Cloud, its invite links). This phone's own, never an account's or a
- * server's; a logout doesn't reset it.
+ * Cloud, claiming its invite links). It only hides them: a Cloud flow
+ * reached anyway opens and works, and signing out stays. This phone's own,
+ * never an account's or a server's; a logout doesn't reset it.
  *
  * An override over [default], the build's ([com.slopus.happy.connection.HappyCloud.offeredByDefault]):
  * nothing is kept until the switch is turned, so a person who never turns

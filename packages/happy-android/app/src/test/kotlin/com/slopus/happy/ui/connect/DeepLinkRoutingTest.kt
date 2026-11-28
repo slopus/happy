@@ -20,6 +20,9 @@ import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.HappyLink
 import com.slopus.happy.agent.HappyReferenceKind
 import com.slopus.happy.connection.AgentConnection
+import com.slopus.happy.connection.CloudInvite
+import com.slopus.happy.ui.connection.CloudInviteRoute
+import com.slopus.happy.ui.connection.CloudInvites
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.artifacts.ArtifactRoute
 import com.slopus.happy.ui.components.HappyDropdownMenu
@@ -109,6 +112,36 @@ class DeepLinkRoutingTest {
         DeepLinks.offer(parseDeepLink("happy://server")!!)
         assertAt<ServerRoute>()
         assertNull(DeepLinks.pending.value)
+    }
+
+    /**
+     * Settings' Happy Cloud switch only stops the app claiming invite links (no
+     * [com.slopus.happy.ui.connection.LocalCloudConnect] here: it is off): one that
+     * reaches the app anyway opens on its invite, signed out too. Only a build
+     * without Happy Cloud drops it.
+     */
+    @Test
+    fun aCloudInviteThatReachesTheAppOpensWithTheSwitchOff() {
+        var cloudInvites by mutableStateOf(false)
+        rule.setContent {
+            nav = rememberNavController()
+            NavHost(nav, startDestination = StartRoute) {
+                composable<StartRoute> { Text("start") }
+                composable<CloudInviteRoute> { Text("invite") }
+            }
+            DeepLinkEffect(nav, signedIn = false, cloudInvites = cloudInvites)
+        }
+        val invite = CloudInvite("AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcde")
+        DeepLinks.offer(DeepLink.CloudServerInvite(invite))
+        assertAt<StartRoute>()
+        assertNull(DeepLinks.pending.value)
+        assertNull(CloudInvites.take())
+
+        cloudInvites = true
+        DeepLinks.offer(DeepLink.CloudServerInvite(invite))
+        assertAt<CloudInviteRoute>()
+        assertNull(DeepLinks.pending.value)
+        assertEquals(invite, CloudInvites.take())
     }
 
     @Test

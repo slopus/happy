@@ -65,9 +65,11 @@ public enum HappyCloud {
                     refreshUrl: api + "/token", clientId: "happy", scope: "happy", resource: server + "/")
     }
 
-    /// Settings' Happy Cloud switch: whether the app offers Happy Cloud's
-    /// ways in (Start's Use Happy Cloud, the account menu's, its invite
-    /// links). This phone's own, never an account's or a server's. An
+    /// Settings' Happy Cloud switch: whether the app shows Happy Cloud's
+    /// ways in (Start's Use Happy Cloud, the account menu's Connect). It
+    /// only hides them: a Cloud flow reached anyway (a server's Sign In, an
+    /// invite link, a settings link) opens and works, and signing out stays.
+    /// This phone's own, never an account's or a server's. An
     /// override over the build's default (`isOfferedByDefault`), kept only
     /// once the switch is turned, so a phone that never turns it follows
     /// each build's default. Servers already on the phone keep working

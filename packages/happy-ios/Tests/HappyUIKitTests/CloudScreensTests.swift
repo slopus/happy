@@ -375,16 +375,23 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertNotNil(signIn.flatMap { Self.find("cloud-test-sign-in", in: $0.view) })
     }
 
-    func testAProductionBuildHasNoTestSignIn() {
+    /// The switch only hides Happy Cloud's ways in: a welcome reached with
+    /// it off (a test account's server signing in again) still has the
+    /// test sign-in.
+    func testTheTestSignInIsThereWithHappyCloudOff() async {
+        let defaults = UserDefaults.standard
+        let kept = defaults.object(forKey: "happy-cloud")
+        defer { defaults.set(kept, forKey: "happy-cloud") }
+        HappyCloud.setOffered(false)
         let screen = CloudWelcomeViewController(context: context(.production))
         let navigation = UINavigationController(rootViewController: screen)
         show(navigation)
-        XCTAssertNil(screen.gallery.onArtTap)
+        XCTAssertNotNil(screen.gallery.onArtTap)
         Self.tap(screen, 10, every: 0.1, from: Date())
-        XCTAssertEqual(navigation.viewControllers.count, 1)
-        let signIn = CloudTestSignInViewController(context: context(.production))
-        signIn.loadViewIfNeeded()
-        XCTAssertNil(signIn.testSignIn)
+        await settle { navigation.topViewController is CloudTestSignInViewController }
+        let signIn = navigation.topViewController as? CloudTestSignInViewController
+        signIn?.loadViewIfNeeded()
+        XCTAssertNotNil(signIn?.testSignIn)
     }
 
     func testATestAccountSignsInWithItsPasswordAndSaysWhyNot() async throws {

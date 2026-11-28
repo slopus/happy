@@ -7,7 +7,8 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:app.happy.engineering</string>
-		<string>applinks:join.happy.engineering</string>
+		<!-- applinks:join.happy.engineering (Happy Cloud's invite links) comes back when Happy Cloud
+		     ships; until then the App Store app leaves them to the browser. Development and preview keep it. -->
 		<string>applinks:link.happy.page</string>
 	</array>
 </dict>

@@ -1384,7 +1384,14 @@ change its wire behaviour on Android alone.
   it off (`settings_developer_mode_footer`).
   Its invite links' intent filters sit on the main manifest's disabled
   `HappyCloudLinks` alias, which the switch enables; servers already added
-  keep working either way.
+  keep working either way. The switch only hides the ways in (Kirill): a
+  Cloud flow reached anyway works with it off. An invite link that reaches
+  the app opens on its invite (`DeepLinkEffect`'s `cloudInvites` is
+  whether the build has Happy Cloud), a `servers` settings link opens
+  Happy Cloud, and signing in again on a cloud server works as ever. While
+  the + is left out and the account is signed in, the account menu's last
+  row is "Sign out of Happy Cloud" instead (`LocalCloudSignOut`): the way
+  out stays.
   The account menu's last row, a + reading "Connect to Happy Cloud" (with no
   account yet, the first screen's "Use Happy Cloud"), opens a full-screen
   welcome (no dialog), desktop's (CloudConnectScreen.tsx at dca9b205): its

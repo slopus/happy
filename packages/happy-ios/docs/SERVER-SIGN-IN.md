@@ -104,7 +104,13 @@ split contract (v1, frozen 2026-11-15).
   in development and preview, off in production), kept in UserDefaults
   `happy-cloud` only once the switch is turned, so a phone that never turns
   it follows each build's default. While off, none of these entries show,
-  no invite link opens, and `connectToCloud` does nothing. The switch is a
+  and that is all it does (Kirill): it hides the ways in, never protects.
+  A Cloud flow reached anyway opens and works: a signed-out cloud server's
+  Sign In, an invite link that reaches the app, a `servers` settings link,
+  and the welcome's test account. "Sign Out of Happy Cloud" stays in the
+  account menu while the account is signed in. The App Store app's
+  entitlements leave out `applinks:join.happy.engineering` until Happy
+  Cloud ships, so its invite links open the browser. The switch is a
   card above Privacy in Settings, in developer mode only (ten taps on
   Version), and nowhere else: outside developer mode no card, footer or
   search result (home's search included), never on Start or in onboarding.
@@ -186,8 +192,9 @@ split contract (v1, frozen 2026-11-15).
     otherwise. `POST /v2/auth/password` with `{ login, password }` answers
     the same identity token; 401 `invalid_credentials` and 429 `locked`
     (`retryAfter` seconds) are said under it. The password is only in its
-    secure field and that request, cleared once signed in. Development and
-    preview builds only, as Happy Cloud is. Operators make these accounts;
+    secure field and that request, cleared once signed in. Wherever the
+    welcome shows, the switch off too, so a test account's server signs in
+    again with it. Operators make these accounts;
     see the cloud's TESTAUTH.md.
   - The session (`CloudAccount`) is an access token for the API, an hour,
     and a refresh token, 30 days, held in memory only and never stored. Its
