@@ -243,6 +243,38 @@ class SessionListTest {
         assertEquals("plan9", formatOSPlatform("plan9"))
     }
 
+    /** A name the person set (metadata.userTitle) wins over the agent's and the bot's; a blank one is no name. */
+    @Test
+    fun aPersonsOwnNameOutranksTheAgentsTitle() {
+        val summary = metadata("/repo") {
+            put("userTitle", "My chat")
+            putJsonObject("summary") {
+                put("text", "Agent title")
+                put("updatedAt", 2)
+            }
+        }
+        assertEquals("My chat", session("s1", summary).displayName())
+        val bot = rigMetadata {
+            put("userTitle", "My bot chat")
+            putJsonObject("bot") {
+                put("id", "bot-1")
+                put("name", "Helper")
+                put("username", "helper")
+                put("workspaceId", "workspace-1")
+                put("orderKey", "a")
+            }
+        }
+        assertEquals("My bot chat", session("s2", bot).displayName())
+        val blank = metadata("/repo") {
+            put("userTitle", "   ")
+            putJsonObject("summary") {
+                put("text", "Agent title")
+                put("updatedAt", 2)
+            }
+        }
+        assertEquals("Agent title", session("s3", blank).displayName())
+    }
+
     // storage.ts buildSessionListViewData
 
     private val zone: ZoneId = ZoneOffset.UTC

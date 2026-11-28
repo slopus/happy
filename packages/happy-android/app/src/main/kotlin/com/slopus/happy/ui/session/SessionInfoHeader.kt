@@ -33,7 +33,7 @@ import com.slopus.happy.ui.layout.contentMaxWidth
  * Avatar decoding stays in Avatar's background image pipeline.
  */
 @Composable
-internal fun SessionInfoHeader(session: Session, avatar: ProjectAvatar?) {
+internal fun SessionInfoHeader(session: Session, avatar: ProjectAvatar?, onRename: (() -> Unit)? = null) {
     val spec = ProfileHeaderSpec
     val status = rememberComposerStatus(session.state, session.activeAt).text
     val kind = when {
@@ -42,7 +42,12 @@ internal fun SessionInfoHeader(session: Session, avatar: ProjectAvatar?) {
         else -> null
     }
     Column(Modifier.contentMaxWidth(LocalWindowLayout.current)) {
-        ProfileHeader(session.displayName() ?: stringResource(R.string.session_new_chat), listOfNotNull(kind, status).joinToString(" · ")) {
+        ProfileHeader(
+            session.displayName() ?: stringResource(R.string.session_new_chat),
+            listOfNotNull(kind, status).joinToString(" · "),
+            onNameClick = onRename,
+            nameActionLabel = stringResource(R.string.session_info_rename_title),
+        ) {
             Avatar(
                 id = session.avatarId(),
                 size = spec.mark,

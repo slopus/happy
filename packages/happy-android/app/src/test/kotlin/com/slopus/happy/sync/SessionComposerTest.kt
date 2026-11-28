@@ -26,6 +26,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -160,6 +161,63 @@ class SessionComposerTest {
     @Test
     fun theFixtureParses() {
         assertNotNull(SessionMetadata.parse(metadata("draft" to draft("x"), stamp(1))))
+    }
+
+    // A person's own name for the chat: metadata `userTitle` and `summary`.
+
+    private fun relayMetadata(vararg extra: Pair<String, JsonElement>) = JsonObject(buildJsonObject {
+        put("path", "/repo")
+        put("host", "mac")
+        putJsonObject("summary") {
+            put("text", "Agent title")
+            put("updatedAt", 5)
+        }
+    } + extra)
+
+    @Test
+    fun aPersonsNameGoesIntoUserTitleAndSummaryAndKeepsTheRest() = test {
+        apply("s", relayMetadata())
+        baseTime = 1_234
+        assertEquals("Mine", composer.setUserTitle("s", "  Mine  "))
+        val write = writes.single()
+        assertEquals(1L, write.expectedVersion)
+        assertEquals("Mine", write.metadata["userTitle"]!!.jsonPrimitive.content)
+        val summary = write.metadata["summary"]!!.jsonObject
+        assertEquals("Mine", summary["text"]!!.jsonPrimitive.content)
+        assertEquals(1_234L, summary["updatedAt"]!!.jsonPrimitive.long)
+        assertEquals("mac", write.metadata["host"]!!.jsonPrimitive.content)
+        assertEquals(2L, store.session("s")!!.metadataVersion)
+    }
+
+    @Test
+    fun aRenameConflictMergesTheNewestMetadataAndRetriesOnce() = test {
+        apply("s", relayMetadata())
+        val latest = JsonObject(relayMetadata() + mapOf(
+            "name" to JsonPrimitive("renamed elsewhere"),
+            "userTitle" to JsonPrimitive("theirs"),
+        ))
+        answers += mismatch(7, "s", latest)
+        answers += { success(8) }
+        assertEquals("Mine", composer.setUserTitle("s", "Mine"))
+        settle()
+        assertEquals(2, writes.size)
+        assertEquals(7L, writes[1].expectedVersion)
+        assertEquals("renamed elsewhere", writes[1].metadata["name"]!!.jsonPrimitive.content)
+        assertEquals("Mine", writes[1].metadata["userTitle"]!!.jsonPrimitive.content)
+        assertEquals(8L, store.session("s")!!.metadataVersion)
+    }
+
+    @Test
+    fun aBlankNameIsRefusedBeforeAnythingIsSent() = test {
+        apply("s", relayMetadata())
+        var refused = false
+        try {
+            composer.setUserTitle("s", " \t ")
+        } catch (_: IllegalArgumentException) {
+            refused = true
+        }
+        assertTrue(refused)
+        assertTrue(writes.isEmpty())
     }
 
     // rigComposer.test.ts

@@ -213,6 +213,21 @@ class SessionComposer(
         schedule(sessionId, 0)
     }
 
+    /**
+     * A name the person gave the chat. It is written with `summary` (so
+     * clients that only know the agent's title see it too) and with the
+     * app's own `userTitle`, which outranks a later `change_title`. The
+     * newest metadata is merged on a version conflict, then written once
+     * more; a name that is blank is refused before anything is sent.
+     */
+    suspend fun setUserTitle(sessionId: String, title: String): String = withContext(dispatcher) {
+        load()
+        val name = title.trim()
+        require(name.isNotEmpty()) { "A chat's name can't be empty" }
+        pushUserTitle(sessionId, name)
+        name
+    }
+
     /** rigComposer.ts `rigComposerFlushAheadSessions`: on connect, write every draft stamped ahead of its metadata. */
     suspend fun flushAhead() = withContext(dispatcher) {
         load()
@@ -384,6 +399,29 @@ class SessionComposer(
         throw RpcException("Failed to update session metadata after $maxRetries retries due to version conflicts")
     }
 
+    /** One write, then one merge onto the server's newest metadata after a conflict. */
+    private suspend fun pushUserTitle(sessionId: String, title: String, maxRetries: Int = 2) {
+        val session = store.session(sessionId) ?: throw RpcException("Session $sessionId is not ready for metadata updates")
+        val cipher = decoder.cipher(session.wrappedDataKey) ?: throw RpcException("Session $sessionId is not ready for metadata updates")
+        var version = session.metadataVersion
+        var base = session.metadataJson?.let(::parseObject) ?: throw RpcException("Session $sessionId has no metadata")
+        val updatedAt = clock()
+        repeat(maxRetries) {
+            val document = base.withUserTitle(title, updatedAt)
+            val answer = updateMetadata(sessionId, cipher, document, version)
+            when (answer.string("result")) {
+                "success" -> return storeAcked(sessionId, document, answer, version)
+                "version-mismatch" -> {
+                    version = (answer["version"] as? JsonPrimitive)?.longOrNull ?: throw RpcException("Failed to update session metadata")
+                    base = answer.string("metadata")?.let { cipher.decryptFromBase64(it) } as? JsonObject
+                        ?: throw RpcException("Failed to decrypt latest session metadata")
+                }
+                else -> throw RpcException("Failed to update session metadata")
+            }
+        }
+        throw RpcException("Failed to update the chat's name after $maxRetries attempts")
+    }
+
     // Happy Agent drafts (rigComposer.ts).
 
     private fun rigSetMode(sessionId: String, metadata: SessionMetadata?, patch: Map<AgentModeField, String?>) {
@@ -546,6 +584,17 @@ class SessionComposer(
 
         private fun JsonObject.withModes(patch: Map<AgentModeField, String?>) =
             JsonObject(this + patch.entries.associate { (field, value) -> field.key to JsonPrimitive(value) })
+
+        /** A person's name, as this app writes it: `userTitle` plus the `summary` older clients read. */
+        private fun JsonObject.withUserTitle(title: String, updatedAt: Long) = JsonObject(
+            this + mapOf(
+                "userTitle" to JsonPrimitive(title),
+                "summary" to buildJsonObject {
+                    put("text", title)
+                    put("updatedAt", updatedAt)
+                },
+            ),
+        )
 
         /** A metadata pick as ops.ts reads it: absent and null are both null. */
         private fun metadataMode(metadata: SessionMetadata?, field: AgentModeField): String? = when (field) {

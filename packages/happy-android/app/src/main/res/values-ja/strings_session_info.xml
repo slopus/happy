@@ -2,4 +2,8 @@
 <resources>
     <string name="session_info_branch">ブランチ</string>
     <string name="session_info_loading_delayed">セッションの詳細の読み込みに予想以上の時間がかかっています</string>
+    <string name="session_info_rename_title">チャット名を変更</string>
+    <string name="session_info_rename_message">このチャットに独自の名前を付けます。エージェントが新しい名前を提案しても保持されます。</string>
+    <string name="session_info_rename_placeholder">チャット名</string>
+    <string name="session_info_rename_failed">チャット名を変更できませんでした</string>
 </resources>

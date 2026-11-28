@@ -125,6 +125,9 @@ interface SessionInfoControls {
     /** A task's leave (`leaveTask`): out of this person's list. */
     suspend fun leave(session: Session): ArchiveResult = ArchiveResult.Archived
 
+    /** The person's own name for the chat (metadata `userTitle` and `summary`); throws when it could not be written. */
+    suspend fun rename(session: Session, title: String)
+
     /** sessionDelete, after a best-effort kill of a session still running. */
     suspend fun delete(session: Session): OpResult
 

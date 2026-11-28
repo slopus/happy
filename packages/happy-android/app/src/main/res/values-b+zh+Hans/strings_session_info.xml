@@ -2,4 +2,8 @@
 <resources>
     <string name="session_info_branch">分支</string>
     <string name="session_info_loading_delayed">加载会话详情所需的时间比预期长</string>
+    <string name="session_info_rename_title">重命名对话</string>
+    <string name="session_info_rename_message">为这个对话取一个自己的名字。即使智能体建议新名字，也会保留。</string>
+    <string name="session_info_rename_placeholder">对话名称</string>
+    <string name="session_info_rename_failed">无法重命名对话</string>
 </resources>

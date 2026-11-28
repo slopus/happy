@@ -2,8 +2,11 @@ package com.slopus.happy.ui.components
 
 import android.text.format.DateFormat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +49,7 @@ import java.util.Date
 object ProfileHeaderTags {
     const val AVATAR = "profile.avatar"
     const val NAME = "profile.name"
+    const val NAME_ACTION = "profile.name.action"
     const val SUBTITLE = "profile.subtitle"
     const val TILE = "profile.tile"
     const val PLACEHOLDER = "profile.placeholder"
@@ -63,15 +68,29 @@ object ProfileHeaderSpec {
     val tileRadius = 22.dp
     val tileInset = 16.dp
     val valueTop = 14.dp
+    /** The pencil after a name that can be edited, and its gap (iOS ProfileHeaderLayout). */
+    val pencil = 20.dp
+    val pencilGap = 6.dp
     val name = happyTextStyle(fontSize = 28, lineHeight = 34, weight = FontWeight.Medium)
     val subtitle = happyTextStyle(fontSize = 17, lineHeight = 22)
     val value = happyTextStyle(fontSize = 24, lineHeight = 30, weight = FontWeight.SemiBold)
     val label = happyTextStyle(fontSize = 13, lineHeight = 18)
 }
 
-/** An 88 dp avatar, centred name (28/34) and subtitle (17/22), with 12/14/2 dp gaps. */
+/**
+ * An 88 dp avatar, centred name (28/34) and subtitle (17/22), with 12/14/2 dp gaps.
+ * [onNameClick] makes the name a button and puts a 20 dp pencil 6 after it
+ * (iOS ProfileHeaderLayout's `renames`); [nameActionLabel] is the pencil's
+ * words for TalkBack.
+ */
 @Composable
-fun ProfileHeader(name: String?, subtitle: String, avatar: @Composable () -> Unit) {
+fun ProfileHeader(
+    name: String?,
+    subtitle: String,
+    onNameClick: (() -> Unit)? = null,
+    nameActionLabel: String? = null,
+    avatar: @Composable () -> Unit,
+) {
     val spec = ProfileHeaderSpec
     val colors = HappyTheme.colors
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -79,10 +98,17 @@ fun ProfileHeader(name: String?, subtitle: String, avatar: @Composable () -> Uni
         Box(Modifier.size(spec.mark).testTag(ProfileHeaderTags.AVATAR)) { avatar() }
         Spacer(Modifier.height(spec.nameGap))
         val nameLine = with(LocalDensity.current) { spec.name.lineHeight.toDp() }
-        Box(Modifier.padding(horizontal = spec.textSide).heightIn(min = nameLine).testTag(ProfileHeaderTags.NAME), contentAlignment = Alignment.Center) {
+        val edit = if (onNameClick != null) Modifier.clickable(role = Role.Button, onClick = onNameClick) else Modifier
+        Box(Modifier.padding(horizontal = spec.textSide).heightIn(min = nameLine).then(edit).testTag(ProfileHeaderTags.NAME), contentAlignment = Alignment.Center) {
             if (name != null) {
-                Text(name, style = spec.name, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center, modifier = Modifier.semantics { heading() })
+                Row(horizontalArrangement = Arrangement.spacedBy(spec.pencilGap), verticalAlignment = Alignment.CenterVertically) {
+                    Text(name, style = spec.name, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center, modifier = Modifier.weight(1f, fill = false).semantics { heading() })
+                    if (onNameClick != null) {
+                        Icon(Ionicon.Pencil, size = spec.pencil, color = colors.textSecondary,
+                            contentDescription = nameActionLabel, modifier = Modifier.testTag(ProfileHeaderTags.NAME_ACTION))
+                    }
+                }
             } else {
                 ProfilePlaceholder(Modifier.width(180.dp).height(26.dp))
             }

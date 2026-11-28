@@ -2,4 +2,8 @@
 <resources>
     <string name="session_info_branch">分支</string>
     <string name="session_info_loading_delayed">載入工作階段詳細資訊所需的時間比預期長</string>
+    <string name="session_info_rename_title">重新命名對話</string>
+    <string name="session_info_rename_message">為這個對話取一個自己的名稱。即使代理建議新名稱，也會保留。</string>
+    <string name="session_info_rename_placeholder">對話名稱</string>
+    <string name="session_info_rename_failed">無法重新命名對話</string>
 </resources>

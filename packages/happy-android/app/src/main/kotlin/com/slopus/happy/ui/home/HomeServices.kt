@@ -97,6 +97,10 @@ class HomeServices private constructor(private val graph: AppGraph) {
 
         override suspend fun leave(session: Session): ArchiveResult = archiver.leave(session)
 
+        override suspend fun rename(session: Session, title: String) {
+            account.value?.composer?.setUserTitle(session.id, title) ?: error("Not signed in")
+        }
+
         override suspend fun delete(session: Session): OpResult = archiver.delete(session)
 
         override suspend fun cleanupWorktree(session: Session, confirm: suspend () -> Boolean) = this@HomeServices.cleanupWorktree(session, confirm)
