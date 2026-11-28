@@ -9,7 +9,7 @@ import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
     prepare: vi.fn(), reserve: vi.fn(), releaseReservation: vi.fn(), claim: vi.fn(), release: vi.fn(), commit: vi.fn(),
-    prepareContext: vi.fn(), preview: vi.fn(), scope: vi.fn(), attachContext: vi.fn(), spawn: vi.fn(), spawnConversation: vi.fn(), cancelConversation: vi.fn(), online: vi.fn(), hydrate: vi.fn(),
+    prepareContext: vi.fn(), prepareRuntime: vi.fn(), preview: vi.fn(), scope: vi.fn(), attachContext: vi.fn(), spawn: vi.fn(), spawnConversation: vi.fn(), cancelConversation: vi.fn(), online: vi.fn(), hydrate: vi.fn(),
     sessions: {} as Record<string, any>,
     send: vi.fn(), project: vi.fn(), confirmDelivery: vi.fn(), navigate: vi.fn(), alert: vi.fn(),
 }));
@@ -28,7 +28,7 @@ vi.mock('@/sync/sessionStartupTrace', () => ({ traceStartup: vi.fn() }));
 vi.mock('@/sync/sessionStartupTraceRuntime', () => ({ sessionStartupTraceRuntime: {
     begin: vi.fn(() => 'trace'), bindSession: vi.fn(), cancel: vi.fn(),
 } }));
-vi.mock('@/sync/ops', () => ({ machineSpawnNewSession: mocks.spawn, machineSpawnConversationSession: mocks.spawnConversation, machineCancelConversationLaunch: mocks.cancelConversation }));
+vi.mock('@/sync/ops', () => ({ machineSpawnNewSession: mocks.spawn, machineSpawnConversationSession: mocks.spawnConversation, machineCancelConversationLaunch: mocks.cancelConversation, sessionPrepareConversation: mocks.prepareRuntime }));
 vi.mock('@/utils/machineUtils', () => ({ isMachineOnline: mocks.online }));
 vi.mock('@/sync/sync', () => ({ sync: {
     ensureSessionHydrated: mocks.hydrate, sendMessage: mocks.send,
@@ -79,11 +79,66 @@ beforeEach(() => {
     mocks.spawnConversation.mockResolvedValue({ type: 'success', sessionId: 'target' });
     mocks.hydrate.mockResolvedValue(true); mocks.send.mockResolvedValue({ type: 'queued', sessionId: 'target', localIds: ['prompt-1'] });
     mocks.project.mockResolvedValue(true); mocks.confirmDelivery.mockResolvedValue(undefined);
+    mocks.prepareRuntime.mockResolvedValue(undefined);
     vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('same-conversation handoff lifetimes', () => {
+    it('keeps the source draft and first prompt unsent until the registered target confirms native configuration', async () => {
+        const ready = deferred(); mocks.prepareRuntime.mockReturnValueOnce(ready.promise);
+        const cleanupDraft = vi.fn(); const hook = renderHook(); let operation!: Promise<boolean>;
+        await act(async () => { operation = hook.current().spawn(args, false, cleanupDraft); });
+        expect(mocks.spawnConversation).toHaveBeenCalledOnce();
+        expect(mocks.prepareRuntime).toHaveBeenCalledOnce();
+        expect(mocks.send).not.toHaveBeenCalled(); expect(mocks.commit).not.toHaveBeenCalled();
+        expect(cleanupDraft).not.toHaveBeenCalled();
+        await act(async () => { ready.resolve(); expect(await operation).toBe(true); });
+        expect(mocks.send).toHaveBeenCalledOnce(); expect(mocks.commit).toHaveBeenCalledOnce();
+        hook.unmount();
+    });
+    it('does not deliver or publish a registered worker whose startup or configuration acknowledgement fails', async () => {
+        mocks.prepareRuntime.mockRejectedValueOnce(new Error('Native runtime configuration was not acknowledged'));
+        const cleanupDraft = vi.fn(); const hook = renderHook();
+        await act(async () => { expect(await hook.current().spawn(args, false, cleanupDraft)).toBe(false); });
+        expect(mocks.send).not.toHaveBeenCalled(); expect(mocks.commit).not.toHaveBeenCalled();
+        expect(cleanupDraft).not.toHaveBeenCalled(); expect(hook.current().hydrationError).toEqual({ sessionId: 'target' });
+        await act(async () => { expect(await hook.current().retryHydration()).toBe(true); });
+        expect(mocks.spawnConversation).toHaveBeenCalledOnce(); expect(mocks.prepareRuntime).toHaveBeenCalledTimes(2);
+        expect(mocks.send).toHaveBeenCalledOnce(); hook.unmount();
+    });
+    it('releases an unsent claim when native readiness arrives after the composer unmounted', async () => {
+        const ready = deferred(); mocks.prepareRuntime.mockReturnValueOnce(ready.promise);
+        const cleanupDraft = vi.fn(); const hook = renderHook(); let operation!: Promise<boolean>;
+        await act(async () => { operation = hook.current().spawn(args, false, cleanupDraft); });
+        expect(mocks.prepareRuntime).toHaveBeenCalledOnce(); hook.unmount();
+        await act(async () => { ready.resolve(); expect(await operation).toBe(false); });
+        expect(mocks.release).toHaveBeenCalledWith(expect.objectContaining(record));
+        expect(mocks.send).not.toHaveBeenCalled(); expect(mocks.commit).not.toHaveBeenCalled();
+        expect(cleanupDraft).not.toHaveBeenCalled();
+    });
+    it('does not send when the prepared worker changes while source verification is pending', async () => {
+        let current = true;
+        mocks.prepareRuntime.mockResolvedValue(() => { if (!current) throw new Error('Prepared worker changed'); });
+        mocks.prepareContext.mockResolvedValue({ ...prepared, verifyCurrent: async () => { current = false; } });
+        const cleanupDraft = vi.fn(); const hook = renderHook();
+        await act(async () => { expect(await hook.current().spawn(args, false, cleanupDraft)).toBe(false); });
+        expect(mocks.send).not.toHaveBeenCalled(); expect(mocks.commit).not.toHaveBeenCalled();
+        expect(cleanupDraft).not.toHaveBeenCalled(); hook.unmount();
+    });
+    it('keeps checking the prepared worker at the atomic message enqueue boundary', async () => {
+        let current = true;
+        mocks.prepareRuntime.mockResolvedValue(() => { if (!current) throw new Error('Prepared worker changed'); });
+        mocks.send.mockImplementation(async (_id, _prompt, options) => {
+            current = false;
+            if (!options.isCurrent()) throw new Error('Outbox caller invalidated');
+            return { type: 'queued', sessionId: 'target', localIds: ['prompt-1'] };
+        });
+        const cleanupDraft = vi.fn(); const hook = renderHook();
+        await act(async () => { expect(await hook.current().spawn(args, false, cleanupDraft)).toBe(false); });
+        expect(mocks.release).toHaveBeenCalled(); expect(mocks.commit).not.toHaveBeenCalled();
+        expect(cleanupDraft).not.toHaveBeenCalled(); hook.unmount();
+    });
     it('releases a claim that finishes after unmount before any prompt was attempted', async () => {
         const claim = deferred(); mocks.claim.mockReturnValueOnce(claim.promise);
         const cleanupDraft = vi.fn(); const hook = renderHook(); let operation!: Promise<boolean>;

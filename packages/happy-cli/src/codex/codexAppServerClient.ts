@@ -94,7 +94,18 @@ type PendingRequest = {
 
 type LegacyPatchChanges = Record<string, Record<string, unknown>>;
 
+type NativeThreadConfiguration = {
+    threadId: string;
+    model: string;
+    reasoningEffort: ReasoningEffort | null;
+    approvalPolicy: ApprovalPolicy;
+    sandbox: unknown;
+};
+
 const JSON_RPC_INVALID_PARAMS = -32602;
+const sandboxPolicyTypes: Record<SandboxMode, string> = {
+    'read-only': 'readOnly', 'workspace-write': 'workspaceWrite', 'danger-full-access': 'dangerFullAccess',
+};
 const codexMcpAppAdapter = new CodexMcpAppAdapter();
 
 enum InitializeAttempt {
@@ -364,6 +375,7 @@ export class CodexAppServerClient {
     // Only a thread created here with no attempted mutations is safe to discard.
     // Resumed/forked threads and ambiguous failed sends may contain history.
     private replaceableEmptyThread = false;
+    private preparingThreadConfiguration = false;
     private threadDefaults: {
         model?: string;
         cwd?: string;
@@ -1392,8 +1404,9 @@ export class CodexAppServerClient {
         await Promise.all([this.disconnectInternal(), exited]);
     }
 
-    private buildThreadConfig(mcpServers?: Record<string, unknown>): Record<string, unknown> | null {
+    private buildThreadConfig(mcpServers?: Record<string, unknown>, effort?: ReasoningEffort): Record<string, unknown> | null {
         const config = { ...(this.applicationPolicy ? nativeCodexConfig(this.applicationPolicy) : {}), ...(mcpServers ? { mcp_servers: mcpServers } : {}),
+            ...(effort ? { model_reasoning_effort: effort } : {}),
             ...(this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? CODEX_ACCOUNT_OVERRIDES : {}) };
         return Object.keys(config).length ? config : null;
     }
@@ -1542,11 +1555,12 @@ export class CodexAppServerClient {
 
     async startThread(opts: {
         model?: string;
+        effort?: ReasoningEffort;
         cwd?: string;
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
         mcpServers?: Record<string, unknown>;
-    }): Promise<{ threadId: string; model: string; reasoningEffort: ReasoningEffort | null }> {
+    }): Promise<NativeThreadConfiguration> {
         if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) await this.assertAccountConfig(opts.cwd ?? process.cwd());
         const params: NewConversationParams = {
             model: opts.model ?? null,
@@ -1555,7 +1569,7 @@ export class CodexAppServerClient {
             cwd: opts.cwd ?? process.cwd(),
             approvalPolicy: opts.approvalPolicy ?? null,
             sandbox: opts.sandbox ?? null,
-            config: this.buildThreadConfig(opts.mcpServers),
+            config: this.buildThreadConfig(opts.mcpServers, opts.effort),
             baseInstructions: null,
             developerInstructions: null,
             compactPrompt: null,
@@ -1575,17 +1589,19 @@ export class CodexAppServerClient {
             model: opts.model ?? result.model,
         });
         logger.debug('[CodexAppServer] Thread started:', this._threadId);
-        return { threadId: result.thread.id, model: result.model, reasoningEffort: result.reasoningEffort };
+        return { threadId: result.thread.id, model: result.model, reasoningEffort: result.reasoningEffort,
+            approvalPolicy: result.approvalPolicy, sandbox: result.sandbox };
     }
 
     async resumeThread(opts?: {
         threadId?: string;
         model?: string;
+        effort?: ReasoningEffort;
         cwd?: string;
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
         mcpServers?: Record<string, unknown>;
-    }): Promise<{ threadId: string; model: string; reasoningEffort: ReasoningEffort | null }> {
+    }): Promise<NativeThreadConfiguration> {
         const threadId = opts?.threadId ?? this._threadId;
         if (!threadId) {
             throw new Error('No thread available to resume.');
@@ -1600,7 +1616,7 @@ export class CodexAppServerClient {
             cwd: opts?.cwd ?? defaults.cwd ?? process.cwd(),
             approvalPolicy: opts?.approvalPolicy ?? defaults.approvalPolicy ?? null,
             sandbox: opts?.sandbox ?? defaults.sandbox ?? null,
-            config: this.buildThreadConfig(opts?.mcpServers ?? defaults.mcpServers),
+            config: this.buildThreadConfig(opts?.mcpServers ?? defaults.mcpServers, opts?.effort),
             baseInstructions: null,
             developerInstructions: null,
             persistExtendedHistory: true,
@@ -1634,7 +1650,58 @@ export class CodexAppServerClient {
             mcpServers: opts?.mcpServers ?? defaults.mcpServers,
         });
         logger.debug('[CodexAppServer] Thread resumed:', this._threadId);
-        return { threadId: result.thread.id, model: result.model, reasoningEffort: result.reasoningEffort };
+        return { threadId: result.thread.id, model: result.model, reasoningEffort: result.reasoningEffort,
+            approvalPolicy: result.approvalPolicy, sandbox: result.sandbox };
+    }
+
+    /** Configure an idle native thread without creating a business turn. */
+    async prepareThreadConfiguration(opts: { model: string; effort: ReasoningEffort; approvalPolicy?: ApprovalPolicy; sandbox?: SandboxMode },
+        assertCurrent: () => void): Promise<NativeThreadConfiguration & { reasoningEffort: ReasoningEffort }> {
+        assertCurrent();
+        if (this.preparingThreadConfiguration) throw new Error('Native Codex configuration preparation is already in progress');
+        const threadId = this._threadId;
+        const epoch = this.processEpoch;
+        const assertIdle = () => {
+            assertCurrent();
+            if (!threadId || this._threadId !== threadId || this.processEpoch !== epoch || this._turnId || this.hasPendingTurnCompletion()) {
+                throw new Error('Native Codex thread must remain idle before preparation');
+            }
+        };
+        assertIdle();
+        // A fresh empty thread has no rollout to resume. Only this client's
+        // unmodified new thread may be replaced; restored/forked history never is.
+        const replaceEmpty = this.replaceableEmptyThread;
+        this.preparingThreadConfiguration = true;
+        try {
+            if (!replaceEmpty) {
+                if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) await this.assertAccountConfig(this.threadDefaults?.cwd ?? process.cwd());
+                assertIdle();
+                // Resume returns a loaded thread's current settings and ignores
+                // overrides. Apply them through the native settings API first;
+                // its empty response is never a configuration receipt.
+                await this.request('thread/settings/update', { threadId, model: opts.model, effort: opts.effort,
+                    ...(opts.approvalPolicy !== undefined ? { approvalPolicy: opts.approvalPolicy } : {}),
+                    ...(opts.sandbox !== undefined ? { sandboxPolicy: { type: sandboxPolicyTypes[opts.sandbox] } } : {}) });
+                assertIdle();
+            }
+            const prepared = replaceEmpty
+                ? await this.startThread({ ...this.threadDefaults, ...opts })
+                : await this.resumeThread({ threadId: threadId!, ...opts });
+            assertCurrent();
+            if (this.processEpoch !== epoch || this._threadId !== prepared.threadId || this._turnId || this.hasPendingTurnCompletion()) {
+                throw new Error('Native Codex thread changed while preparing configuration');
+            }
+            const sandboxType = prepared.sandbox && typeof prepared.sandbox === 'object'
+                ? (prepared.sandbox as { type?: unknown }).type : undefined;
+            if ((!replaceEmpty && prepared.threadId !== threadId) || prepared.model !== opts.model || prepared.reasoningEffort !== opts.effort
+                || !['never', 'untrusted', 'on-request', 'on-failure'].includes(prepared.approvalPolicy)
+                || (opts.approvalPolicy !== undefined && prepared.approvalPolicy !== opts.approvalPolicy)
+                || !Object.values(sandboxPolicyTypes).includes(sandboxType as string)
+                || (opts.sandbox !== undefined && sandboxType !== sandboxPolicyTypes[opts.sandbox])) {
+                throw new Error('Native Codex configuration was not acknowledged');
+            }
+            return { ...prepared, reasoningEffort: opts.effort };
+        } finally { this.preparingThreadConfiguration = false; }
     }
 
     async forkThread(opts: {
@@ -2113,17 +2180,7 @@ export class CodexAppServerClient {
 
         // Map sandbox mode to the camelCase policy format the server expects
         if (opts?.sandbox) {
-            switch (opts.sandbox) {
-                case 'workspace-write':
-                    params.sandboxPolicy = { type: 'workspaceWrite' };
-                    break;
-                case 'danger-full-access':
-                    params.sandboxPolicy = { type: 'dangerFullAccess' };
-                    break;
-                case 'read-only':
-                    params.sandboxPolicy = { type: 'readOnly' };
-                    break;
-            }
+            params.sandboxPolicy = { type: sandboxPolicyTypes[opts.sandbox] };
         }
 
         // turn/start returns immediately; turn completes via events.

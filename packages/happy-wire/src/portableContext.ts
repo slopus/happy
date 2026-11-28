@@ -51,6 +51,20 @@ export const PortableThreadReadSchema = z.object({
     offset: z.number().int().nonnegative().optional(), query: z.string().max(1000).optional(),
 }).strict();
 export const PortableThreadAttachmentSchema = z.object({ attachmentId: z.string().min(1) }).strict();
+export const ConversationPrepareRequestSchema = z.object({
+    rootSessionId: z.string().min(1), sourceSessionId: z.string().min(1), requestId: z.string().uuid(),
+    expectedWorkerPid: z.number().int().positive(), contextId: z.string().uuid(), contextSha256: z.string().regex(/^[a-f0-9]{64}$/),
+    model: z.string().trim().min(1).max(256).optional(), effort: z.string().trim().min(1).max(100).optional(),
+    permissionMode: z.string().min(1).max(100),
+}).strict();
+export const ConversationPrepareResponseSchema = z.object({
+    ready: z.literal(true), agent: z.enum(['codex', 'antigravity']), sessionId: z.string().min(1), hostPid: z.number().int().positive(),
+    rootSessionId: z.string().min(1), sourceSessionId: z.string().min(1), requestId: z.string().uuid(),
+    contextId: z.string().uuid(), contextSha256: z.string().regex(/^[a-f0-9]{64}$/),
+    model: z.string().min(1), effort: z.string().optional(), permissionMode: z.string().min(1),
+}).strict();
+export type ConversationPrepareRequest = z.infer<typeof ConversationPrepareRequestSchema>;
+export type ConversationPrepareResponse = z.infer<typeof ConversationPrepareResponseSchema>;
 export type PortableContextAttachment = z.infer<typeof PortableContextAttachmentSchema>;
 export type PortableContextItem = z.infer<typeof PortableContextItemSchema>;
 export type PortableContextHead = z.infer<typeof PortableContextHeadSchema>;

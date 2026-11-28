@@ -25,6 +25,7 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { delegationLaunchContext } from '@/daemon/delegationLaunchContext';
 import { createDelegationRetireHandler, finishDelegationRetirement } from '@/daemon/delegation/journal';
 import { createDelegationPromptLifecycle } from '@/delegation/delegationPrompt';
+import { createConversationPreparation } from '@/continuation/conversationPreparation';
 import type { RoleSaveObserver } from '@/delegation/roleSaveReceipt';
 import { createPausableDeadline, type PausableDeadline } from './pausableDeadline';
 import { projectPath } from '@/projectPath';
@@ -1282,8 +1283,9 @@ export async function runAcp(opts: {
         || current.lifecycleState === 'archived' || current.lifecycleState === 'archiveRequested') throw new Error('Session worker changed or ended');
       return current;
     };
-    const requireDelegatedOwner = () => {
-      const current = requireWorker();
+    const requireDelegatedOwner = (candidate?: Metadata) => {
+      const live = requireWorker();
+      const current = candidate ?? live;
       if (current.hostPid !== process.pid) throw new Error('Session worker changed or ended');
       if (!delegatedLaunch || !current.delegatedTask || current.delegatedTask.taskId !== delegatedLaunch.taskId
         || current.delegatedTask.parentSessionId !== delegatedLaunch.parentSessionId || current.parentSessionId !== delegatedLaunch.parentSessionId) throw new Error('Only the bound delegated task worker can prepare or cancel delegation');
@@ -1295,11 +1297,12 @@ export async function runAcp(opts: {
       return { agent: 'antigravity', ...effectiveDelegationContext(), hostPid: process.pid,
         lifecycleState: current.lifecycleState ?? 'running' };
     });
-    boundSession.rpcHandlerManager.registerHandler('delegation-prepare', async (request: { model?: string; effort?: string; permissionMode: 'default' | 'bypassPermissions' }) => {
+    const prepareConfiguration = async (request: { model?: string; effort?: string; permissionMode: string }, requireOwner: (candidate?: Metadata) => void) => {
       if (!request || (request.model !== undefined && (typeof request.model !== 'string' || !request.model.trim()))
         || (request.effort !== undefined && (typeof request.effort !== 'string' || !request.effort.trim()))
         || (request.permissionMode !== 'default' && request.permissionMode !== 'bypassPermissions')) throw new Error('Invalid delegation configuration');
-      requireDelegatedOwner();
+      const permissionMode = request.permissionMode;
+      requireOwner();
       let timeout: NodeJS.Timeout | undefined;
       try {
         await Promise.race([backendReady, new Promise<never>((_, reject) => {
@@ -1310,7 +1313,7 @@ export async function runAcp(opts: {
       }
       return serializeConfig(async () => {
         const requireIdle = () => {
-          requireDelegatedOwner();
+          requireOwner();
           if (shouldExit || !acpSessionId || thinking || pendingTurn || activeRoot || pendingInputCount || messageQueue.size() || session.hasPendingUserInputs?.() || session.getCurrentRootTurnId?.()
           ) throw new Error('Session must be idle to prepare delegation');
         };
@@ -1329,37 +1332,44 @@ export async function runAcp(opts: {
           throw new Error('Current native reasoning effort configuration is unavailable');
         }
         const previousPolicy = permissionModeOverride;
-        permissionModeOverride = request.permissionMode;
+        permissionModeOverride = permissionMode;
         let invalidated = false;
         try {
           await boundSession.updateMetadataAndAwait(current => {
             try { requireIdle(); } catch { invalidated = true; }
+            try { requireOwner(current); } catch { invalidated = true; }
             if (invalidated || current.hostPid !== process.pid || current.flavor !== 'antigravity'
-              || current.parentSessionId !== delegatedLaunch?.parentSessionId || current.delegatedTask?.taskId !== delegatedLaunch?.taskId
-              || current.delegatedTask?.parentSessionId !== delegatedLaunch?.parentSessionId || current.application
+              || current.application
               || current.lifecycleState === 'archived' || current.lifecycleState === 'archiveRequested') {
               invalidated = true;
               return current;
             }
             return { ...mergeAcpSessionConfigIntoMetadata(current, { configOptions: configSnapshot }),
-              capabilities: { ...current.capabilities, acpPermissionPolicy: true }, acpPermissionMode: request.permissionMode };
+              capabilities: { ...current.capabilities, acpPermissionPolicy: true }, acpPermissionMode: permissionMode };
           });
           if (invalidated) throw new Error('Delegated worker changed or became busy while preparing configuration');
           requireIdle();
           const acknowledged = boundSession.getMetadata();
           if (acknowledged?.currentModelCode !== model || acknowledged.currentThoughtLevelCode !== actualEffort
-            || acknowledged.acpPermissionMode !== request.permissionMode || modelSelector?.currentCode !== model || effortSelector?.currentCode !== actualEffort) throw new Error('Delegation configuration metadata was not acknowledged');
+            || acknowledged.acpPermissionMode !== permissionMode || modelSelector?.currentCode !== model || effortSelector?.currentCode !== actualEffort) throw new Error('Delegation configuration metadata was not acknowledged');
         } catch (error) {
           permissionModeOverride = previousPolicy;
           publishPermissionPolicy();
           throw error;
         }
-        currentPermissionMode = request.permissionMode;
-        permissionHandler.setPermissionMode(request.permissionMode);
+        currentPermissionMode = permissionMode;
+        permissionHandler.setPermissionMode(permissionMode);
         currentModel = model;
         return { model, ...(actualEffort ? { effort: actualEffort } : {}) };
       });
-    });
+    };
+    boundSession.rpcHandlerManager.registerHandler('delegation-prepare', (request: { model?: string; effort?: string; permissionMode: string }) =>
+      prepareConfiguration(request, requireDelegatedOwner));
+    boundSession.rpcHandlerManager.registerHandler('conversation-prepare', createConversationPreparation({
+      agent: 'antigravity', sessionId: () => boundSession.sessionId,
+      metadata: () => boundSession === session && !shouldExit ? boundSession.getMetadata() ?? null : null,
+      prepare: async (request, assertCurrent) => ({ ...await prepareConfiguration(request, assertCurrent), permissionMode: request.permissionMode }),
+    }));
     boundSession.rpcHandlerManager.registerHandler('delegation-abort', async (request: { expectedTurnId?: string; localId: string }) => {
       if (!request || typeof request.localId !== 'string' || !request.localId
         || (request.expectedTurnId !== undefined && (typeof request.expectedTurnId !== 'string' || !request.expectedTurnId))) throw new Error('Invalid delegation cancellation');

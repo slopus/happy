@@ -1,7 +1,7 @@
 import { AntigravityModelCatalogSchema, type AntigravityModelCatalog } from '@slopus/happy-wire';
 import { z } from 'zod';
 import { asyncQuestionResponseSchema, type AsyncQuestionAction, type AsyncQuestionResponse } from '@slopus/happy-wire';
-import { PortableContextHeadSchema, type PortableContextHead } from '@slopus/happy-wire';
+import { PortableContextHeadSchema, type PortableContextHead, ConversationPrepareRequestSchema, ConversationPrepareResponseSchema } from '@slopus/happy-wire';
 import { CodexMagpieCatalogSchema, type CodexMagpieCatalog, ClaudeModelCatalogSchema, type ClaudeModelCatalog } from '@slopus/happy-wire';
 /**
  * Session operations for remote procedure calls
@@ -374,6 +374,69 @@ export async function machineSpawnConversationSession(options: {
     const { machineId, ...request } = options;
     return machineStartSession(machineId, 'spawn-conversation-session', options.targetAgent === 'codex' && !options.magpieModel,
         request, options.expectedCodexAccountProfileId);
+}
+
+/** One explicit target-native acknowledgement before business delivery; no status-query loop. */
+export async function sessionPrepareConversation(record: { rootId: string; sourceId: string; targetId: string; requestId: string },
+    configuration: { agent: 'codex' | 'antigravity'; modelMode?: string | null; effortLevel?: string | null; permissionMode?: string | null }): Promise<() => void> {
+    const { storage } = await import('./storage');
+    const { assertAccountRuntime } = await import('@/auth/accountRuntime');
+    const { resolveAgentDefaultConfig } = await import('./agentDefaults');
+    assertAccountRuntime();
+    if (!await sync.refreshConversationSession(record.rootId) || !await sync.refreshConversationSession(record.targetId)) {
+        throw new Error('Conversation preparation target is unavailable');
+    }
+    assertAccountRuntime();
+    const target = storage.getState().sessions[record.targetId]?.metadata;
+    const permissionMode = configuration.permissionMode
+        ?? resolveAgentDefaultConfig(storage.getState().settings.agentDefaultOverrides, configuration.agent).permissionMode;
+    const request = ConversationPrepareRequestSchema.parse({ rootSessionId: record.rootId, sourceSessionId: record.sourceId,
+        requestId: record.requestId, expectedWorkerPid: target?.hostPid, contextId: target?.portableContext?.id,
+        contextSha256: target?.portableContext?.sha256, permissionMode,
+        ...(configuration.modelMode && configuration.modelMode !== 'default' ? { model: configuration.modelMode } : {}),
+        ...(configuration.effortLevel && configuration.effortLevel !== 'default' ? { effort: configuration.effortLevel } : {}) });
+    let acknowledged: { model: string; effort?: string; permissionMode: string } | undefined;
+    const assertCurrent = () => {
+        assertAccountRuntime();
+        const sessions = storage.getState().sessions;
+        const root = sessions[record.rootId]?.metadata;
+        const candidate = sessions[record.targetId]?.metadata;
+        const reservation = root?.conversationSwitch;
+        if (!root || root.conversationDeletePlan || ['archived', 'archiveRequested'].includes(root.lifecycleState ?? '')
+            || candidate?.conversationDeletePlan || candidate?.application || candidate?.delegatedTask || candidate?.sandbox?.enabled
+            || ['archived', 'archiveRequested'].includes(candidate?.lifecycleState ?? '')
+            || (root.conversationActiveSessionId ?? record.rootId) !== record.sourceId || reservation?.id !== record.requestId
+            || reservation.sourceSessionId !== record.sourceId || reservation.targetSessionId !== record.targetId
+            || candidate?.hostPid !== request.expectedWorkerPid || candidate?.flavor !== configuration.agent
+            || candidate?.parentSessionId !== record.sourceId || candidate?.crossAgentRequestId !== record.requestId
+            || candidate?.conversationRootSessionId !== record.rootId || candidate?.continuationOfSessionId !== record.sourceId
+            || candidate?.portableContext?.id !== request.contextId || candidate?.portableContext?.sha256 !== request.contextSha256) {
+            throw new Error('Conversation preparation worker or reservation changed');
+        }
+        if (acknowledged && (candidate.currentModelCode !== acknowledged.model
+            || candidate.currentThoughtLevelCode !== acknowledged.effort
+            || (configuration.agent === 'antigravity' ? candidate.acpPermissionMode : candidate.currentOperatingModeCode) !== acknowledged.permissionMode)) {
+            throw new Error('Conversation native configuration changed');
+        }
+    };
+    assertCurrent();
+    const result = ConversationPrepareResponseSchema.parse(await apiSocket.sessionRPC(record.targetId, 'conversation-prepare', request,
+        { timeoutMs: 75_000, overallTimeoutMs: 75_000, isCurrent: () => { try { assertCurrent(); return true; } catch { return false; } } }));
+    assertCurrent();
+    if (result.sessionId !== record.targetId || result.hostPid !== request.expectedWorkerPid || result.agent !== configuration.agent
+        || result.rootSessionId !== record.rootId || result.sourceSessionId !== record.sourceId || result.requestId !== record.requestId
+        || result.contextId !== request.contextId || result.contextSha256 !== request.contextSha256
+        || result.permissionMode !== request.permissionMode || (request.model && result.model !== request.model)
+        || (request.effort && result.effort !== request.effort)) throw new Error('Conversation native configuration acknowledgement mismatch');
+    // The send path keeps native ACK metadata authoritative. Read it once now
+    // so a delayed push cannot supply the previous permission/model settings.
+    acknowledged = result;
+    if (!await sync.refreshConversationSession(record.targetId)) throw new Error('Conversation preparation target is unavailable');
+    assertCurrent();
+    storage.getState().updateSessionPermissionMode(record.targetId, result.permissionMode);
+    storage.getState().updateSessionModelMode(record.targetId, result.model);
+    storage.getState().updateSessionEffortLevel(record.targetId, result.effort ?? null);
+    return assertCurrent;
 }
 
 /** Project tasks use the same ephemeral Codex-account grants as ordinary session creation. */

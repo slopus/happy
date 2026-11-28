@@ -1,6 +1,6 @@
 import { isRetiredAgentFlavor } from '@/sync/retiredSessions';
 import { assertAccountRuntime } from '@/auth/accountRuntime';
-import { beginAgyConfig, finishAgyConfig } from '@/sync/agyConfigPending';
+import { beginAgyConfig as beginSessionConfig, finishAgyConfig as finishSessionConfig } from '@/sync/agyConfigPending';
 import * as React from 'react';
 import type { Session } from '@/sync/storageTypes';
 import { storage, useSetting } from '@/sync/storage';
@@ -73,26 +73,23 @@ export function useSessionTaskPermission(
                 },
             ),
             apply: async () => {
-                if (agent === 'antigravity') {
-                    if (!beginAgyConfig(session.id)) throw new Error('Another session configuration change is pending');
+                if (agent === 'antigravity' || agent === 'codex') {
+                    if (!beginSessionConfig(session.id)) throw new Error('Another session configuration change is pending');
                     try {
                         const workerPid = storage.getState().sessions[session.id]?.metadata?.hostPid;
                         if (!await sessionSetPermissionMode(session.id, nextAgentMode)) throw new Error('Permission change was not acknowledged');
                         assertAccountRuntime();
                         const current = storage.getState().sessions[session.id];
-                        if (!current || current.metadata?.flavor !== 'antigravity' || current.metadata.hostPid !== workerPid) throw new Error('Session worker changed');
-                        storage.getState().applySessions([{ ...current, metadata: { ...current.metadata, acpPermissionMode: nextAgentMode as 'default' | 'bypassPermissions' } }]);
-                    } finally { finishAgyConfig(session.id); }
+                        if (!current?.metadata || resolveTaskPermissionAgent(current.metadata.flavor) !== agent || current.metadata.hostPid !== workerPid) throw new Error('Session worker changed');
+                        if (agent === 'antigravity') {
+                            storage.getState().applySessions([{ ...current, metadata: { ...current.metadata, acpPermissionMode: nextAgentMode as 'default' | 'bypassPermissions' } }]);
+                        }
+                    } finally { finishSessionConfig(session.id); }
                 }
                 storage.getState().updateSessionPermissionMode(session.id, nextAgentMode);
-                if (agent === 'codex') {
-                    void sessionSetPermissionMode(session.id, nextAgentMode).catch((error) => {
-                        console.error('Failed to push permission mode to running Codex session:', error);
-                    });
-                }
             },
         }); } catch (error) {
-            if (agent !== 'antigravity') throw error;
+            if (agent !== 'antigravity' && agent !== 'codex') throw error;
             Modal.alert(t('common.error'), error instanceof Error ? error.message : String(error));
             return false;
         }

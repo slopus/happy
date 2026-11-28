@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { readFileSync, renameSync } from 'node:fs';
 import { setCodexServiceTier } from './codexServiceTier';
+import { prepareCodexConversationConfiguration } from './codexConversationPreparation';
 import { isReasoningEffort } from './reasoningEffort';
 import { CODEX_ACCOUNT_CONFIG, CODEX_ACCOUNT_HTTP_PROVIDER, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_OVERRIDES } from './codexAccountConfig';
 import { createServer, type Server } from 'node:http';
@@ -184,6 +185,161 @@ const sandboxConfig: SandboxConfig = {
 };
 
 describe('CodexAppServerClient sandbox integration', () => {
+    it('updates an already loaded historical thread before using resume as the native configuration receipt', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        const raw = client as any;
+        raw._threadId = 'historical'; raw.threadDefaults = { cwd: '/project' };
+        const requests: Array<{ method: string; params: any }> = [];
+        let applied = { model: 'startup-model', reasoningEffort: 'medium', approvalPolicy: 'on-request', sandbox: { type: 'workspaceWrite' } };
+        raw.request = async (method: string, params: any) => {
+            requests.push({ method, params });
+            if (method === 'thread/settings/update') {
+                applied = { model: params.model, reasoningEffort: params.effort, approvalPolicy: params.approvalPolicy, sandbox: params.sandboxPolicy };
+                return {};
+            }
+            // Native 0.166 returns an already loaded thread's current settings;
+            // resume overrides alone do not change them.
+            return { thread: { id: 'historical', turns: [{ id: 'prior-turn' }] }, ...applied };
+        };
+        const prepared = await client.prepareThreadConfiguration({ model: 'target-model', effort: 'high', approvalPolicy: 'never', sandbox: 'read-only' }, () => {});
+        expect(prepared).toMatchObject({ threadId: 'historical', model: 'target-model', reasoningEffort: 'high', approvalPolicy: 'never', sandbox: { type: 'readOnly' } });
+        expect(requests.map(request => request.method)).toEqual(['thread/settings/update', 'thread/resume']);
+        expect(requests[0].params).toEqual({ threadId: 'historical', model: 'target-model', effort: 'high', approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' } });
+    });
+
+    it.each(['Unsupported native settings API', 'Native settings rejected'])('fails closed without a new thread or metadata receipt when %s', async message => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {}); const raw = client as any;
+        raw._threadId = 'historical';
+        const requests: string[] = [];
+        raw.request = async (method: string) => { requests.push(method); throw new Error(message); };
+        let acknowledged = false;
+        await expect(prepareCodexConversationConfiguration({ model: 'target-model', effort: 'high', permissionMode: 'read-only' },
+            { client, assertCurrent: () => {}, acknowledge: async () => { acknowledged = true; } })).rejects.toThrow(message);
+        expect(requests).toEqual(['thread/settings/update']); expect(client.threadId).toBe('historical'); expect(acknowledged).toBe(false);
+    });
+
+    it.each(['owner', 'turn', 'thread', 'epoch'] as const)('rejects a late native settings response after its %s changes', async changed => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {}); const raw = client as any;
+        raw._threadId = 'historical';
+        let current = true; let complete!: (value: unknown) => void; let acknowledged = false;
+        const requests: string[] = []; const events: any[] = [];
+        client.setEventHandler(event => events.push(event));
+        raw.request = async (method: string) => { requests.push(method); return new Promise(resolve => { complete = resolve; }); };
+        const pending = prepareCodexConversationConfiguration({ model: 'target-model', effort: 'high', permissionMode: 'read-only' },
+            { client, assertCurrent: () => { if (!current) throw new Error('Candidate changed'); }, acknowledge: async () => { acknowledged = true; } });
+        if (changed === 'owner') current = false;
+        else if (changed === 'turn') raw._turnId = 'foreign-turn';
+        else if (changed === 'thread') raw._threadId = 'replacement';
+        else raw.processEpoch++;
+        // A real native state notification is independent of the guarded
+        // conversation receipt and must never make this preparation succeed.
+        raw.handleRawNotification('thread/settings/updated', { threadId: raw._threadId,
+            threadSettings: { model: 'target-model', effort: 'high', approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' } } });
+        complete({});
+        await expect(pending).rejects.toThrow(/Candidate changed|must remain idle/);
+        expect(events.some(event => event.type === 'thread_settings_updated')).toBe(true);
+        expect(requests).toEqual(['thread/settings/update']); expect(acknowledged).toBe(false);
+    });
+
+    it('rejects competing native settings even after a successful update response and state notification', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {}); const raw = client as any;
+        raw._threadId = 'historical'; const requests: string[] = []; let acknowledged = false;
+        raw.request = async (method: string) => {
+            requests.push(method);
+            if (method === 'thread/settings/update') {
+                raw.handleRawNotification('thread/settings/updated', { threadId: 'historical', threadSettings: { model: 'target-model', effort: 'high' } });
+                return {};
+            }
+            return { thread: { id: 'historical' }, model: 'competing-model', reasoningEffort: 'low', approvalPolicy: 'never', sandbox: { type: 'readOnly' } };
+        };
+        await expect(prepareCodexConversationConfiguration({ model: 'target-model', effort: 'high', permissionMode: 'read-only' },
+            { client, assertCurrent: () => {}, acknowledge: async () => { acknowledged = true; } })).rejects.toThrow('Native Codex configuration was not acknowledged');
+        expect(requests).toEqual(['thread/settings/update', 'thread/resume']); expect(acknowledged).toBe(false);
+    });
+
+    it('does not interleave two native configuration preparations', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {}); const raw = client as any;
+        raw._threadId = 'historical'; let complete!: (value: unknown) => void; const requests: string[] = [];
+        raw.request = async (method: string) => {
+            requests.push(method);
+            if (method === 'thread/settings/update') return new Promise(resolve => { complete = resolve; });
+            return { thread: { id: 'historical' }, model: 'target-model', reasoningEffort: 'high', approvalPolicy: 'never', sandbox: { type: 'readOnly' } };
+        };
+        const configuration = { model: 'target-model', effort: 'high' as const, approvalPolicy: 'never' as const, sandbox: 'read-only' as const };
+        const pending = client.prepareThreadConfiguration(configuration, () => {});
+        await expect(client.prepareThreadConfiguration(configuration, () => {})).rejects.toThrow(/already in progress/);
+        complete({}); await expect(pending).resolves.toMatchObject({ threadId: 'historical', model: 'target-model' });
+        expect(requests).toEqual(['thread/settings/update', 'thread/resume']);
+    });
+
+    it.each(['fresh', 'restored'] as const)('confirms %s thread configuration without submitting a user turn', async source => {
+        const requests: MockRpcMessage[] = [];
+        let threadRequests = 0;
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
+            requests.push(message);
+            if (message.method === 'thread/settings/update') { pushJsonLine(stdout, { id: message.id, result: {} }); return; }
+            if (!['thread/start', 'thread/resume'].includes(message.method ?? '')) return;
+            threadRequests++;
+            const prepared = threadRequests > 1;
+            pushJsonLine(stdout, { id: message.id, result: { thread: { id: source === 'fresh' && prepared ? 'prepared' : 'initial' },
+                model: prepared ? 'target-model' : 'startup-model', reasoningEffort: prepared ? 'high' : 'medium',
+                approvalPolicy: prepared ? 'never' : 'on-request', sandbox: { type: prepared ? 'readOnly' : 'workspaceWrite' } } });
+        } }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        try {
+            await client.connect();
+            if (source === 'fresh') await client.startThread({ cwd: '/project', mcpServers: { happy: {} } });
+            else await client.resumeThread({ threadId: 'initial', cwd: '/project', mcpServers: { happy: {} } });
+            const prepared = await client.prepareThreadConfiguration({ model: 'target-model', effort: 'high', approvalPolicy: 'never', sandbox: 'read-only' }, () => {});
+            expect(prepared).toMatchObject({ threadId: source === 'fresh' ? 'prepared' : 'initial', model: 'target-model', reasoningEffort: 'high' });
+            expect(requests.filter(request => request.method === (source === 'fresh' ? 'thread/start' : 'thread/resume'))).toHaveLength(2);
+            expect(requests.filter(request => request.method?.startsWith('thread/')).at(-1)?.params).toMatchObject({
+                model: 'target-model', cwd: '/project', approvalPolicy: 'never', sandbox: 'read-only',
+                config: { model_reasoning_effort: 'high', mcp_servers: { happy: {} } },
+            });
+            expect(requests.some(request => request.method === 'turn/start')).toBe(false);
+        } finally { await client.disconnect(); }
+    });
+
+    it.each(['model', 'effort', 'permission', 'sandbox', 'missing-policy', 'missing-sandbox', 'thread'] as const)('rejects a native configuration acknowledgement with mismatched %s', async mismatch => {
+        const requests: MockRpcMessage[] = [];
+        let threadRequests = 0;
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
+            requests.push(message);
+            if (message.method === 'thread/settings/update') { pushJsonLine(stdout, { id: message.id, result: {} }); return; }
+            if (message.method !== 'thread/resume') return;
+            threadRequests++;
+            const response: any = { thread: { id: 'initial' }, model: 'target-model', reasoningEffort: 'high', approvalPolicy: 'never', sandbox: { type: 'readOnly' } };
+            if (threadRequests > 1) {
+                if (mismatch === 'model') response.model = 'other';
+                if (mismatch === 'effort') response.reasoningEffort = 'medium';
+                if (mismatch === 'permission') response.approvalPolicy = 'on-request';
+                if (mismatch === 'sandbox') response.sandbox = { type: 'dangerFullAccess' };
+                if (mismatch === 'missing-policy') delete response.approvalPolicy;
+                if (mismatch === 'missing-sandbox') delete response.sandbox;
+                if (mismatch === 'thread') response.thread.id = 'replacement';
+            }
+            pushJsonLine(stdout, { id: message.id, result: response });
+        } }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        const metadataAck = vi.fn(async () => {});
+        try {
+            await client.connect(); await client.resumeThread({ threadId: 'initial' });
+            await expect(prepareCodexConversationConfiguration({ model: 'target-model', effort: 'high', permissionMode: 'read-only' },
+                { client, assertCurrent: () => {}, acknowledge: metadataAck }))
+                .rejects.toThrow('Native Codex configuration was not acknowledged');
+            expect(metadataAck).not.toHaveBeenCalled();
+            expect(requests.some(request => request.method === 'turn/start')).toBe(false);
+        } finally { await client.disconnect(); }
+    });
+
     it('does not acknowledge a failed native turn as a successful artifact-producing completion', async () => {
         const { CodexAppServerClient } = await import('./codexAppServerClient');
         const client = new CodexAppServerClient();

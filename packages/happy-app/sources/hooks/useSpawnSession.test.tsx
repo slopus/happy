@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     spawnResult: { type: 'success', sessionId: 'session-1' } as SpawnSessionResult,
     machineSpawnNewSession: vi.fn(),
     machineSpawnConversationSession: vi.fn(),
+    sessionPrepareConversation: vi.fn(),
     ensureSessionHydrated: vi.fn(),
     refreshSessions: vi.fn(),
     sendMessage: vi.fn(),
@@ -68,6 +69,7 @@ vi.mock('@/sync/sessionStartupTraceRuntime', async (importOriginal) => {
 vi.mock('@/sync/ops', () => ({
     machineSpawnNewSession: mocks.machineSpawnNewSession,
     machineSpawnConversationSession: mocks.machineSpawnConversationSession,
+    sessionPrepareConversation: mocks.sessionPrepareConversation,
 }));
 vi.mock('@/sync/sync', () => ({
     sync: {
@@ -186,6 +188,7 @@ describe('useSpawnSession', () => {
         mocks.spawnResult = { type: 'success', sessionId: 'session-1' };
         mocks.machineSpawnNewSession.mockImplementation(async () => mocks.spawnResult);
         mocks.machineSpawnConversationSession.mockImplementation(async () => mocks.spawnResult);
+        mocks.sessionPrepareConversation.mockResolvedValue(undefined);
         mocks.ensureSessionHydrated.mockResolvedValue(true);
         mocks.refreshSessions.mockResolvedValue(undefined);
         mocks.sendMessage.mockResolvedValue({ type: 'queued', sessionId: 'session-1', localIds: ['local-1'] });

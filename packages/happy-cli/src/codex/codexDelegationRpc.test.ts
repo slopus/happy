@@ -18,6 +18,16 @@ describe('Codex delegated worker preparation', () => {
     });
     const prepare = () => createCodexDelegationPreparation({ state: () => state, catalog: () => catalog, apply });
 
+    it('shares startup/configuration readiness with separately authorized conversation candidates', async () => {
+        state.metadata = { currentModelCode: 'gpt-observed', currentThoughtLevelCode: 'medium' };
+        const runtime = prepare(); const authorize = vi.fn();
+        const pending = runtime.prepareConversation({ permissionMode: 'read-only' }, authorize);
+        expect(apply).not.toHaveBeenCalled(); runtime.ready();
+        await expect(pending).resolves.toEqual({ model: 'gpt-observed', effort: 'medium' });
+        expect(authorize).toHaveBeenCalled();
+        await expect(runtime.prepare({ permissionMode: 'read-only' })).rejects.toThrow('Only a delegated');
+    });
+
     it('waits for the actual startup event and resolves only after the metadata acknowledgement', async () => {
         let acknowledge!: () => void;
         const metadataAck = new Promise<void>(resolve => { acknowledge = resolve; });

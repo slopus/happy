@@ -89,6 +89,8 @@ import { createCodexMessageQueueStatus } from './codexMessageQueueStatus';
 import { createCodexAsyncQuestionHandler, deliverCodexAsyncQuestionAnswer, recoverAsyncQuestionResponses } from './codexAsyncQuestionRpc';
 import { CODEX_ACCOUNT_CONFIG_ERROR } from './codexAccountConfig';
 import { createCodexDelegationAbortHandler, createCodexDelegationPreparation } from './codexDelegationRpc';
+import { prepareCodexConversationConfiguration } from './codexConversationPreparation';
+import { createConversationPreparation } from '@/continuation/conversationPreparation';
 import { createDelegationPromptLifecycle } from '@/delegation/delegationPrompt';
 
 /**
@@ -530,6 +532,7 @@ export async function runCodex(opts: {
     let refreshModelsHandler: (() => Promise<{ success: true }>) | null = null;
     let predictionHandlers: ReturnType<typeof createComposerPredictionHandlers> | null = null;
     let delegationPreparation: ReturnType<typeof createCodexDelegationPreparation> | null = null;
+    let conversationPreparation: ReturnType<typeof createConversationPreparation> | null = null;
     let delegationAbortHandler: ReturnType<typeof createCodexDelegationAbortHandler> | null = null;
     let delegationContextHandler: (() => Promise<Record<string, unknown>>) | null = null;
     let delegationRetireHandler: ((input: unknown) => Promise<{ retiring: true }>) | null = null;
@@ -556,6 +559,7 @@ export async function runCodex(opts: {
             if (asyncQuestionHandler) newSession.rpcHandlerManager.registerHandler('codex-async-question', asyncQuestionHandler);
             if (refreshModelsHandler) newSession.rpcHandlerManager.registerHandler('refreshModels', refreshModelsHandler);
             if (delegationPreparation) newSession.rpcHandlerManager.registerHandler('delegation-prepare', delegationPreparation.prepare);
+            if (conversationPreparation) newSession.rpcHandlerManager.registerHandler('conversation-prepare', conversationPreparation);
             if (delegationAbortHandler) newSession.rpcHandlerManager.registerHandler('delegation-abort', delegationAbortHandler);
             if (delegationContextHandler) newSession.rpcHandlerManager.registerHandler('delegation-context', delegationContextHandler);
             if (delegationRetireHandler) newSession.rpcHandlerManager.registerHandler('delegation-retire', async input => {
@@ -1406,20 +1410,27 @@ export async function runCodex(opts: {
         async apply(configuration, assertIdle) {
             const targetSession = session;
             let invalidated = false;
-            await targetSession.updateMetadataAndAwait(meta => {
-                // Metadata CAS retries must never turn a newly busy worker into
-                // a delayed configuration request after this RPC has timed out.
-                if (invalidated || session !== targetSession) { invalidated = true; return meta; }
-                try { assertIdle(); } catch { invalidated = true; return meta; }
-                return { ...mergeCodexSessionConfigIntoMetadata(meta, { models: codexModelCatalog, modelsUpdatedAt,
-                    currentModel: configuration.model, currentEffort: configuration.effort ?? null }),
-                    currentOperatingModeCode: configuration.permissionMode };
-            });
-            if (invalidated || session !== targetSession) throw new Error('Delegated worker changed or became busy while preparing its model');
-            assertIdle();
-            const acknowledged = targetSession.getMetadata();
-            if (acknowledged?.currentModelCode !== configuration.model || acknowledged.currentThoughtLevelCode !== configuration.effort
-                || acknowledged.currentOperatingModeCode !== configuration.permissionMode) throw new Error('Delegated model configuration was not acknowledged');
+            await prepareCodexConversationConfiguration(configuration, { client, assertCurrent: () => {
+                if (session !== targetSession) throw new Error('Codex worker changed while preparing its model');
+                assertIdle();
+            }, acknowledge: async prepared => {
+                await targetSession.updateMetadataAndAwait(meta => {
+                    // Metadata CAS retries must never turn a newly busy worker into
+                    // a delayed configuration request after this RPC has timed out.
+                    if (invalidated || session !== targetSession) { invalidated = true; return meta; }
+                    try { assertIdle(); } catch { invalidated = true; return meta; }
+                    return { ...mergeCodexSessionConfigIntoMetadata(meta, { models: codexModelCatalog, modelsUpdatedAt,
+                        currentModel: prepared.model, currentEffort: prepared.reasoningEffort }),
+                        codexThreadId: prepared.threadId, currentOperatingModeCode: configuration.permissionMode };
+                });
+                if (invalidated || session !== targetSession) throw new Error('Delegated worker changed or became busy while preparing its model');
+                assertIdle();
+                const acknowledged = targetSession.getMetadata();
+                if (acknowledged?.codexThreadId !== prepared.threadId || acknowledged.currentModelCode !== prepared.model
+                    || acknowledged.currentThoughtLevelCode !== prepared.reasoningEffort || acknowledged.currentOperatingModeCode !== configuration.permissionMode) {
+                    throw new Error('Delegated model configuration was not acknowledged');
+                }
+            } });
             baselineModel = currentModel = configuration.model;
             baselineEffort = currentEffort = configuration.effort;
             currentPermissionMode = configuration.permissionMode;
@@ -1427,6 +1438,11 @@ export async function runCodex(opts: {
         },
     });
     session.rpcHandlerManager.registerHandler('delegation-prepare', delegationPreparation.prepare);
+    conversationPreparation = createConversationPreparation({ agent: 'codex', sessionId: () => session.sessionId,
+        metadata: () => session.getMetadata() ?? null,
+        prepare: async (request, assertCurrent) => ({ ...await delegationPreparation!.prepareConversation(request, assertCurrent), permissionMode: request.permissionMode }),
+    });
+    session.rpcHandlerManager.registerHandler('conversation-prepare', conversationPreparation);
     session.declareDelegationSupport('codex');
     // A delegated caller prepares its model immediately after this webhook.
     // Advertise the worker only after all three delegation RPCs are callable.

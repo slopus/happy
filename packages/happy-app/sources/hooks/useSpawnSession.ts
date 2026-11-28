@@ -6,7 +6,7 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import { sync, type LocalMessageQueueReceipt } from '@/sync/sync';
 import { storage } from '@/sync/storage';
-import { machineSpawnNewSession, machineSpawnConversationSession, machineCancelConversationLaunch, type SpawnSessionResult } from '@/sync/ops';
+import { machineSpawnNewSession, machineSpawnConversationSession, machineCancelConversationLaunch, sessionPrepareConversation, type SpawnSessionResult } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -355,7 +355,16 @@ export function useSpawnSession() {
             if (pending.conversation?.claimed && !pending.conversation.sendingStarted) await releaseConversationSwitch(pending.conversation);
             return false;
         }
+        let assertPrepared: (() => void) | undefined;
         if (!pending.queued) {
+            if (pending.conversation && (pending.args.agent === 'antigravity' || pending.args.agent === 'codex')) {
+                assertPrepared = await sessionPrepareConversation(pending.conversation, { agent: pending.args.agent, modelMode: pending.args.modelMode,
+                    effortLevel: pending.args.effortLevel, permissionMode: pending.args.permissionMode });
+                if (!mountedRef.current || pendingHydration.current !== pending) {
+                    if (!pending.conversation.sendingStarted) await releaseConversationSwitch(pending.conversation);
+                    return false;
+                }
+            }
             const attachments = pending.args.images?.length ? pending.args.images : undefined;
             if (pending.args.prompt || attachments) {
                 try {
@@ -364,15 +373,16 @@ export function useSpawnSession() {
                         if (pending.conversation?.claimed && !pending.conversation.sendingStarted) await releaseConversationSwitch(pending.conversation);
                         return false;
                     }
+                    assertPrepared?.();
                     const isCurrent = () => {
                         if (!mountedRef.current || pendingHydration.current !== pending) return false;
-                        try { pending.handoff?.context?.assertCurrent?.(); return true; } catch { return false; }
+                        try { pending.handoff?.context?.assertCurrent?.(); assertPrepared?.(); return true; } catch { return false; }
                     };
                     if (pending.conversation) pending.conversation.sendingStarted = true;
                     let receipt: LocalMessageQueueReceipt;
                     try {
                         receipt = await sync.sendMessage(pending.sessionId, pending.args.prompt, { source: 'new_session', attachments,
-                            ...(pending.handoff ? { isCurrent } : {}),
+                            ...(pending.handoff || assertPrepared ? { isCurrent } : {}),
                             ...(pending.conversation ? { conversationSwitchRequestId: pending.conversation.requestId } : {}),
                         });
                     } catch (error) {

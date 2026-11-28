@@ -46,30 +46,29 @@ export function createCodexDelegationPreparation(deps: {
     const ready = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
     void ready.catch(() => {});
     let preparing = false;
-    function assertOwned() {
+    function assertOwned(authorizeConversation?: () => void) {
         const state = deps.state();
-        if (!state.metadata?.delegatedTask) throw new Error('Only a delegated task worker can prepare delegation');
+        if (authorizeConversation) authorizeConversation();
+        else if (!state.metadata?.delegatedTask) throw new Error('Only a delegated task worker can prepare delegation');
+        if (!state.metadata) throw new Error('Worker metadata is unavailable');
         if (state.applicationBound || state.metadata.application) throw new Error('Application-bound sessions cannot prepare delegation');
         if (state.shouldExit || ['archived', 'archiveRequested'].includes(state.metadata.lifecycleState ?? '')) throw new Error('Delegated worker is stopping or archived');
         return state;
     }
-    function assertIdle() {
-        const state = assertOwned();
+    function assertIdle(authorizeConversation?: () => void) {
+        const state = assertOwned(authorizeConversation);
         if (state.thinking || state.pending || state.queueSize > 0 || state.pendingUserInputs || state.activeRootTurnId) {
             throw new Error('Delegated worker must be idle before changing its model');
         }
     }
-    return {
-        ready: () => readyResolve(),
-        fail: (error: unknown) => readyReject(error),
-        async prepare(input: unknown): Promise<{ model: string; effort?: ReasoningEffort }> {
+    async function prepare(input: unknown, authorizeConversation?: () => void): Promise<{ model: string; effort?: ReasoningEffort }> {
             const request = requestSchema.parse(input);
-            assertOwned();
+            assertOwned(authorizeConversation);
             await ready;
             if (preparing) throw new Error('A delegated model preparation is already in progress');
             preparing = true;
             try {
-                assertIdle();
+                assertIdle(authorizeConversation);
                 const models = deps.catalog()?.filter(model => !model.hidden) ?? [];
                 if (!models.length) throw new Error('The native Codex model catalog is unavailable');
                 // Readiness follows native thread startup, which publishes these actual settings.
@@ -94,11 +93,16 @@ export function createCodexDelegationPreparation(deps: {
                 if (!isReasoningEffort(effort) || !model.supportedReasoningEfforts.some(option => option.reasoningEffort === effort)) {
                     throw new Error(`Reasoning effort is unavailable for this Codex model: ${effort}`);
                 }
-                await deps.apply({ model: model.model, effort, permissionMode: request.permissionMode as PermissionMode }, assertIdle);
-                assertIdle();
+                await deps.apply({ model: model.model, effort, permissionMode: request.permissionMode as PermissionMode }, () => assertIdle(authorizeConversation));
+                assertIdle(authorizeConversation);
                 return { model: model.model, effort };
             } finally { preparing = false; }
-        },
+    }
+    return {
+        ready: () => readyResolve(),
+        fail: (error: unknown) => readyReject(error),
+        prepare: (input: unknown) => prepare(input),
+        prepareConversation: (input: unknown, authorize: () => void) => prepare(input, authorize),
     };
 }
 

@@ -1172,6 +1172,55 @@ describe('runAcp', () => {
     .map(([envelope]: any[]) => envelope.ev).filter(ev => ev.t === 'turn-end').map(ev => ev.status);
   const emitBackend = (event: any) => { for (const listener of mocks.backendState.listeners) listener(event); };
 
+  const conversationRequest = { rootSessionId: 'root', sourceSessionId: 'source', requestId: '00000000-0000-4000-8000-000000000010',
+    expectedWorkerPid: process.pid, contextId: '00000000-0000-4000-8000-000000000011', contextSha256: 'a'.repeat(64), permissionMode: 'default' };
+  const bindConversationCandidate = () => mocks.mockSession.getMetadata.mockReturnValue({ flavor: 'antigravity', hostPid: process.pid,
+    parentSessionId: 'source', crossAgentRequestId: conversationRequest.requestId, continuationOfSessionId: 'source', conversationRootSessionId: 'root',
+    portableContext: { id: conversationRequest.contextId, sha256: conversationRequest.contextSha256 } });
+
+  it('prepares a conversation candidate only after native startup, catalog and metadata acknowledgement, without business input', async () => {
+    let start!: () => void; let acknowledge!: () => void;
+    mocks.backendState.holdStartup = new Promise(resolve => { start = resolve; });
+    const ack = new Promise<void>(resolve => { acknowledge = resolve; });
+    mocks.mockSession.updateMetadataAndAwait.mockImplementation(async handler => {
+      await ack; mocks.mockSession.getMetadata.mockReturnValue(handler(mocks.mockSession.getMetadata()));
+    });
+    const run = runDelegationWorker(false); bindConversationCandidate();
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+      let confirmed = false;
+      const result = mocks.sessionHandlers.get('conversation-prepare')!(conversationRequest).then((value: unknown) => { confirmed = true; return value; });
+      expect(mocks.mockSession.updateMetadataAndAwait).not.toHaveBeenCalled();
+      start(); await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      expect(confirmed).toBe(false); emitBackend(delegationConfig());
+      await vi.waitFor(() => expect(mocks.mockSession.updateMetadataAndAwait).toHaveBeenCalled());
+      expect(confirmed).toBe(false); expect(mocks.backendState.prompts).toEqual([]);
+      acknowledge();
+      await expect(result).resolves.toMatchObject({ ready: true, sessionId: 'session-1', model: 'gemini-4-argon', effort: 'medium',
+        permissionMode: 'default', contextId: conversationRequest.contextId, contextSha256: conversationRequest.contextSha256 });
+      await expect(mocks.sessionHandlers.get('delegation-prepare')!({ permissionMode: 'default' })).rejects.toThrow(/bound delegated/);
+      expect(mocks.backendState.prompts).toEqual([]);
+    } finally { start(); acknowledge(); await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('rejects a conversation context replaced while metadata acknowledgement is pending', async () => {
+    mocks.backendState.startSessionMessages = [delegationConfig()];
+    let acknowledge!: () => void; const ack = new Promise<void>(resolve => { acknowledge = resolve; });
+    mocks.mockSession.updateMetadataAndAwait.mockImplementation(async handler => {
+      await ack; mocks.mockSession.getMetadata.mockReturnValue(handler(mocks.mockSession.getMetadata()));
+    });
+    const run = runDelegationWorker(false); bindConversationCandidate();
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      const result = mocks.sessionHandlers.get('conversation-prepare')!({ ...conversationRequest, permissionMode: 'bypassPermissions' });
+      await vi.waitFor(() => expect(mocks.mockSession.updateMetadataAndAwait).toHaveBeenCalled());
+      mocks.mockSession.getMetadata().portableContext.sha256 = 'b'.repeat(64); acknowledge();
+      await expect(result).rejects.toThrow(/worker changed|context changed/);
+      expect(mocks.mockSession.getMetadata().acpPermissionMode).not.toBe('bypassPermissions');
+      expect(mocks.backendState.prompts).toEqual([]);
+    } finally { acknowledge(); await mocks.getKillHandler()!(); await run; }
+  });
+
   const savedRole = { id: 'writer', name: 'Writer', description: 'Write supplied facts', agent: 'codex', autoDelegate: false, createdAt: 1, updatedAt: 2 };
   const savedRoleRequest = { action: 'update', roleId: 'writer', patch: { name: 'Writer' } };
   const savedRoleEvents = () => mocks.mockSession.sendSessionProtocolMessage.mock.calls
