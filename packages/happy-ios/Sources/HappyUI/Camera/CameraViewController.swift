@@ -138,11 +138,18 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
+    /// Held upright on a phone, the buttons turning as it turns, as the
+    /// Camera app is; any way round in a big window (an iPad, an unfolded
+    /// iPhone Duo), which lays the controls in a column. An iPad stays free
+    /// in any window, as it always was.
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        traitCollection.userInterfaceIdiom == .pad ? .all : .portrait
+        turnsFreely ? .all : .portrait
     }
 
-    /// An iPad's full window: the controls in a column, the flash first.
+    private var turnsFreely: Bool { traitCollection.userInterfaceIdiom == .pad || regular }
+
+    /// A big window (an iPad's, an unfolded iPhone Duo's): the controls in a
+    /// column, the flash first.
     private var regular: Bool {
         traitCollection.horizontalSizeClass == .regular && traitCollection.verticalSizeClass == .regular
     }
@@ -554,7 +561,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
 
     /// The buttons turned to read upright as the device is held.
     private func turnButtons(animated: Bool) {
-        guard traitCollection.userInterfaceIdiom != .pad else { return }
+        guard !turnsFreely else { return }
         let orientation: CameraScreenLayout.DeviceOrientation = switch Int(state.captureRotation.rounded()) {
         case 0: .landscapeLeft
         case 180: .landscapeRight

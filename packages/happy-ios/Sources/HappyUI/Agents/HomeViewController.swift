@@ -175,9 +175,10 @@ final class HomeViewController: UIViewController {
         // On a phone the row opened stays lit while its screen comes in,
         // then lets go, as Telegram's chat list does: coming back, by the
         // back button or a swipe, finds nothing selected. Beside the main
-        // panel home never disappears, and its selection follows what the
-        // panel shows (`shownBeside`).
-        sidebar.selectedRowId = nil
+        // panel its selection follows what the panel shows (`shownBeside`),
+        // and stays while home slides away over it (an iPhone Duo open in
+        // portrait), lit again when it slides back.
+        if shownBeside == nil { sidebar.selectedRowId = nil }
         if let store = session?.store { Task { await store.attentionVisibleUpdate(false) } }
         keepPlace()
     }

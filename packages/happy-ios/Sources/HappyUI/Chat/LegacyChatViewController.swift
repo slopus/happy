@@ -966,11 +966,13 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         !docksList && !hidesHeader
     }
 
-    /// The docked list (`LegacyChatScreenLayout.Input.docked`) in the
-    /// iPad's main panel, which keeps the phone's bar but has room for
-    /// nothing to scroll under it or the strip (docs/IPAD.md).
+    /// The docked list (`LegacyChatScreenLayout.Input.docked`) in a
+    /// regular-width window (an iPad, an unfolded iPhone Duo), which keeps
+    /// the phone's bar but has room for nothing to scroll under it or the
+    /// strip (docs/IPAD.md). The size class, not the device: a fold changes
+    /// it mid-session.
     private var docksList: Bool {
-        traitCollection.userInterfaceIdiom == .pad && traitCollection.horizontalSizeClass == .regular
+        traitCollection.horizontalSizeClass == .regular
     }
 
     /// TabletBranches' `chatHidesHeaderInLandscape`, as the window is now.

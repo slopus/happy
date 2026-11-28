@@ -3,26 +3,57 @@ import Foundation
 import CoreGraphics
 #endif
 
-/// When an iPad window is wide enough for the sidebar beside the main
-/// panel (docs/IPAD.md). Below it the window is a phone: one stack, home
-/// at its root.
+/// When a window is roomy enough for the sidebar beside the main panel
+/// (docs/IPAD.md). Otherwise the window is a phone: one stack, home at its
+/// root. The rule is the window's, on any device, never the idiom's: an
+/// iPhone Duo open in landscape (951 × 669) splits, folded (466 × 678) it
+/// is the phone, and a fold mid-session moves the same screens between
+/// the two. Open in portrait (669 × 951) it is too thin for the sidebar
+/// beside: there it slides over (`sidebar`).
 ///
-/// The system's own answer is the horizontal size class, but a regular
-/// window can still be too thin: a 13-inch iPad's half of the screen in
-/// landscape is regular at 683, and an iPad mini is regular at 744 in
-/// portrait. A sidebar (about 320) beside a 363 main panel is narrower
+/// The system's own answer is the size classes, and both have to be
+/// regular. A compact height is a phone on its side: an iPhone Pro Max in
+/// landscape is regular at 956 wide but 440 tall, where the sidebar's foot
+/// covers its rows and the keyboard leaves the chat a sliver. And a
+/// regular window can still be too thin: a 13-inch iPad's half of the
+/// screen in landscape is regular at 683, an iPad mini is regular at 744
+/// in portrait, and an iPhone Duo open in portrait is regular at 669. A
+/// sidebar (340 at least) beside a 343, 404 or 329 main panel is narrower
 /// than any iPhone. So the window also has to be 768 wide: what is left
 /// beside the sidebar is then at least an iPhone Pro Max's 440.
 public enum SplitRule {
     /// The narrowest window that gets the sidebar.
     public static let minWidth: CGFloat = 768
 
-    /// Sidebar and main panel side by side: a regular window at least
-    /// `minWidth` wide, showing an account's home. Onboarding, sign-in and
-    /// the server confirmation own the whole window, as on a phone. Width
-    /// alone, never height, so the keyboard never collapses it.
-    public static func showsSplit(width: CGFloat, isRegularWidth: Bool, showsHome: Bool) -> Bool {
-        showsHome && isRegularWidth && width >= minWidth
+    /// Sidebar and main panel side by side: a window regular both ways and
+    /// at least `minWidth` wide, showing an account's home. Onboarding,
+    /// sign-in and the server confirmation own the whole window, as on a
+    /// phone. The height counts only by its size class, which turning the
+    /// device changes and the keyboard doesn't, so the keyboard never
+    /// collapses it. Every iPad window is regular in height, so the iPad's
+    /// rule is unchanged.
+    public static func showsSplit(width: CGFloat, isRegularWidth: Bool, isRegularHeight: Bool = true, showsHome: Bool) -> Bool {
+        showsHome && isRegularWidth && isRegularHeight && width >= minWidth
+    }
+
+    /// Where home goes: beside the main panel (`showsSplit`), over it, or
+    /// nowhere apart, the window a phone's one stack.
+    public enum Sidebar: Equatable, Sendable {
+        case none
+        case beside
+        case over
+    }
+
+    /// `showsSplit`'s answer, and one more: a display that folds, regular
+    /// both ways but too thin for the sidebar beside the main panel (an
+    /// iPhone Duo open in portrait, 669 wide), keeps the main panel at its
+    /// whole width and slides the sidebar over it from the leading edge,
+    /// as Messages and Mail do there. A window that doesn't fold (an iPad
+    /// mini upright, a 13-inch iPad's half in landscape) stays the phone's
+    /// one stack, as it always was.
+    public static func sidebar(width: CGFloat, isRegularWidth: Bool, isRegularHeight: Bool = true, folds: Bool, showsHome: Bool) -> Sidebar {
+        if showsSplit(width: width, isRegularWidth: isRegularWidth, isRegularHeight: isRegularHeight, showsHome: showsHome) { return .beside }
+        return folds && showsHome && isRegularWidth && isRegularHeight ? .over : .none
     }
 
     /// The sidebar's width: 30% of the window, as happy-app's sidebar, held
@@ -32,20 +63,47 @@ public enum SplitRule {
     public static func sidebarWidth(windowWidth: CGFloat) -> CGFloat {
         min(360, max(340, (windowWidth * 0.3).rounded()))
     }
+
+    /// The sidebar's width on a display folded partway (iOS 27.1's
+    /// division regions, `UIView.reservedRegions(kind: .division)`): its
+    /// edge on the crease, as the system's own apps put it, so the sidebar
+    /// is one half of the fold and the main panel the other. `divisions`
+    /// are the active regions in the window, each a band round its crease;
+    /// one that runs top to bottom is a crease the sidebar can meet. It
+    /// does only where both halves keep the least sidebar's width (340);
+    /// anywhere else, or with no crease, the width is the usual one. On
+    /// the display's pixels (`scale`).
+    public static func sidebarWidth(window: CGSize, divisions: [CGRect], sidebarOnLeft: Bool = true, scale: CGFloat = 1) -> CGFloat {
+        let usual = sidebarWidth(windowWidth: window.width)
+        guard let band = divisions.first(where: { $0.minY <= 0 && $0.maxY >= window.height && $0.width < window.width }) else { return usual }
+        let pixels = max(1, scale)
+        let crease = (band.midX * pixels).rounded() / pixels
+        let width = sidebarOnLeft ? crease : window.width - crease
+        guard width >= 340, window.width - width >= 340 else { return usual }
+        return width
+    }
 }
 
 /// The main panel inside its column. iOS 26's sidebar floats over the
 /// secondary column, which runs under it with the sidebar as its leading
 /// safe area. The screens ported from the phone lay out from their bounds,
-/// so the main panel's stack is held to the column's horizontal safe area:
-/// every screen gets a rectangle as a phone does, its bar and title
-/// centred over what is visible.
+/// so the main panel's stack is held clear of the sidebar's side of the
+/// column's safe area: every screen gets a rectangle as a phone does, its
+/// bar and title centred over what is visible.
+///
+/// The other side runs to the window's edge, and its safe area is the
+/// screens' own to keep, as on a phone. On an iPhone Duo it is the status
+/// bar's column (iOS 27.1's vertical bar), where the main panel's own
+/// navigation puts its bar items as the phone's does; held short of it,
+/// the panel grew a second, empty column beside the status bar's.
 public struct MainPanelLayout: Equatable, Sendable {
     public var panel: CGRect
 
-    public init(size: CGSize, safeArea: LayoutInsets) {
-        let left = max(0, safeArea.left)
-        let right = max(0, safeArea.right)
+    /// - sidebarOnLeft: the sidebar is at the left, the leading edge in a
+    ///   left-to-right language; at the right in a right-to-left one.
+    public init(size: CGSize, safeArea: LayoutInsets, sidebarOnLeft: Bool = true) {
+        let left = sidebarOnLeft ? max(0, safeArea.left) : 0
+        let right = sidebarOnLeft ? 0 : max(0, safeArea.right)
         panel = CGRect(x: left, y: 0, width: max(0, size.width - left - right), height: size.height)
     }
 }
