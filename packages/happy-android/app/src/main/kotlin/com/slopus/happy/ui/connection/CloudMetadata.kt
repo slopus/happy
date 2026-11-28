@@ -23,7 +23,11 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.agent.CloudSecretMetadata
 import com.slopus.happy.agent.CloudZone
+import com.slopus.happy.agent.ZoneCompute
+import com.slopus.happy.agent.ZoneInternet
+import com.slopus.happy.agent.ZonePrincipal
 import com.slopus.happy.agent.cloudSecretMetadata
+import com.slopus.happy.agent.cloudTeamNames
 import com.slopus.happy.agent.cloudZoneMemberNames
 import com.slopus.happy.agent.cloudZones
 import com.slopus.happy.ui.components.Item
@@ -46,7 +50,8 @@ internal enum class CloudMetadataPage(@StringRes val title: Int) {
 internal sealed interface CloudMetadataState {
     data object Loading : CloudMetadataState
     data object Failed : CloudMetadataState
-    data class Zones(val zones: List<CloudZone>, val names: Map<String, String>) : CloudMetadataState
+    /** [names] are people's by user ID, [teams] teams' by ID; an ID without one reads as itself. */
+    data class Zones(val zones: List<CloudZone>, val names: Map<String, String>, val teams: Map<String, String> = emptyMap()) : CloudMetadataState
     data class Secrets(val secrets: List<CloudSecretMetadata>) : CloudMetadataState
 }
 
@@ -75,8 +80,10 @@ private fun CloudMetadata(graph: AppGraph, connectionId: String, page: CloudMeta
             when (page) {
                 CloudMetadataPage.Zones -> {
                     val zones = client.cloudZones()
-                    val ids = zones.flatMap { it.members.orEmpty() }.toSet()
-                    CloudMetadataState.Zones(zones, client.cloudZoneMemberNames(ids, session.team.names(ids)))
+                    val listed = zones.flatMap { it.members }
+                    val ids = listed.filter { it.kind == ZonePrincipal.Kind.User }.map { it.id }.toSet()
+                    val teams = if (listed.any { it.kind == ZonePrincipal.Kind.Team }) client.cloudTeamNames() else emptyMap()
+                    CloudMetadataState.Zones(zones, client.cloudZoneMemberNames(ids, session.team.names(ids)), teams)
                 }
                 CloudMetadataPage.Secrets -> CloudMetadataState.Secrets(client.cloudSecretMetadata())
             }
@@ -90,7 +97,8 @@ private fun CloudMetadata(graph: AppGraph, connectionId: String, page: CloudMeta
 }
 
 /** Read-only settings lists: the standard stack header and grouped cards (16dp phone margins).
- * Zone facts and both lists' descriptions use the settings row's wrapping subtitle. */
+ * Zone facts (restricted, description, who may join, internet and compute) and both lists'
+ * descriptions use the settings row's wrapping subtitle. */
 @Composable
 internal fun CloudMetadataScreen(page: CloudMetadataPage, state: CloudMetadataState, onRetry: () -> Unit, onBack: () -> Unit) {
     Screen(header = { StackHeader(stringResource(page.title), onBack) }) {
@@ -106,15 +114,35 @@ internal fun CloudMetadataScreen(page: CloudMetadataPage, state: CloudMetadataSt
                     val listFormatter = remember(locale) { ListFormatter.getInstance(locale) }
                     for (zone in state.zones) key(zone.id) {
                         val names = when {
-                            zone.members == null -> stringResource(R.string.cloud_settings_all_members)
+                            !zone.restricted -> stringResource(R.string.cloud_settings_all_members)
                             zone.members.isEmpty() -> stringResource(R.string.cloud_settings_no_members)
-                            else -> listFormatter.format(zone.members.map { state.names[it] ?: it })
+                            else -> listFormatter.format(
+                                zone.members.map { member ->
+                                    when (member.kind) {
+                                        ZonePrincipal.Kind.User -> state.names[member.id]
+                                        ZonePrincipal.Kind.Team -> state.teams[member.id]
+                                    } ?: member.id
+                                },
+                            )
                         }
+                        val settings = listOfNotNull(
+                            when (zone.internet) {
+                                ZoneInternet.On -> stringResource(R.string.cloud_settings_internet_on)
+                                ZoneInternet.Off -> stringResource(R.string.cloud_settings_internet_off)
+                                null -> null
+                            },
+                            when (zone.compute) {
+                                ZoneCompute.Any -> stringResource(R.string.cloud_settings_compute_any)
+                                ZoneCompute.Listed -> stringResource(R.string.cloud_settings_compute_listed)
+                                ZoneCompute.None -> stringResource(R.string.cloud_settings_compute_none)
+                                null -> null
+                            },
+                        )
                         val facts = listOfNotNull(
-                            if (zone.isDefault) stringResource(R.string.cloud_settings_default_zone) else null,
-                            if (zone.critical) stringResource(R.string.cloud_settings_critical_zone) else null,
+                            if (zone.restricted) stringResource(R.string.cloud_settings_restricted_zone) else null,
                             zone.description.takeIf(String::isNotBlank),
                             stringResource(R.string.cloud_settings_may_join, names),
+                            settings.joinToString(" · ").takeIf(String::isNotEmpty),
                         )
                         Item(
                             zone.name, Modifier.testTag("zone.${zone.id}"), subtitle = facts.joinToString("\n"),

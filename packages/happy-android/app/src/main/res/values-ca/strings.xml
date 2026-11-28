@@ -8,6 +8,12 @@
     <string name="cloud_settings_secrets">Secrets</string>
     <string name="cloud_settings_default_zone">Zona predeterminada</string>
     <string name="cloud_settings_critical_zone">Zona crítica</string>
+    <string name="cloud_settings_restricted_zone">Zona restringida</string>
+    <string name="cloud_settings_internet_on">Internet activat</string>
+    <string name="cloud_settings_internet_off">Sense internet</string>
+    <string name="cloud_settings_compute_any">Qualsevol ordinador</string>
+    <string name="cloud_settings_compute_listed">Només els ordinadors indicats</string>
+    <string name="cloud_settings_compute_none">Sense ordinadors</string>
     <string name="cloud_settings_all_members">Tots els membres</string>
     <string name="cloud_settings_no_members">Cap membre</string>
     <string name="cloud_settings_may_join">Hi poden accedir: %1$s</string>

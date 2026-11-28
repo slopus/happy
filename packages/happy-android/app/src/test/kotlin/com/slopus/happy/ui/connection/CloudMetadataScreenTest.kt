@@ -10,6 +10,9 @@ import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.CloudSecretMetadata
 import com.slopus.happy.agent.CloudZone
+import com.slopus.happy.agent.ZoneCompute
+import com.slopus.happy.agent.ZoneInternet
+import com.slopus.happy.agent.ZonePrincipal
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
@@ -25,17 +28,25 @@ import org.robolectric.annotation.Config
 class CloudMetadataScreenTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun zonesUseTheSettingsCardMeasureAndShowAccess() {
+    @Test fun zonesUseTheSettingsCardMeasureAndShowAccessAndSettings() {
         val zones = CloudMetadataState.Zones(
             listOf(
-                CloudZone("default", "Everyday", "General work", "blue", false, true, null),
-                CloudZone("locked", "Production", "Production access", "red", true, false, listOf("ana")),
+                CloudZone("open", "Everyday", "General work", "blue", internet = ZoneInternet.On, compute = ZoneCompute.Any),
+                CloudZone(
+                    "locked", "Production", "Production access", "red", restricted = true,
+                    members = listOf(ZonePrincipal(ZonePrincipal.Kind.User, "ana"), ZonePrincipal(ZonePrincipal.Kind.Team, "ops")),
+                    internet = ZoneInternet.Off, compute = ZoneCompute.Listed,
+                ),
+                CloudZone("empty", "Vault", restricted = true, compute = ZoneCompute.None),
             ),
             mapOf("ana" to "Ana"),
+            mapOf("ops" to "Ops"),
         )
         rule.setHappyContent { CloudMetadataScreen(CloudMetadataPage.Zones, zones, {}, {}) }
-        rule.onNodeWithText("Default zone\nGeneral work\nMay join: All members").assertIsDisplayed()
-        rule.onNodeWithText("Critical zone\nProduction access\nMay join: Ana").assertIsDisplayed()
+        rule.onNodeWithText("General work\nMay join: All members\nInternet on · Any computer").assertIsDisplayed()
+        rule.onNodeWithText("Restricted zone\nProduction access\nMay join: Ana and Ops\nNo internet · Listed computers only").assertIsDisplayed()
+        // A restricted zone listing nobody yet; a setting the server didn't say is left out.
+        rule.onNodeWithText("Restricted zone\nMay join: No members\nNo computers").assertIsDisplayed()
         rule.onNodeWithText("Manage on desktop").assertIsDisplayed()
         rule.onNodeWithTag("zone.locked").assertHasNoClickAction()
         assertDp("zone card row width", (379 - 2f / rule.density.density).dp, rule.node("zone.locked").bounds.width)

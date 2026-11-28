@@ -6,20 +6,85 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 
-/** A null member list admits the whole team. An empty list admits no members. */
-@Serializable
+/** Someone a restricted zone admits (Zones v2): a person by their user ID, or everyone in a team. */
+internal data class ZonePrincipal(val kind: Kind, val id: String) {
+    enum class Kind { User, Team }
+}
+
+/** Whether a zone's agents reach the internet. */
+internal enum class ZoneInternet { On, Off }
+
+/** Which computers a zone's agents may use: any that list no zone or this one, only those that list it, or none. */
+internal enum class ZoneCompute { Any, Listed, None }
+
+/**
+ * A zone as `GET /v0/zones` lists it (happy-cluster docs/zones.md): open to
+ * every member, or [restricted] to the people and teams in [members]; its
+ * [internet] and [compute] replace the server defaults for the agents in it
+ * (null where the server doesn't say). Read tolerantly, since a server from
+ * before Zones v2 sends `critical` for restricted, members as bare user IDs
+ * (a list restricting the zone to them), a default zone, and no settings.
+ */
 internal data class CloudZone(
     val id: String,
     val name: String,
-    val description: String,
-    val color: String,
-    val critical: Boolean,
-    val isDefault: Boolean,
-    val members: List<String>?,
-)
+    val description: String = "",
+    val color: String = "gray",
+    val restricted: Boolean = false,
+    val members: List<ZonePrincipal> = emptyList(),
+    val internet: ZoneInternet? = null,
+    val compute: ZoneCompute? = null,
+) {
+    companion object {
+        /** [zone] as a zone; null without an ID or a name. */
+        fun parse(zone: JsonObject): CloudZone? {
+            val id = zone.string("id") ?: return null
+            val name = zone.string("name") ?: return null
+            val members = zone["members"] as? JsonArray
+            val settings = zone["settings"] as? JsonObject
+            return CloudZone(
+                id = id,
+                name = name,
+                description = zone.string("description").orEmpty(),
+                color = zone.string("color") ?: "gray",
+                // Zones v2 made a critical zone restricted, and any other zone with a members list restricted to it.
+                restricted = zone.boolean("restricted") ?: (zone.boolean("critical") == true || members != null),
+                members = members.orEmpty().mapNotNull(::principal),
+                internet = when (settings?.string("internet")) {
+                    "on" -> ZoneInternet.On
+                    "off" -> ZoneInternet.Off
+                    else -> null
+                },
+                compute = when (settings?.string("compute")) {
+                    "any" -> ZoneCompute.Any
+                    "listed" -> ZoneCompute.Listed
+                    "none" -> ZoneCompute.None
+                    else -> null
+                },
+            )
+        }
+
+        /** `{ "kind": "user" | "team", "id" }`, or a bare string, a user ID; null for a kind this build doesn't know. */
+        private fun principal(element: JsonElement): ZonePrincipal? {
+            (element as? JsonPrimitive)?.takeIf { it.isString }?.let { return ZonePrincipal(ZonePrincipal.Kind.User, it.content) }
+            val entry = element as? JsonObject ?: return null
+            val id = entry.string("id") ?: return null
+            return when (entry.string("kind")) {
+                "user" -> ZonePrincipal(ZonePrincipal.Kind.User, id)
+                "team" -> ZonePrincipal(ZonePrincipal.Kind.Team, id)
+                else -> null
+            }
+        }
+
+        private fun JsonObject.boolean(key: String): Boolean? = (this[key] as? JsonPrimitive)?.booleanOrNull
+    }
+}
 
 /** Only the metadata displayed in settings. No secret values are decoded or fetched. */
 @Serializable
@@ -31,7 +96,18 @@ internal data class CloudSecretMetadata(
 )
 
 internal suspend fun AgentClient.cloudZones(): List<CloudZone> = withContext(Dispatchers.IO) {
-    metadataObject("/v0/zones").rows("zones")
+    (metadataObject("/v0/zones").getValue("zones") as JsonArray).mapNotNull { (it as? JsonObject)?.let(CloudZone::parse) }
+}
+
+/** The server's teams' names by ID (`GET /v0/teams`); empty from a server before teams, or one that can't list them. */
+internal suspend fun AgentClient.cloudTeamNames(): Map<String, String> = withContext(Dispatchers.IO) {
+    try {
+        TeamMembers.teams(this@cloudTeamNames).associate { it.id to it.name }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        emptyMap()
+    }
 }
 
 internal suspend fun AgentClient.cloudSecretMetadata(): List<CloudSecretMetadata> = withContext(Dispatchers.IO) {

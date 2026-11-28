@@ -8,6 +8,12 @@
     <string name="cloud_settings_secrets">Segreti</string>
     <string name="cloud_settings_default_zone">Zona predefinita</string>
     <string name="cloud_settings_critical_zone">Zona critica</string>
+    <string name="cloud_settings_restricted_zone">Zona riservata</string>
+    <string name="cloud_settings_internet_on">Internet attivo</string>
+    <string name="cloud_settings_internet_off">Senza internet</string>
+    <string name="cloud_settings_compute_any">Qualsiasi computer</string>
+    <string name="cloud_settings_compute_listed">Solo i computer indicati</string>
+    <string name="cloud_settings_compute_none">Nessun computer</string>
     <string name="cloud_settings_all_members">Tutti i membri</string>
     <string name="cloud_settings_no_members">Nessun membro</string>
     <string name="cloud_settings_may_join">Possono accedere: %1$s</string>
