@@ -11,6 +11,8 @@ import UserNotifications
 /// and lists, and a tap opens its session. Switching accounts never
 /// unregisters, so every signed-in account keeps notifying; sign-out
 /// unregisters that account (`AccountController.signOut(accountID:)`).
+/// A Happy Cloud server's push opens its agent's chat instead, on the
+/// connection it was sent for (`CloudPushNotification`).
 @MainActor
 final class PushNotifications: NSObject {
     static let shared = PushNotifications()
@@ -27,7 +29,7 @@ final class PushNotifications: NSObject {
     private var active: (session: AccountSession, registration: TokenPushRegistration)?
     private var filter = NotificationResponseFilter()
     /// A tap delivered before the scene's coordinator exists.
-    private var pendingSessionID: String?
+    private var pendingTap: NotificationTap?
 
     /// This installation's id: the push exchange's `deviceId`, and the
     /// device this phone's environment reports name (`AgentConnections.environment`).
@@ -86,9 +88,9 @@ final class PushNotifications: NSObject {
         accountsObservation = context.account.observeAccounts { [weak self] _ in
             self?.accountsChanged()
         }
-        if let sessionId = pendingSessionID {
-            pendingSessionID = nil
-            coordinator.openSession(fromNotification: sessionId)
+        if let tap = pendingTap {
+            pendingTap = nil
+            open(tap, on: coordinator)
         }
     }
 
@@ -116,12 +118,19 @@ final class PushNotifications: NSObject {
     }
 
     private func route(_ tap: Tap) {
-        guard filter.shouldRoute(requestIdentifier: tap.identifier, isDefaultAction: tap.isDefaultAction),
-              let sessionId = tap.sessionId else { return }
+        guard filter.shouldRoute(requestIdentifier: tap.identifier, isDefaultAction: tap.isDefaultAction), tap.opens != .nothing else { return }
         if let coordinator {
-            coordinator.openSession(fromNotification: sessionId)
+            open(tap.opens, on: coordinator)
         } else {
-            pendingSessionID = sessionId
+            pendingTap = tap.opens
+        }
+    }
+
+    private func open(_ tap: NotificationTap, on coordinator: AppCoordinator) {
+        switch tap {
+        case .session(let sessionId): coordinator.openSession(fromNotification: sessionId)
+        case .agent(let push): coordinator.openAgent(fromNotification: push)
+        case .nothing: break
         }
     }
 
@@ -175,7 +184,7 @@ final class PushNotifications: NSObject {
     struct Tap: Sendable {
         var identifier: String
         var isDefaultAction: Bool
-        var sessionId: String?
+        var opens: NotificationTap
     }
 
     nonisolated static func tap(_ response: UNNotificationResponse) -> Tap {
@@ -184,7 +193,7 @@ final class PushNotifications: NSObject {
         return Tap(
             identifier: request.identifier,
             isDefaultAction: response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-            sessionId: NotificationRouting.sessionId(fromData: data)
+            opens: NotificationRouting.tap(fromData: data)
         )
     }
 
@@ -209,13 +218,20 @@ extension PushNotifications: UNUserNotificationCenterDelegate {
     }
 
     /// `addNotificationResponseReceivedListener`, and on a cold launch the
-    /// response `getLastNotificationResponseAsync` returns.
+    /// response `getLastNotificationResponseAsync` returns. The completion
+    /// handler is called on the main thread: UIKit updates the app's
+    /// snapshot inside it and stops the app when it is called anywhere
+    /// else, which is where this method's `async` form returns.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping @Sendable () -> Void
+    ) {
         let tap = Self.tap(response)
-        await MainActor.run { self.route(tap) }
+        Task { @MainActor in
+            self.route(tap)
+            completionHandler()
+        }
     }
 }
 
