@@ -494,11 +494,41 @@ export function closeClaudeTurnWithStatus(
     };
 }
 
+/**
+ * When Claude Code wrote [message], from its transcript `timestamp`; null when
+ * it has none (live SDK messages) or it is not a sane past instant. A resumed
+ * chat replays its history through this mapper, and its envelopes must keep
+ * the original times, not the upload's: the app orders and ages rows by them.
+ */
+function claudeMessageTime(message: RawJSONLines, now: number): number | null {
+    const raw = (message as { timestamp?: unknown }).timestamp;
+    if (typeof raw !== 'string') {
+        return null;
+    }
+    const parsed = Date.parse(raw);
+    if (!Number.isFinite(parsed)) {
+        return null;
+    }
+    // A clock a little ahead is tolerated; anything later is not trusted.
+    if (parsed > now + 60_000) {
+        return null;
+    }
+    return parsed;
+}
+
 export function mapClaudeLogMessageToSessionEnvelopes(
     message: RawJSONLines,
     state: ClaudeSessionProtocolState,
 ): ClaudeMapperResult {
-    return mapClaudeLogMessageToSessionEnvelopesInternal(message, state);
+    const result = mapClaudeLogMessageToSessionEnvelopesInternal(message, state);
+    const time = claudeMessageTime(message, Date.now());
+    if (time === null) {
+        return result;
+    }
+    for (const envelope of result.envelopes) {
+        envelope.time = time;
+    }
+    return result;
 }
 
 function mapClaudeLogMessageToSessionEnvelopesInternal(
