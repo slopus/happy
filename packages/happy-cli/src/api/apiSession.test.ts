@@ -942,6 +942,37 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect((client as any).lastReceivedSeq).toBe(2);
     });
 
+    it('reconnect skip does not swallow messages that arrive live while history is still paging', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        client.skipExistingMessages();
+
+        const msg = (seq: number, text: string) => ({
+            id: `msg-${seq}`,
+            seq,
+            content: { t: 'encrypted', c: encryptContent(session, { role: 'user', content: { type: 'text', text } }) },
+            localId: null,
+            createdAt: seq,
+            updatedAt: seq
+        });
+
+        // The prompt (seq 3) reaches the socket while the skip is still on page one.
+        mockAxiosGet
+            .mockImplementationOnce(async () => {
+                emitSocketEvent('update', { id: 'u', seq: 1, createdAt: 3, body: { t: 'new-message', sid: 'test-session-id', message: msg(3, 'live') } });
+                return { data: { messages: [msg(1, 'old'), msg(2, 'old')], hasMore: true } };
+            })
+            .mockResolvedValueOnce({ data: { messages: [msg(3, 'live')], hasMore: false } })
+            .mockResolvedValue({ data: { messages: [], hasMore: false } });
+
+        await (client as any).receiveSync.invalidateAndAwait();
+
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+        expect(onUserMessage.mock.calls[0][0].content.text).toBe('live');
+        expect((client as any).lastReceivedSeq).toBe(3);
+    });
+
     it('routes non-user fetched messages through EventEmitter message event', async () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();
