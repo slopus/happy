@@ -6,9 +6,9 @@ import UIKit
 /// the app's, so a sheet, a full-screen viewer or the scanner presented
 /// while a call is on still has the bar at the top. It never becomes key
 /// (the keyboard and focus stay where they are), takes touches only inside
-/// the bar, and sets the status bar white while the bar shows. The system's
-/// own windows (permission prompts, Face ID, the App Store's confirmation)
-/// are above every app window, so it never covers them.
+/// the bar, and sets the status bar white while the bar shows under it.
+/// The system's own windows (permission prompts, Face ID, the App Store's
+/// confirmation) are above every app window, so it never covers them.
 @MainActor
 final class CallBarWindow: UIWindow {
     let host = Host()
@@ -35,13 +35,17 @@ final class CallBarWindow: UIWindow {
     final class Host: UIViewController {
         var onLayout: (() -> Void)?
         var shown = false { didSet { if shown != oldValue { setNeedsStatusBarAppearanceUpdate() } } }
+        /// The status bar stands up the window's side (an iPhone Duo's,
+        /// iOS 27.1), beside the bar over the app's ground rather than over
+        /// the bar: it keeps the app's style there.
+        var statusBarUpTheSide = false { didSet { if statusBarUpTheSide != oldValue { setNeedsStatusBarAppearanceUpdate() } } }
 
         override func loadView() {
             view = UIView()
             view.backgroundColor = .clear
         }
 
-        override var preferredStatusBarStyle: UIStatusBarStyle { shown ? .lightContent : .default }
+        override var preferredStatusBarStyle: UIStatusBarStyle { shown && !statusBarUpTheSide ? .lightContent : .default }
         override func viewDidLayoutSubviews() {
             super.viewDidLayoutSubviews()
             onLayout?()

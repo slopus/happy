@@ -98,9 +98,22 @@ public final class ShellViewController: UIViewController {
         fatalError("init(coder:) is not supported")
     }
 
-    public override var childForStatusBarStyle: UIViewController? { callBarShown ? nil : isExpanded ? main : phone }
+    public override var childForStatusBarStyle: UIViewController? { statusBarOverCall ? nil : isExpanded ? main : phone }
     /// White over the call's bar.
-    public override var preferredStatusBarStyle: UIStatusBarStyle { callBarShown ? .lightContent : .default }
+    public override var preferredStatusBarStyle: UIStatusBarStyle { statusBarOverCall ? .lightContent : .default }
+    /// The status bar's words are over the call's bar: it shows, and the
+    /// status bar runs across the top. iOS 27.1 stands an iPhone Duo's up
+    /// the window's side (`verticalBarEdge`), beside the bar over the
+    /// app's own ground, where it keeps the app's style.
+    private var statusBarOverCall: Bool { callBarShown && !statusBarUpTheSide }
+    private var statusBarUpTheSide = false
+
+    private var hasVerticalBar: Bool {
+        #if compiler(>=6.4.1)
+        if #available(iOS 27.1, *) { return traitCollection.verticalBarEdge != .unspecified }
+        #endif
+        return false
+    }
     public override var childForStatusBarHidden: UIViewController? { isExpanded ? main : phone }
     public override var childForHomeIndicatorAutoHidden: UIViewController? { isExpanded ? main : phone }
 
@@ -220,6 +233,12 @@ public final class ShellViewController: UIViewController {
     private func placeCallBar() {
         let bounds = view.bounds
         let landscape = bounds.width > bounds.height
+        // A fold or a turn can stand the status bar up the side, or lay it back.
+        if hasVerticalBar != statusBarUpTheSide {
+            statusBarUpTheSide = hasVerticalBar
+            if callBarShown { setNeedsStatusBarAppearanceUpdate() }
+        }
+        callWindow?.host.statusBarUpTheSide = statusBarUpTheSide
         callBar.environment = CallBarView.Environment(
             safeArea: LayoutInsets(view.safeAreaInsets),
             statusBar: view.window?.windowScene?.statusBarManager?.statusBarFrame.height ?? view.safeAreaInsets.top,
