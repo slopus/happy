@@ -75,6 +75,8 @@ public enum AgentDefaults {
     /// Gemini 4 model+effort expansion in agy needs this happy-cli or newer.
     public static let cliVersionWithAgyGemini4 = "1.2.7-beta.0"
     static let agyModelBeforeGemini4 = "Gemini 3.8 Flash"
+    /// Image attachments in agy sessions need this happy-cli or newer.
+    public static let cliVersionWithAgyAttachments = "1.2.8-beta.0"
 
     static func codeDefaults(_ agent: Agent) -> Config {
         switch agent {
@@ -134,6 +136,15 @@ public enum AgentDefaults {
         }
         return SemanticVersion.isWellFormed(cliVersion)
             && SemanticVersion.compare(cliVersion, cliVersionWithAuto) >= 0
+    }
+
+    /// Image attachments in agy require happy-cli 1.2.8-beta.0 or newer; an absent or malformed version is treated as unsupported.
+    public static func agyAttachmentsSupportedByCli(_ cliVersion: String?) -> Bool {
+        guard let cliVersion, !cliVersion.isEmpty else {
+            return false
+        }
+        return SemanticVersion.isWellFormed(cliVersion)
+            && SemanticVersion.compare(cliVersion, cliVersionWithAgyAttachments) >= 0
     }
 
     /// The stored override for one field, with retired keys mapped onto the

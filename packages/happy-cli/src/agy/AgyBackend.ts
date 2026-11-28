@@ -116,13 +116,18 @@ export class AgyBackend implements AgentBackend {
     return { sessionId: this.cwd };
   }
 
-  async sendPrompt(_sessionId: SessionId, prompt: string): Promise<void> {
+  async sendPrompt(
+    _sessionId: SessionId,
+    prompt: string,
+    opts?: { addDirs?: readonly string[] },
+  ): Promise<void> {
+    const extraDirs = (opts?.addDirs ?? []).filter((d) => d && d !== this.cwd);
     const args = buildAgyArgs({
       prompt,
       model: this.model ? resolveAgyModelName(this.model, this.effort) : undefined,
       conversationId: this.conversationId,
       permissionMode: this.permissionMode,
-      addDirs: [this.cwd],
+      addDirs: [this.cwd, ...extraDirs],
       printTimeout: this.printTimeout,
     });
 

@@ -340,4 +340,30 @@ describe('AgyBackend', () => {
     child.emit('close', null);
     await expect(turn).rejects.toThrow();
   });
+
+  it('passes extra addDirs (such as cached image attachment directories) to agy', async () => {
+    const { child } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => null,
+    });
+
+    const turn = backend.sendPrompt('/work', 'inspect screenshot', {
+      addDirs: ['/tmp/happy/agy-image-cache/sess-1'],
+    });
+    child.emit('close', 0);
+    await turn;
+
+    const args = (spawnFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as string[];
+    const addDirValues: string[] = [];
+    for (let i = 0; i < args.length - 1; i++) {
+      if (args[i] === '--add-dir') {
+        addDirValues.push(args[i + 1]);
+      }
+    }
+    expect(addDirValues).toEqual(['/work', '/tmp/happy/agy-image-cache/sess-1']);
+  });
 });

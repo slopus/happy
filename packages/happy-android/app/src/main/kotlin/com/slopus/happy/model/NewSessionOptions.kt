@@ -188,6 +188,9 @@ data class NewSessionOptions(
     /** The harness the first send starts: Happy Agent's for a bot or a task, else the one chosen. */
     val startAgent: AgentType get() = if (kind != ComposeKind.Session) AgentType.Rig else resolvedAgent
 
+    /** The chosen computer's happy-cli version, when a Happy CLI daemon is present. */
+    val cliVersion: String? get() = choice?.happyMachine?.metadata?.happyCliVersion
+
     val hasHarness: Boolean get() = agents.isNotEmpty()
 
     /** new/index.tsx `isOffline`: the daemon that would run this harness is known and offline. */

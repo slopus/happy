@@ -31,6 +31,8 @@ import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { AgyDisplay } from '@/ui/ink/AgyDisplay';
 import type { AgentMessage } from '@/agent/core';
 import { normalizeRemotePermissionMode } from '@/claude/utils/permissionMode';
+import { createSerialAsyncHandler } from '@/codex/utils/serialAsyncHandler';
+import type { PermissionMode, UserMessage } from '@/api/types';
 import { AgyBackend } from './AgyBackend';
 import {
   DEFAULT_AGY_EFFORT,
@@ -42,7 +44,11 @@ import {
   pickDefaultAgyModel,
   resolveAgyModelName,
 } from './constants';
-import type { PermissionMode } from '@/api/types';
+import {
+  cleanupAgyImageCacheDir,
+  downloadAgyFileEventAttachment,
+  prepareAgyImagePrompt,
+} from './imageInput';
 
 export interface RunAgyOptions {
   credentials: Credentials;
@@ -261,8 +267,19 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     logger.debug('[agy] Applying agy models failed:', error);
   });
 
-  session.onUserMessage((message) => {
-    if (!message.content.text) return;
+  session.onFileEvent((fileEvent) => {
+    const ev = fileEvent.content.data.ev;
+    logger.debug('[agy] File event received', {
+      size: ev.size,
+      hasMimeType: Boolean(ev.mimeType),
+    });
+    session.trackAttachmentDownload(downloadAgyFileEventAttachment(session, fileEvent));
+  });
+
+  const handleUserMessage = createSerialAsyncHandler<UserMessage>(async (message) => {
+    const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
+    const userText = message.content.text ?? '';
+    if (!userText && attachmentsForThisMessage.length === 0) return;
 
     if (message.meta?.permissionMode) {
       const mode = normalizeRemotePermissionMode(message.meta.permissionMode);
@@ -289,8 +306,8 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       syncDisplayedModel(nextModel, nextEffort);
     }
 
-    const trimmedText = message.content.text.trim();
-    if (/^\/models$/i.test(trimmedText)) {
+    const trimmedText = userText.trim();
+    if (attachmentsForThisMessage.length === 0 && /^\/models$/i.test(trimmedText)) {
       const listText = availableModelCodes
         .map((code, idx) => `${idx + 1}. ${code}${code === selectedModel ? ` ✓ (current: ${displayedModel})` : ''}`)
         .join('\n');
@@ -301,7 +318,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       return;
     }
 
-    const slashModelMatch = /^\/model\s+(.+)$/i.exec(trimmedText);
+    const slashModelMatch = attachmentsForThisMessage.length === 0 ? /^\/model\s+(.+)$/i.exec(trimmedText) : null;
     if (slashModelMatch) {
       const rawArg = slashModelMatch[1].trim();
       const numericIndex = /^\d+$/.test(rawArg) ? Number(rawArg) - 1 : -1;
@@ -323,9 +340,18 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       return;
     }
 
-    messageBuffer.addMessage(message.content.text, 'user');
-    messageQueue.push(message.content.text, {});
+    const displayUserLine = attachmentsForThisMessage.length > 0
+      ? `${userText ? `${userText} ` : ''}[${attachmentsForThisMessage.length} image(s)]`
+      : userText;
+    messageBuffer.addMessage(displayUserLine, 'user');
+    messageQueue.push(userText, {}, attachmentsForThisMessage);
+  }, (error) => {
+    logger.warn('[agy] Failed to handle user message', {
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
   });
+
+  session.onUserMessage(handleUserMessage);
   session.keepAlive(thinking, 'remote');
 
   const keepAliveInterval = setInterval(() => {
@@ -365,14 +391,30 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
         break;
       }
 
-      log(`Incoming prompt: ${batch.message.slice(0, 200)}`);
+      const preparedImages = await prepareAgyImagePrompt({
+        message: batch.message,
+        attachments: batch.attachments,
+        sessionId: session.sessionId,
+      });
+      if ((batch.attachments?.length ?? 0) > 0 && preparedImages.imagePaths.length === 0 && !batch.message.trim()) {
+        session.sendSessionEvent({
+          type: 'message',
+          message: 'No supported images were available to send to Antigravity.',
+        });
+        session.sendSessionEvent({ type: 'ready' });
+        continue;
+      }
+
+      log(`Incoming prompt: ${preparedImages.prompt.slice(0, 200)}`);
       errorReportedForCurrentTurn = false;
       // The first turn waits (at most agy models' timeout) so a default the
       // account lacks is swapped before it fails.
       await modelsReady;
       sendEnvelopes(sessionManager.startTurn());
       try {
-        await backend.sendPrompt(process.cwd(), batch.message);
+        await backend.sendPrompt(process.cwd(), preparedImages.prompt, {
+          addDirs: preparedImages.cacheDir ? [preparedImages.cacheDir] : undefined,
+        });
         sendEnvelopes(sessionManager.endTurn('completed'));
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -393,6 +435,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
 
     backend.offMessage(onBackendMessage);
     await backend.dispose();
+    await cleanupAgyImageCacheDir({ sessionId: session.sessionId });
     inkInstance?.unmount();
 
     try {

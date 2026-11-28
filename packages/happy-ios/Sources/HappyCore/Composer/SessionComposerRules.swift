@@ -39,7 +39,7 @@ public enum SessionComposerRules {
     }
 
     /// `canUseAttachments`: Happy Agent sessions by capability, the others
-    /// by flavor (attachmentSupport.ts: none, Claude or Codex).
+    /// by flavor (Claude, Codex, or Antigravity CLI >= 1.2.8-beta.0).
     public static func canUseAttachments(_ record: SessionRecord?) -> Bool {
         guard let record else { return false }
         let metadata = record.metadata
@@ -47,6 +47,9 @@ public enum SessionComposerRules {
             return metadata?["capabilities"]?["attachments"]?["enabled"]?.boolValue == true
         }
         let flavor = metadata?["flavor"]?.stringValue ?? ""
+        if flavor == "agy" {
+            return AgentDefaults.agyAttachmentsSupportedByCli(metadata?["version"]?.stringValue)
+        }
         return flavor.isEmpty || flavor == "claude" || flavor == "codex"
     }
 
@@ -54,10 +57,11 @@ public enum SessionComposerRules {
     /// send starts. Happy Agent's session publishes its own policy only once
     /// it is made, so pictures are offered and the start names any it
     /// refuses (`SessionStarter`'s plan); a Happy CLI harness by flavor.
-    public static func canUseAttachments(starting agent: NewSessionDraft.Agent) -> Bool {
+    public static func canUseAttachments(starting agent: NewSessionDraft.Agent, cliVersion: String? = nil) -> Bool {
         switch agent {
         case .claude, .codex, .rig: true
-        case .gemini, .openclaw, .agy: false
+        case .agy: AgentDefaults.agyAttachmentsSupportedByCli(cliVersion)
+        case .gemini, .openclaw: false
         }
     }
 }

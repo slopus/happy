@@ -166,7 +166,7 @@ public struct NewSessionChoices: Equatable, Sendable {
 
     /// What the harness defaults are read against (`defaults(for:)`).
     var rigSelectionCreation: RigSessionCreation?
-    var cliVersion: String?
+    public var cliVersion: String?
     var agentDefaultOverrides: [String: JSONValue]
 
     public init(_ inputs: Inputs) {

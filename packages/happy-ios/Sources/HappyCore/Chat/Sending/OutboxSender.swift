@@ -69,6 +69,8 @@ public struct OutboxSender: ChatSending {
         let supportsAttachments: Bool
         if rig {
             supportsAttachments = policy?["enabled"]?.boolValue == true
+        } else if flavor == "agy" {
+            supportsAttachments = AgentDefaults.agyAttachmentsSupportedByCli(metadata["version"]?.stringValue)
         } else {
             supportsAttachments = flavor == nil || flavor == "" || flavor == "claude" || flavor == "codex"
         }

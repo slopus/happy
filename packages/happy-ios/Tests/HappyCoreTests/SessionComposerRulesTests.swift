@@ -67,6 +67,11 @@ final class SessionComposerRulesTests: XCTestCase {
         XCTAssertTrue(SessionComposerRules.canUseAttachments(sessionRecord()))
         XCTAssertTrue(SessionComposerRules.canUseAttachments(sessionRecord(metadata: "{}")))
         XCTAssertTrue(SessionComposerRules.canUseAttachments(sessionRecord(metadata: #"{ "flavor": "codex" }"#)))
+        XCTAssertTrue(SessionComposerRules.canUseAttachments(sessionRecord(metadata: #"{ "flavor": "agy", "version": "1.2.8-beta.0" }"#)))
+        XCTAssertTrue(SessionComposerRules.canUseAttachments(sessionRecord(metadata: #"{ "flavor": "agy", "version": "1.2.8" }"#)))
+        XCTAssertFalse(SessionComposerRules.canUseAttachments(sessionRecord(metadata: #"{ "flavor": "agy", "version": "1.2.7" }"#)))
+        XCTAssertFalse(SessionComposerRules.canUseAttachments(sessionRecord(metadata: #"{ "flavor": "agy", "version": "not-a-version" }"#)))
+        XCTAssertFalse(SessionComposerRules.canUseAttachments(sessionRecord(metadata: #"{ "flavor": "agy" }"#)))
         XCTAssertFalse(SessionComposerRules.canUseAttachments(sessionRecord(metadata: #"{ "flavor": "gemini" }"#)))
         XCTAssertTrue(SessionComposerRules.canUseAttachments(rig()))
         XCTAssertFalse(SessionComposerRules.canUseAttachments(rig(capabilities: #"{ "attachments": { "enabled": false } }"#)))
@@ -79,10 +84,14 @@ final class SessionComposerRulesTests: XCTestCase {
     func testAttachmentsBeforeTheSessionByTheHarnessStarted() {
         XCTAssertTrue(SessionComposerRules.canUseAttachments(starting: .claude))
         XCTAssertTrue(SessionComposerRules.canUseAttachments(starting: .codex))
+        XCTAssertFalse(SessionComposerRules.canUseAttachments(starting: .agy))
+        XCTAssertFalse(SessionComposerRules.canUseAttachments(starting: .agy, cliVersion: "1.2.7"))
+        XCTAssertFalse(SessionComposerRules.canUseAttachments(starting: .agy, cliVersion: "bad"))
+        XCTAssertTrue(SessionComposerRules.canUseAttachments(starting: .agy, cliVersion: "1.2.8-beta.0"))
+        XCTAssertTrue(SessionComposerRules.canUseAttachments(starting: .agy, cliVersion: "1.2.8"))
         XCTAssertTrue(SessionComposerRules.canUseAttachments(starting: .rig))
         XCTAssertFalse(SessionComposerRules.canUseAttachments(starting: .gemini))
         XCTAssertFalse(SessionComposerRules.canUseAttachments(starting: .openclaw))
-        XCTAssertFalse(SessionComposerRules.canUseAttachments(starting: .agy))
     }
 }
 

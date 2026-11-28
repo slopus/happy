@@ -10,6 +10,11 @@ class AttachmentSupportTest {
     @Test
     fun flavorsThatTakeImages() {
         listOf(null, "", "claude", "codex").forEach { assertTrue("$it", supportsImageAttachmentsForFlavor(it)) }
+        assertTrue("agy 1.2.8-beta.0", supportsImageAttachmentsForFlavor("agy", "1.2.8-beta.0"))
+        assertTrue("agy 1.2.8", supportsImageAttachmentsForFlavor("agy", "1.2.8"))
+        listOf(null, "", "1.2.7", "1.2.7-beta.0", "not-a-version").forEach { version ->
+            assertFalse("agy $version", supportsImageAttachmentsForFlavor("agy", version))
+        }
         listOf("gemini", "openclaw", "custom-agent").forEach { assertFalse(it, supportsImageAttachmentsForFlavor(it)) }
     }
 
@@ -18,6 +23,14 @@ class AttachmentSupportTest {
         assertEquals(
             ImageAttachmentSendPlan(supportsAttachments = true, shouldUseAttachments = true, shouldShowUnsupportedAlert = false, shouldSendText = true),
             imageAttachmentSendPlan(flavor = "codex", text = "", attachmentCount = 1),
+        )
+        assertEquals(
+            ImageAttachmentSendPlan(supportsAttachments = true, shouldUseAttachments = true, shouldShowUnsupportedAlert = false, shouldSendText = true),
+            imageAttachmentSendPlan(flavor = "agy", text = "", attachmentCount = 1, cliVersion = "1.2.8-beta.0"),
+        )
+        assertEquals(
+            ImageAttachmentSendPlan(supportsAttachments = false, shouldUseAttachments = false, shouldShowUnsupportedAlert = true, shouldSendText = false),
+            imageAttachmentSendPlan(flavor = "agy", text = "   ", attachmentCount = 1, cliVersion = "1.2.7"),
         )
         assertEquals(
             ImageAttachmentSendPlan(supportsAttachments = false, shouldUseAttachments = false, shouldShowUnsupportedAlert = true, shouldSendText = true),

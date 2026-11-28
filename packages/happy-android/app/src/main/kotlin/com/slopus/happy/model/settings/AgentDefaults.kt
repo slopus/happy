@@ -112,6 +112,9 @@ object AgentDefaults {
     const val CLI_VERSION_WITH_AGY_GEMINI_4 = "1.2.7-beta.0"
     private const val AGY_MODEL_BEFORE_GEMINI_4 = "Gemini 3.8 Flash"
 
+    /** Image attachments in agy sessions require happy-cli 1.2.8-beta.0 or newer. */
+    const val CLI_VERSION_WITH_AGY_ATTACHMENTS = "1.2.8-beta.0"
+
     /** Offered once, no longer accepted: what they meant. */
     private val retiredPermissionModes = mapOf("dontAsk" to "acceptEdits")
 
@@ -140,6 +143,12 @@ object AgentDefaults {
             return if (Versions.compareWithPrerelease(cliVersion, CLI_VERSION_WITH_AGY_GEMINI_4) >= 0) modelMode else AGY_MODEL_BEFORE_GEMINI_4
         }
         return modelMode
+    }
+
+    /** Image attachments in agy require happy-cli 1.2.8-beta.0 or newer; an absent or malformed version is treated as unsupported. */
+    fun agyAttachmentsSupportedByCli(cliVersion: String?): Boolean {
+        if (cliVersion.isNullOrEmpty() || !Versions.isWellFormed(cliVersion)) return false
+        return Versions.compareWithPrerelease(cliVersion, CLI_VERSION_WITH_AGY_ATTACHMENTS) >= 0
     }
 
     /** getCodeAgentDefaults. */
