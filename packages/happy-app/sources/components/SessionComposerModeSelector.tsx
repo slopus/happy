@@ -24,6 +24,7 @@ import { ComposerTooltip } from './DesktopShortcutTooltip';
 import { createPortal } from 'react-dom';
 import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
 import { groupComposerModels } from './composerModelGroups';
+import { NativeComposerSelectorSheet } from './NativeComposerSelectorSheet';
 
 export type SessionComposerModeSelectorConfig = {
     online: boolean;
@@ -32,6 +33,9 @@ export type SessionComposerModeSelectorConfig = {
     ownerScope?: string;
     model: ModeOption | null;
     modelOptions: ModeOption[];
+    modelsLoading?: boolean;
+    modelsError?: boolean;
+    selectionUnavailable?: boolean;
     effort: ModeOption | null;
     effortOptions: ModeOption[];
     onReset?: () => void;
@@ -93,7 +97,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const { width, height } = useWindowDimensions();
     const isWeb = Platform.OS === 'web';
     const compactModelList = isWeb && width >= 768;
-    const openModelsDirectly = !isWeb && props.preferModelList;
+    const openModelsDirectly = !isWeb && (props.preferModelList || props.modelsLoading || props.modelsError || props.selectionUnavailable || props.effortOptions.length === 0);
     const modelAgentLabel = props.agentSwitcher?.current === 'Magpie' ? undefined : props.agentSwitcher?.current;
     const triggerRef = React.useRef<View>(null);
     const triggerButton = React.useRef<View>(null);
@@ -165,7 +169,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
         ? agentOptions[(agentOptions.findIndex(agent => agent.key === props.agentSwitcher?.id) + 1) % agentOptions.length]
         : undefined;
     const agentSwitchHint = [props.agentSwitcher?.current, nextAgent?.label].filter(Boolean).join(' → ');
-    const canPickModel = !!props.onRefreshModels || props.modelOptions.length > 1
+    const canPickModel = !!props.onRefreshModels || props.modelsLoading || props.modelsError || props.selectionUnavailable || props.modelOptions.length > 1
         || (!!props.model && props.modelOptions.some(option => option.key !== props.model?.key));
     const canOpenModelList = canPickModel || canSwitchAgent;
     const enabled =
@@ -258,7 +262,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
             if (openModelsDirectly && (props.modelOptions.length > 0 || props.onRefreshModels)) openModels();
         };
         const node = triggerRef.current;
-        if (node && typeof node.measureInWindow === 'function') {
+        if (isWeb && node && typeof node.measureInWindow === 'function') {
             node.measureInWindow((x, y, measuredWidth, measuredHeight) => show({ x, y, width: measuredWidth, height: measuredHeight }));
         } else {
             show(null);
@@ -411,13 +415,6 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
             </Pressable>
             <ComposerTooltip testID="session-composer-mode-tooltip" label={t('agentInput.effort.select')} visible={isWeb && triggerHovered && !open && Boolean(enabled)} />
             <ModePanelHost open={open} webPortal={webPortal} onClose={close}>
-                <View pointerEvents={webPortal ? 'box-none' : undefined} style={styles.modalRoot}>
-                    {!webPortal ? <Pressable
-                        testID="session-composer-mode-picker-scrim"
-                        style={styles.backdrop}
-                        onPress={close}
-                        accessibilityLabel={t('devTools.close')}
-                    /> : null}
                     {open ? (
                         <View
                             ref={panelRef}
@@ -426,7 +423,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                             aria-label={t('agentInput.model.title')}
                             accessibilityViewIsModal={!webPortal}
                             testID="session-composer-mode-panel"
-                            style={[styles.panel, { position: 'absolute', ...placement }]}
+                            style={[styles.panel, isWeb ? { position: 'absolute', ...placement } : styles.nativePanel]}
                         >
                             {modelsOpen && !agentsOpen ? (
                                 <View style={styles.models}>
@@ -466,8 +463,8 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             testID="session-composer-refresh-models"
                                             accessibilityRole="button"
                                             accessibilityLabel={t('agentInput.model.refresh')}
-                                            accessibilityState={{ disabled: modelsRefreshing, busy: modelsRefreshing }}
-                                            disabled={modelsRefreshing}
+                                            accessibilityState={{ disabled: modelsRefreshing || props.modelsLoading === true, busy: modelsRefreshing || props.modelsLoading === true }}
+                                            disabled={modelsRefreshing || props.modelsLoading === true}
                                             onPress={() => { void refreshModels(); }}
                                             style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [styles.iconButton, hoverTransition, (pressed || hovered) && styles.pressed]}
                                         >
@@ -486,8 +483,9 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             />
                                         </Pressable>
                                     </View>
-                                    {!isWeb && modelsRefreshing ? <Text style={styles.catalogStatus}>{t('common.loading')}</Text> : null}
-                                    {modelRefreshError ? <Text testID="session-composer-model-refresh-error" style={styles.catalogStatus}>{t('agentInput.model.refreshFailed')}</Text> : null}
+                                    {(!isWeb && modelsRefreshing) || props.modelsLoading ? <Text testID="session-composer-model-loading" accessibilityLiveRegion="polite" style={styles.catalogStatus}>{t('common.loading')}</Text> : null}
+                                    {modelRefreshError || props.modelsError ? <Text testID="session-composer-model-refresh-error" accessibilityLiveRegion="polite" style={styles.catalogStatus}>{t('agentInput.model.refreshFailed')}</Text> : null}
+                                    {props.selectionUnavailable ? <Text testID="session-composer-model-unavailable" accessibilityLiveRegion="polite" style={styles.catalogStatus}>{t('agentInput.model.chooseAgain')}</Text> : null}
                                     <TextInput
                                         testID="session-composer-model-search"
                                         value={search}
@@ -655,6 +653,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             <ComposerTooltip testID="composer-reset-tooltip" label={props.agentSwitcher ? `${t('agentInput.switchCodingAgent')}: ${agentSwitchHint}` : t('common.reset')} visible={Platform.OS === 'web' && resetHovered && (props.agentSwitcher ? canSwitchAgent : canReset)} />
                                         </Pressable>
                                     </View>
+                                    {props.selectionUnavailable ? <Text testID="session-composer-model-unavailable" accessibilityLiveRegion="polite" style={styles.unavailableStatus}>{t('agentInput.model.chooseAgain')}</Text> : null}
                                     {levels.length > 0 ? (
                                         <View
                                             ref={trackRef}
@@ -783,7 +782,6 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                             )}
                         </View>
                     ) : null}
-                </View>
             </ModePanelHost>
         </View>
     );
@@ -795,7 +793,13 @@ function ModePanelHost({ open, webPortal, onClose, children }: React.PropsWithCh
     onClose: () => void;
 }>) {
     if (webPortal) return open ? createPortal(<View pointerEvents="box-none" style={styles.webRoot}>{children}</View>, webPortal) : null;
-    return <Modal visible={open} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>{children}</Modal>;
+    if (Platform.OS !== 'web') return <NativeComposerSelectorSheet open={open} onClose={onClose} scrimTestID="session-composer-mode-picker-scrim">{children}</NativeComposerSelectorSheet>;
+    return <Modal visible={open} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+        <View style={styles.modalRoot}>
+            <Pressable testID="session-composer-mode-picker-scrim" style={styles.backdrop} onPress={onClose} />
+            {children}
+        </View>
+    </Modal>;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -814,12 +818,12 @@ const styles = StyleSheet.create((theme) => ({
     triggerText: {
         minWidth: 0,
         flexShrink: 1,
-        color: theme.colors.textSecondary,
+        color: theme.colors.text,
         fontSize: 13,
         ...Typography.default('semiBold'),
     },
     compactTrigger: { paddingHorizontal: 6, gap: 4 },
-    triggerEffort: { color: theme.colors.textSecondary, ...Typography.default() },
+    triggerEffort: { color: theme.colors.text, ...Typography.default() },
     disabled: { opacity: 0.58 },
     pressed: { backgroundColor: theme.colors.surfacePressed },
     modalRoot: { flex: 1 },
@@ -837,6 +841,7 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 16,
         elevation: 8,
     },
+    nativePanel: { width: '100%', maxWidth: 416, maxHeight: '100%' },
     settings: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 },
     panelHead: { flexDirection: 'row', alignItems: 'flex-start' },
     iconButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
@@ -850,7 +855,7 @@ const styles = StyleSheet.create((theme) => ({
         ...Typography.default('semiBold'),
     },
     ultraTitle: { color: '#9348ff' },
-    modelLink: { color: theme.colors.textSecondary, fontSize: 13, marginTop: 2, ...Typography.default() },
+    modelLink: { color: theme.colors.text, fontSize: 13, marginTop: 2, ...Typography.default() },
     track: {
         height: 32,
         marginTop: 12,
@@ -926,6 +931,7 @@ const styles = StyleSheet.create((theme) => ({
     compactOptionDetail: { maxWidth: '44%', fontSize: 11, lineHeight: 16 },
     description: { color: theme.colors.textSecondary, fontSize: 11, ...Typography.default() },
     catalogStatus: { color: theme.colors.textSecondary, fontSize: 12, paddingHorizontal: 14, paddingBottom: 6, ...Typography.default() },
+    unavailableStatus: { color: theme.colors.text, fontSize: 12, paddingTop: 8, ...Typography.default() },
     modelList: { flexShrink: 1, paddingHorizontal: 7, marginBottom: 8 },
     option: {
         paddingHorizontal: 10,

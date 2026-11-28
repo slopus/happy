@@ -1,3 +1,4 @@
+import { registerAntigravityModelCatalogHandler } from '@/agent/acp/antigravityModelCatalog';
 import type { CrossAgentRequest } from '@/continuation/coordinator';
 import type { ConversationSessionLaunchRequest, ConversationSessionCancelRequest, ConversationSessionCancelResult } from '@/daemon/conversationSessionLaunch';
 import type { NativeToolResultPage } from '@/continuation/recoverToolResult';
@@ -233,6 +234,7 @@ export class ApiMachineClient {
         ]);
         registerEnvironmentHandlers(this.rpcHandlerManager, environmentService);
         registerClaudeModelCatalogHandler(this.rpcHandlerManager);
+        registerAntigravityModelCatalogHandler(this.rpcHandlerManager);
         registerMagpieModelCatalogHandler(this.rpcHandlerManager);
         const codingAgents = createCodingAgentService({ runner, env: process.env });
         this.rpcHandlerManager.registerHandler('coding-agents-inspect', (request: unknown) => codingAgents.inspect(request));
@@ -774,6 +776,14 @@ export class ApiMachineClient {
             }).catch(error => logger.debug('[API MACHINE] Failed to publish daemon state or canvas capability:', error));
 
             this.rpcHandlerManager.onSocketConnect(this.socket);
+            // Registration returns saved metadata for existing machines. Announce the
+            // installed catalog only after its RPC registrations have been emitted.
+            if (this.rpcHandlerManager.hasHandler('antigravity-model-catalog') && this.machine.metadata?.antigravityModelCatalog !== 1) {
+                void this.updateMachineMetadata(metadata => ({
+                    ...(metadata ?? this.machine.metadata),
+                    antigravityModelCatalog: 1,
+                })).catch(error => logger.debug('[API MACHINE] Failed to advertise Antigravity catalog:', error));
+            }
             this.delegationConnected?.();
             this.syncResumeSessionRpcRegistration();
             this.startKeepAlive();

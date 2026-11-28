@@ -319,3 +319,12 @@ it('carries Antigravity effort to the executor, dropping stale cross-model value
     session.effortLevel = 'xhigh';
     expect(resolveMessageModeMeta(session).effort).toBe('medium');
 });
+
+
+it('preserves an explicit Antigravity effort on the first message before capabilities hydrate', () => {
+    expect(resolveMessageModeMeta({modelMode:'neon',effortLevel:'xhigh',metadata:{flavor:'antigravity'}} as any)).toMatchObject({model:'neon',effort:'xhigh'});
+    expect(resolveMessageModeMeta({modelMode:'argon',effortLevel:'high',metadata:{flavor:'antigravity',currentModelCode:'neon',thoughtLevels:[{code:'low',value:'Low'}],models:[{code:'argon',value:'Argon'}]}} as any).effort).toBe('high');
+});
+it('honors a confirmed empty Antigravity effort range instead of treating it as pending hydration', () => {
+    expect(resolveMessageModeMeta({modelMode:'no-effort',effortLevel:'high',metadata:{flavor:'antigravity',models:[{code:'no-effort',value:'Native',supportedEffortLevels:[]}]}} as any).effort).toBeNull();
+});

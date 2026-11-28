@@ -274,6 +274,8 @@ export interface AcpPermissionHandler {
  * Configuration for AcpBackend
  */
 export interface AcpBackendOptions {
+  /** Catalog probes never retry session creation after a failed handshake. */
+  startupAttempts?: 1;
   /** Agent name for identification */
   agentName: string;
 
@@ -807,7 +809,7 @@ export class AcpBackend implements AgentBackend {
         },
         {
           operationName: 'Initialize',
-          maxAttempts: RETRY_CONFIG.maxAttempts,
+          maxAttempts: this.options.startupAttempts ?? RETRY_CONFIG.maxAttempts,
           baseDelayMs: RETRY_CONFIG.baseDelayMs,
           maxDelayMs: RETRY_CONFIG.maxDelayMs,
           shouldRetry: (error) => !isNonRetryableStartupError(error),
@@ -868,7 +870,7 @@ export class AcpBackend implements AgentBackend {
         },
         {
           operationName: 'NewSession',
-          maxAttempts: RETRY_CONFIG.maxAttempts,
+          maxAttempts: this.options.startupAttempts ?? RETRY_CONFIG.maxAttempts,
           baseDelayMs: RETRY_CONFIG.baseDelayMs,
           maxDelayMs: RETRY_CONFIG.maxDelayMs,
           shouldRetry: (error) => !isNonRetryableStartupError(error),

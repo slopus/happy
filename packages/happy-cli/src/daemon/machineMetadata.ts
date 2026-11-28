@@ -22,5 +22,6 @@ export const initialMachineMetadata: MachineMetadata = {
   happyLibDir: projectPath(),
   cliAvailability: detectCLIAvailability(),
   magpieModelCatalog: 1,
+  antigravityModelCatalog: 1,
   resumeSupport: { ...detectResumeSupport(), rpcAvailable: true },
 };

@@ -43,6 +43,7 @@ import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useCodexAccounts } from '@/hooks/useCodexAccounts';
 import { useClaudeModelCatalog } from '@/hooks/useClaudeModelCatalog';
+import { useAntigravityModelCatalog } from '@/hooks/useAntigravityModelCatalog';
 import { useShallow } from 'zustand/react/shallow';
 import type { Machine, Session } from '@/sync/storageTypes';
 import {
@@ -1058,12 +1059,23 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             directory: claudeCatalogDirectory,
             enabled: selectedAgent === 'claude' && !!selectedMachine && isMachineOnline(selectedMachine),
         });
-        const effectiveModelMetadata = React.useMemo(() => useMagpie ? magpieMetadata : selectedAgent === 'claude' && claudeModels.catalog ? ({
+        const antigravityModels = useAntigravityModelCatalog({
+            machineId: selectedMachineId, directory: catalogDirectory,
+            enabled: selectedAgent === 'antigravity' && !!selectedMachine && isMachineOnline(selectedMachine),
+        });
+        // A historical catalog is a compatibility fallback only on the same launch directory.
+        const antigravityMetadata = React.useMemo((): Session['metadata'] => antigravityModels.catalog ? ({
+            path: catalogDirectory ?? '', host: selectedMachine?.metadata?.host ?? '', flavor: 'antigravity',
+            machineId: selectedMachineId ?? undefined, ...antigravityModels.catalog,
+            modelsUpdatedAt: antigravityModels.catalog.observedAt,
+        }) : modelMetadata?.path === catalogDirectory ? modelMetadata : null,
+        [antigravityModels.catalog, catalogDirectory, selectedMachineId, selectedMachine?.metadata?.host, modelMetadata]);
+        const effectiveModelMetadata = React.useMemo(() => selectedAgent === 'antigravity' ? antigravityMetadata : useMagpie ? magpieMetadata : selectedAgent === 'claude' && claudeModels.catalog ? ({
             ...modelMetadata,
             path: claudeCatalogDirectory ?? '', host: modelMetadata?.host ?? '', flavor: 'claude',
             machineId: selectedMachineId ?? undefined,
             models: claudeModels.catalog.models, modelsUpdatedAt: claudeModels.catalog.observedAt,
-        }) : modelMetadata, [useMagpie, magpieMetadata, selectedAgent, claudeModels.catalog, modelMetadata, selectedMachineId, claudeCatalogDirectory]);
+        }) : modelMetadata, [antigravityMetadata, useMagpie, magpieMetadata, selectedAgent, claudeModels.catalog, modelMetadata, selectedMachineId, claudeCatalogDirectory]);
         React.useEffect(() => {
             const pending = pendingClaudeSelection.current;
             if (selectedAgent !== 'claude' || !claudeModels.catalog || !pending) return;
@@ -1078,7 +1090,8 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         if (verifiedChoice) verifiedClaudeSelection.current = { scope: claudeSelectionScope, model: { key: verifiedChoice.code, name: verifiedChoice.value } };
         const modelModes = React.useMemo<ModelMode[]>(
             () => {
-                const models = useMagpie ? magpieModels : getNewSessionModels(selectedAgent, effectiveModelMetadata);
+                const models = selectedAgent === 'antigravity' && antigravityModels.catalog?.models.length === 0 ? []
+                    : useMagpie ? magpieModels : getNewSessionModels(selectedAgent, effectiveModelMetadata);
                 // A saved explicit identifier remains the user's choice if discovery fails or a catalog removes it.
                 const verified = verifiedClaudeSelection.current;
                 if (selectedAgent === 'claude' && verified?.scope === claudeSelectionScope && verified.model.key === draft.modelMode
@@ -1087,7 +1100,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 }
                 return models;
             },
-            [effectiveModelMetadata, selectedAgent, getNewSessionModels, draft.modelMode, claudeSelectionScope, useMagpie, magpieModels],
+            [antigravityModels.catalog, effectiveModelMetadata, selectedAgent, getNewSessionModels, draft.modelMode, claudeSelectionScope, useMagpie, magpieModels],
         );
         const composerModels = React.useMemo(() => {
             const currentModels = useMagpie ? getNewSessionModels('codex', modelMetadata) : modelModes;
@@ -1117,12 +1130,15 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 setFastMode(false);
                 return;
             }
-            const metadata = getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: nextAgent, codexAccountProfileId });
+            // Enter Antigravity on automatic. Its active directory catalog can resolve
+            // the native current model without turning historical state into a user pick.
+            const metadata = nextAgent === 'antigravity' ? null
+                : getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: nextAgent, codexAccountProfileId });
             const selection = resolveNewSessionModeSelection({
                 agent: nextAgent,
                 permissionMode: 'default',
-                modelMode: draft.modelMode,
-                effortLevel: draft.effortLevel,
+                modelMode: nextAgent === 'antigravity' ? null : draft.modelMode,
+                effortLevel: nextAgent === 'antigravity' ? null : draft.effortLevel,
                 modelSelection: draft.modelSelection,
                 effortSelection: draft.effortSelection,
                 agentDefaultOverrides,
@@ -1158,7 +1174,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         ), [agentDefaultOverrides, draft.effortLevel, draft.modelMode, draft.modelSelection, draft.effortSelection, draft.permissionMode, effectiveModelMetadata, modelModes, selectedAgent, useMagpie]);
 
         // CLI automatic is an explicit reset even after a concrete catalog arrives.
-        const currentModel = useMagpie
+        const currentModel = selectedAgent === 'antigravity' && resolvedModeSelection.modelMode !== 'default'
+            ? modelModes.find(model => model.key === resolvedModeSelection.modelMode) ?? { key: resolvedModeSelection.modelMode, name: resolvedModeSelection.modelMode }
+            : useMagpie
             ? magpieModels.find(model => model.key === draft.modelMode) ?? { key: draft.modelMode, name: draft.modelMode }
             : selectedAgent === 'codex' && resolvedModeSelection.modelMode === 'default'
             ? { key: 'default', name: t('agentInput.model.cliAutomatic') }
@@ -1172,6 +1190,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                   && draft.modelSelection.defaultValue === resolveAgentDefaultConfig(agentDefaultOverrides, 'codex').modelMode
                   && !modelModes.some(model => model.key === draft.modelMode)
         );
+        const explicitAntigravityMissing = selectedAgent === 'antigravity' && !!antigravityModels.catalog
+            && resolvedModeSelection.modelMode !== 'default'
+            && !antigravityModels.catalog.models.some(model => model.code === resolvedModeSelection.modelMode);
         const displayedModel = explicitCodexMissing && !useMagpie ? { key: draft.modelMode, name: draft.modelMode } : currentModel;
 
         const effortLevels = React.useMemo<EffortLevel[]>(
@@ -1180,13 +1201,28 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             [selectedAgent, currentModelKey, effectiveModelMetadata, codexAccountProfileId],
         );
 
+        const antigravityEffortRange = selectedAgent === 'antigravity'
+            ? effectiveModelMetadata?.models?.find(model => model.code === currentModelKey)?.supportedEffortLevels : undefined;
+        const explicitAntigravityEffortMissing = selectedAgent === 'antigravity' && !!antigravityModels.catalog
+            && !!resolvedModeSelection.effortLevel && resolvedModeSelection.effortLevel !== 'default' && antigravityEffortRange !== undefined
+            && !antigravityEffortRange.includes(resolvedModeSelection.effortLevel);
+        const antigravitySelectionUnavailable = explicitAntigravityMissing || explicitAntigravityEffortMissing
+            || (selectedAgent === 'antigravity' && antigravityModels.catalog?.models.length === 0);
         const supportsWorktree = configExperience.showWorktree && getSupportsWorktree(selectedAgent);
         const showModel = configExperience.showModeDetails && modelModes.length > 1;
-        const showEffort = configExperience.showModeDetails && effortLevels.length > 0;
+        const showEffort = configExperience.showModeDetails && (effortLevels.length > 0 || (selectedAgent === 'antigravity' && !!resolvedModeSelection.effortLevel && resolvedModeSelection.effortLevel !== 'default'));
         const supportsFast = selectedAgent === 'codex' && supportsCodexFast(effectiveModelMetadata, currentModelKey);
         const showPermission = configExperience.showPermission && permissionModes.length > 1;
 
 
+
+        const resetAntigravityEffortForModel = React.useCallback((nextModel: string) => {
+            if (selectedAgent !== 'antigravity' || !resolvedModeSelection.effortLevel) return;
+            const supported = getEffortLevelsForModel('antigravity', nextModel, effectiveModelMetadata);
+            // A deliberate selection, including reselecting the current model, recovers
+            // its native default unless the current effort is still advertised.
+            if (!supported.some(level => level.key === resolvedModeSelection.effortLevel)) draft.setEffortLevel(null);
+        }, [selectedAgent, resolvedModeSelection.effortLevel, effectiveModelMetadata, draft.setEffortLevel]);
 
         const modelSelectionScope = JSON.stringify([
             selectedMachineId, selectedAgent, codexAccountProfileId, resolvedModeSelection.modelMode,
@@ -1199,14 +1235,15 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             setPermissionIndex(defaultPermIdx >= 0 ? defaultPermIdx : 0);
 
             const defaultModelIdx = modelModes.findIndex(m => m.key === resolvedModeSelection.modelMode);
-            const fallbackKey = modelModes[defaultModelIdx >= 0 ? defaultModelIdx : 0]?.key ?? null;
+            const fallbackKey = selectedAgent === 'antigravity' && resolvedModeSelection.modelMode !== 'default' ? resolvedModeSelection.modelMode
+                : modelModes[defaultModelIdx >= 0 ? defaultModelIdx : 0]?.key ?? null;
             const scopeChanged = previousModelSelectionScope.current !== modelSelectionScope;
             previousModelSelectionScope.current = modelSelectionScope;
             setSelectedModelKey(previous => !scopeChanged && modelModes.some(model => model.key === previous)
                 ? previous : fallbackKey);
 
             if (!supportsWorktree) setWorktreeKey('__none__');
-        }, [permissionModes, modelModes, modelSelectionScope, supportsWorktree, resolvedModeSelection.permissionMode, resolvedModeSelection.modelMode]);
+        }, [permissionModes, modelModes, modelSelectionScope, supportsWorktree, resolvedModeSelection.permissionMode, resolvedModeSelection.modelMode, selectedAgent]);
 
         // Wait for the selected model to follow the draft before validating its effort.
         // Otherwise an intermediate model/agent render can overwrite a valid choice.
@@ -1214,6 +1251,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             // An absent Codex catalog means the connection is still hydrating,
             // not that the chosen model has no effort controls. Do not erase
             // the persisted choice before its capabilities can be validated.
+            if (selectedAgent === 'antigravity') return;
             if (selectedAgent === 'codex' && !effectiveModelMetadata?.models?.length) return;
             if (currentModelKey !== resolvedModeSelection.modelMode) return;
             const defaultEffort = resolvedModeSelection.effortLevel;
@@ -1223,7 +1261,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 if (selectedAgent !== 'codex') draft.setEffortLevel(idx >= 0 ? defaultEffort : effortLevels[effortLevels.length - 1]?.key ?? null);
             } else {
                 setEffortIndex(0);
-                if (selectedAgent !== 'codex') draft.setEffortLevel(selectedAgent === 'antigravity' ? null : effortLevels[0]?.key ?? null);
+                if (selectedAgent !== 'codex') draft.setEffortLevel(effortLevels[0]?.key ?? null);
             }
         }, [draft.setEffortLevel, resolvedModeSelection.effortLevel, resolvedModeSelection.modelMode, currentModelKey, effortLevels, selectedAgent, effectiveModelMetadata]);
 
@@ -1373,7 +1411,8 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS.find(a => a.key === selectedAgent) ?? availableAgents[0] ?? ALL_AGENTS[0];
         const currentPermission = permissionModes[permissionIndex] ?? permissionModes[0];
         const currentEffort = selectedAgent === 'antigravity'
-            ? effortLevels.find(level => level.key === resolvedModeSelection.effortLevel) ?? null
+            ? effortLevels.find(level => level.key === resolvedModeSelection.effortLevel)
+                ?? (resolvedModeSelection.effortLevel ? { key: resolvedModeSelection.effortLevel, name: resolvedModeSelection.effortLevel } : null)
             : effortLevels[effortIndex] ?? effortLevels[0] ?? null;
         const permissionStyle = currentPermission?.key !== 'default' ? getPermissionStyle(currentPermission.key) : null;
 
@@ -1441,6 +1480,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 case 'model': {
                     const next = modelModes.findIndex((mode) => mode.key === key);
                     if (next >= 0) {
+                        resetAntigravityEffortForModel(key);
                         setSelectedModelKey(key);
                         draft.setModelMode(modelModes[next]?.key ?? 'default');
                         if (!supportsCodexFast(modelMetadata, key)) setFastMode(false);
@@ -1488,6 +1528,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             selectedMachineId,
             setSelectedAgent,
             switchComposerAgent,
+            resetAntigravityEffortForModel,
             setSelectedMachineId,
             setWorktreeKey,
         ]);
@@ -1495,11 +1536,11 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         // Expose the live selection + a way to dismiss pickers to the host.
         React.useImperativeHandle(ref, () => ({
             getSelection: () => ({
-                ...(explicitCodexMissing || (selectedAgent === 'claude' && draft.modelMode && !modelModes.some(model => model.key === draft.modelMode))
+                ...(explicitCodexMissing || antigravitySelectionUnavailable || (selectedAgent === 'claude' && draft.modelMode && !modelModes.some(model => model.key === draft.modelMode))
                     ? { modelUnavailable: true } : {}),
                 permissionKey: currentPermission?.key === 'default' ? undefined : currentPermission?.key,
                 modelKey: currentModelKey === 'default' ? undefined : currentModelKey,
-                effortKey: selectedAgent === 'codex' && !effectiveModelMetadata?.models?.length ? null
+                effortKey: selectedAgent === 'antigravity' ? resolvedModeSelection.effortLevel : selectedAgent === 'codex' && !effectiveModelMetadata?.models?.length ? null
                     : selectedAgent === 'codex' && resolvedModeSelection.effortLevel === 'default' ? 'default'
                     : normalizeModelEffortKey(selectedAgent, currentModelKey, resolvedModeSelection.effortLevel ?? null, effectiveModelMetadata) ?? null,
                 worktreeKey,
@@ -1509,7 +1550,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                       ? { expectedCodexAccountProfileId: codexAccountProfileId } : {}),
             }),
             closePickers: dismissPicker,
-        }), [currentPermission?.key, currentModelKey, draft.modelMode, modelModes, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, fastMode, supportsFast, dismissPicker, selectedAgent, codexAccountProfileId, effectiveModelMetadata, explicitCodexMissing, useMagpie]);
+        }), [currentPermission?.key, currentModelKey, draft.modelMode, modelModes, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, fastMode, supportsFast, dismissPicker, selectedAgent, codexAccountProfileId, effectiveModelMetadata, explicitCodexMissing, antigravitySelectionUnavailable, useMagpie]);
 
         // Android uses a bottom sheet so options do not expand inside the
         // composer. iOS and desktop sidebars retain their existing inline layout.
@@ -1745,14 +1786,18 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     unifiedCodex={selectedAgent === 'codex'}
                                     online={!isOffline}
                                     preferModelList={canDiscoverMagpie}
+                                    modelsLoading={selectedAgent === 'antigravity' && antigravityModels.loading}
+                                    modelsError={selectedAgent === 'antigravity' && antigravityModels.error}
+                                    selectionUnavailable={antigravitySelectionUnavailable}
                                     ownerScope={JSON.stringify([selectedMachineId, catalogDirectory, codexAccountProfileId])}
                                     model={displayedModel ? { ...displayedModel, key: `${useMagpie || (selectedAgent === 'codex' && codexAccountProfileId === null && magpieModels.some(model => model.key === displayedModel.key)) ? 'magpie' : selectedAgent}::${displayedModel.key}` } : null}
                                     modelOptions={composerModels}
                                     refreshScope={JSON.stringify([selectedMachineId, selectedAgent, claudeCatalogDirectory])}
-                                    onRefreshModels={canDiscoverMagpie || selectedAgent === 'claude'
+                                    onRefreshModels={canDiscoverMagpie || selectedAgent === 'claude' || selectedAgent === 'antigravity'
                                         ? async () => { await Promise.all([
                                             canDiscoverMagpie ? magpie.refresh() : undefined,
                                             selectedAgent === 'claude' ? claudeModels.refresh() : undefined,
+                                            selectedAgent === 'antigravity' ? antigravityModels.refresh() : undefined,
                                         ]); } : undefined}
                                     effort={showEffort ? currentEffort : null}
                                     effortOptions={showEffort ? effortLevels : []}
@@ -1787,6 +1832,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                         if (selectedAgent === 'claude') {
                                             verifiedClaudeSelection.current = { scope: claudeSelectionScope, model: modelModes.find(mode => mode.key === nextModel)! };
                                         }
+                                        resetAntigravityEffortForModel(nextModel);
                                         setSelectedModelKey(nextModel);
                                         draft.setModelMode(nextModel);
                                         if (!supportsCodexFast(modelMetadata, nextModel)) setFastMode(false);

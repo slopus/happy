@@ -1,6 +1,5 @@
 import {
     getEffortLevelsForModel,
-    normalizeModelEffortKey,
     getHardcodedModelModes,
     getHardcodedPermissionModes,
     type ModeOption,
@@ -114,7 +113,7 @@ export function resolveNewSessionModeSelection(args: {
     // Explicit picks survive refresh until that field's configured default changes.
     const explicitModel = agent !== 'codex' || (args.modelSelection?.agent === agent
         && args.modelSelection.defaultValue === effectiveDefaults.modelMode);
-    const explicitEffort = agent !== 'codex' || (args.effortSelection?.agent === agent
+    const explicitEffort = (agent !== 'codex' && (agent !== 'antigravity' || !args.effortSelection)) || (args.effortSelection?.agent === agent
         && args.effortSelection.defaultValue === effectiveDefaults.effortLevel);
     const draftModel = explicitModel ? modelMode : null;
     const draftEffort = explicitEffort ? effortLevel : null;
@@ -130,19 +129,21 @@ export function resolveNewSessionModeSelection(args: {
         options: permissionOptions,
     });
 
-    const resolvedModelMode = agent === 'codex' && explicitModel && draftModel === 'default' ? 'default' : resolveSelectionKey({
+    const resolvedModelMode = agent === 'antigravity' && draftModel && draftModel !== 'default' ? draftModel : agent === 'codex' && explicitModel && draftModel === 'default' ? 'default' : resolveSelectionKey({
         draftKey: draftModel,
-        fallbackKey: effectiveDefaults.modelMode,
+        fallbackKey: agent === 'antigravity' && effectiveDefaults.modelMode === 'default' && hasOption(modelOptions,effortMetadata?.currentModelCode)
+            ? effortMetadata.currentModelCode : effectiveDefaults.modelMode,
         codeDefaultKey: codeDefaults.modelMode,
         followDraftKeys: agent === 'claude' || (agent === 'codex' && explicitModel) ? [] : ['default'],
         options: modelOptions,
     });
 
+    const antigravityEffort = explicitEffort ? effortLevel : effectiveDefaults.effortLevel;
     const effortOptions = getEffortLevelsForModel(agent, resolvedModelMode, effortMetadata);
     const explicitEffortReset = agent === 'codex' && explicitEffort && draftEffort === 'default'
         && effortOptions.some(option => option.key === 'default');
     const resolvedEffortLevel = explicitEffortReset ? 'default' : agent === 'antigravity'
-        ? (!effortLevel || effortLevel === 'default' ? null : normalizeModelEffortKey(agent, resolvedModelMode, effortLevel, effortMetadata) ?? null)
+        ? (!antigravityEffort || antigravityEffort === 'default' ? null : antigravityEffort)
         : resolveEffortKey({
         draftKey: draftEffort,
         fallbackKey: effectiveDefaults.effortLevel,

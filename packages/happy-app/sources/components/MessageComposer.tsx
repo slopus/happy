@@ -229,6 +229,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         justifyContent: 'space-between',
     },
+    nativeActionsLeft: { flex: 0, flexBasis: 'auto', flexShrink: 0, overflow: 'visible' },
+    nativeActionsRight: { flex: 1, minWidth: 0, flexShrink: 1, justifyContent: 'flex-end' },
     // Yoga gives positive `flex` an implicit zero basis, even with flexBasis:auto.
     // Keep the icons at their intrinsic width and give remaining space to the model.
     discussionActionsLeft: { flex: 0, flexBasis: 'auto', flexShrink: 0 },
@@ -1075,7 +1077,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                         <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
                             {/* Composer actions stay on one row. */}
                             <View testID="composer-actions-row" style={styles.actionButtonsRow}>
-                                <View style={[styles.actionButtonsLeft, props.discussionMode && styles.discussionActionsLeft]}>
+                                <View style={[styles.actionButtonsLeft, Platform.OS !== 'web' && styles.nativeActionsLeft, props.discussionMode && styles.discussionActionsLeft]}>
 
                                 {/* The same content chooser as typing @. */}
                                 {!props.zenMode && (props.onPickImages || !props.imageAttachmentsOnly) && (
@@ -1126,7 +1128,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                 </View>
 
                                 {/* Model selection and primary action. */}
-                                <View style={[styles.actionButtonsRight, props.discussionMode && styles.discussionActionsRight]}>
+                                <View style={[styles.actionButtonsRight, Platform.OS !== 'web' && styles.nativeActionsRight, props.discussionMode && styles.discussionActionsRight]}>
                                 {/* Inline execution controls are desktop affordances. Narrow Web and native
                                     layouts keep the compact composer and use the existing session menu. */}
                                 {props.trailingControls}

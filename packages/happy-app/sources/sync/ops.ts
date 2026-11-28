@@ -1,3 +1,4 @@
+import { AntigravityModelCatalogSchema, type AntigravityModelCatalog } from '@slopus/happy-wire';
 import { z } from 'zod';
 import { asyncQuestionResponseSchema, type AsyncQuestionAction, type AsyncQuestionResponse } from '@slopus/happy-wire';
 import { PortableContextHeadSchema, type PortableContextHead } from '@slopus/happy-wire';
@@ -840,6 +841,13 @@ export async function machineGetMagpieModelCatalog(machineId: string, directory:
         timeoutMs: 25_000, overallTimeoutMs: 30_000,
     });
     return CodexMagpieCatalogSchema.parse(result);
+}
+
+export async function machineGetAntigravityModelCatalog(machineId: string, directory: string): Promise<AntigravityModelCatalog> {
+    const result = await apiSocket.machineRPC<unknown, { directory: string }>(machineId, 'antigravity-model-catalog', { directory }, {
+        timeoutMs: 25_000, overallTimeoutMs: 25_000,
+    });
+    return AntigravityModelCatalogSchema.parse(result);
 }
 
 export async function machineGetClaudeModelCatalog(machineId: string, directory: string): Promise<ClaudeModelCatalog> {

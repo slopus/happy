@@ -246,6 +246,19 @@ describe('ComposeHome session hydration recovery', () => {
     const originalConsoleError = console.error;
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
+    it('allows the native home to scroll when the keyboard and long content exhaust the viewport', async () => {
+        mocks.platformOS = 'android';
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<ComposeHome />); });
+        try {
+        const scroll = renderer.root.findByProps({ testID: 'native-home-scroll' });
+        expect(scroll.type).toBe('ScrollView');
+        expect(scroll.props.keyboardShouldPersistTaps).toBe('handled');
+        const composer = renderer.root.findByType('MessageComposer');
+        expect(composer).toBeDefined();
+        } finally { act(() => renderer.unmount()); }
+    });
+
     beforeEach(() => {
         mocks.codingAgents = {};
         mocks.draft.agentType = 'codex';

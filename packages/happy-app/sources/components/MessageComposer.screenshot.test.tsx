@@ -4,6 +4,8 @@ vi.mock('react-native-svg', () => ({ default: 'Svg', Path: 'Path', Rect: 'Rect',
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import Yoga, { type Node as YogaNode } from 'yoga-layout';
+import { View } from 'react-native';
 
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
@@ -129,6 +131,37 @@ describe('MessageComposer capture controls', () => {
         if (renderer) act(() => renderer.unmount());
         renderer = undefined;
         consoleErrorSpy.mockRestore();
+    });
+
+    it.each([320, 360, 390, 430])('keeps fixed actions reachable with a long model at %sdp', (width) => {
+        act(() => { renderer = TestRenderer.create(<MessageComposer mode="home" initialValue="draft" placeholder="Message" onSend={vi.fn()}
+            leadingControls={<View testID="test-permission" />} trailingControls={<View testID="test-model" />} />); });
+        const row = renderer.root.findByProps({ testID: 'composer-actions-row' });
+        const flatten = (style: any): any => Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean).map(flatten)) : style ?? {};
+        function nodeFor(style: any): YogaNode {
+            const node = Yoga.Node.create();
+            const value = flatten(style);
+            if (value.flex !== undefined) node.setFlex(value.flex);
+            if (value.flexBasis === 'auto') node.setFlexBasisAuto();
+            if (value.flexShrink !== undefined) node.setFlexShrink(value.flexShrink);
+            if (value.minWidth !== undefined) node.setMinWidth(value.minWidth);
+            node.setFlexDirection(Yoga.FLEX_DIRECTION_ROW);
+            return node;
+        }
+        const root = nodeFor(row.props.style);
+        root.setWidth(width - 46); // Home side insets, panel padding and borders.
+        const left = nodeFor(row.children[0].props.style);
+        const right = nodeFor(row.children[1].props.style);
+        root.insertChild(left, 0); root.insertChild(right, 1);
+        const add = Yoga.Node.create(); add.setWidth(36); add.setFlexShrink(0); left.insertChild(add, 0);
+        const permission = Yoga.Node.create(); permission.setWidth(112); permission.setFlexShrink(0); left.insertChild(permission, 1);
+        const model = Yoga.Node.create(); model.setWidth(280); model.setMinWidth(0); model.setFlexShrink(1); right.insertChild(model, 0);
+        const send = Yoga.Node.create(); send.setWidth(40); send.setMargin(Yoga.EDGE_LEFT, 8); send.setFlexShrink(0); right.insertChild(send, 1);
+        root.calculateLayout(undefined, undefined, Yoga.DIRECTION_LTR);
+        expect(left.getComputedWidth()).toBeGreaterThanOrEqual(148);
+        expect(right.getComputedLeft() + send.getComputedLeft() + send.getComputedWidth()).toBeLessThanOrEqual(width - 46);
+        expect(model.getComputedWidth()).toBeGreaterThan(0);
+        root.freeRecursive();
     });
 
     it('does not render the removed screenshot button', () => {

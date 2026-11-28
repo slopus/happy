@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Modal, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { PermissionModeIcon } from './PermissionModeIcon';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -9,6 +9,7 @@ import { hapticsLight } from '@/components/haptics';
 import { ComposerTooltip } from './DesktopShortcutTooltip';
 import type { SessionTaskPermissionController } from '@/hooks/useSessionTaskPermission';
 import type { TaskPermissionLevel } from '@/utils/taskPermissionModes';
+import { NativeComposerSelectorSheet } from './NativeComposerSelectorSheet';
 
 export type SessionComposerPermissionSelectorConfig = SessionTaskPermissionController & {
     compact?: boolean;
@@ -103,7 +104,7 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
         hapticsLight();
         setHoveredLevel(null);
         const node = triggerRef.current;
-        if (node && typeof node.measureInWindow === 'function') {
+        if (Platform.OS === 'web' && node && typeof node.measureInWindow === 'function') {
             node.measureInWindow((x: number, y: number, width: number, height: number) => {
                 setAnchor({ x, y, width, height });
                 setOpen(true);
@@ -179,32 +180,25 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
                 </Text>
             ) : null}
 
-            <Modal
-                visible={open}
-                transparent
-                animationType={Platform.OS === 'web' ? 'none' : 'fade'}
-                statusBarTranslucent
-                onRequestClose={() => setOpen(false)}
-            >
-                <View style={styles.modalRoot}>
-                    <Pressable testID="session-composer-permission-scrim" style={styles.modalBackdrop} onPress={() => setOpen(false)} />
+            <PermissionPickerHost open={open} onClose={() => setOpen(false)}>
                     <View
                         role="dialog"
                         accessibilityLabel={t('agentInput.taskPermission.title')}
                         testID="session-composer-permission-picker"
                         style={[
                             styles.pickerSurface,
-                            anchor
+                            Platform.OS !== 'web' ? styles.nativePickerSurface : anchor
                                 ? {
                                     position: 'absolute',
                                     left: Math.max(8, Math.min(anchor.x, viewportWidth - dialogWidth - 8)),
                                     bottom: Math.max(8, viewportHeight - anchor.y + 8),
                                 }
                                 : styles.pickerSurfaceFallback,
-                            { width: dialogWidth, maxHeight: Math.max(0, viewportHeight - 64) },
+                            Platform.OS === 'web' && { width: dialogWidth, maxHeight: Math.max(0, viewportHeight - 64) },
                         ]}
                     >
                         <Text style={styles.pickerTitle}>{t('agentInput.taskPermission.pickerTitle')}</Text>
+                        <PermissionOptionsScroll>
                         <View accessibilityRole="radiogroup">
                             {LEVELS.filter(level => level !== 'automatic' || props.supportsAutomatic).map((level) => {
                                 const selected = level === props.level;
@@ -243,12 +237,26 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
                             })}
 
                         </View>
+                        </PermissionOptionsScroll>
                     </View>
-                </View>
-            </Modal>
+            </PermissionPickerHost>
         </View>
     );
 });
+
+function PermissionPickerHost({ open, onClose, children }: React.PropsWithChildren<{ open: boolean; onClose: () => void }>) {
+    if (Platform.OS !== 'web') return <NativeComposerSelectorSheet open={open} onClose={onClose} scrimTestID="session-composer-permission-scrim">{children}</NativeComposerSelectorSheet>;
+    return <Modal visible={open} transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
+        <View style={styles.modalRoot}>
+            <Pressable testID="session-composer-permission-scrim" style={styles.modalBackdrop} onPress={onClose} />
+            {children}
+        </View>
+    </Modal>;
+}
+
+function PermissionOptionsScroll({ children }: React.PropsWithChildren) {
+    return Platform.OS === 'web' ? <>{children}</> : <ScrollView keyboardShouldPersistTaps="handled" style={styles.optionsScroll}>{children}</ScrollView>;
+}
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -277,7 +285,7 @@ const styles = StyleSheet.create((theme) => ({
     triggerText: {
         minWidth: 0,
         flexShrink: 1,
-        color: theme.colors.textSecondary,
+        color: theme.colors.text,
         fontSize: 12,
         ...Typography.default('semiBold'),
     },
@@ -314,6 +322,8 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 12,
         elevation: 8,
     },
+    nativePickerSurface: { width: '100%', maxWidth: 416, maxHeight: '100%' },
+    optionsScroll: { flexShrink: 1 },
     pickerSurfaceFallback: {
         alignSelf: 'center',
         marginTop: 120,

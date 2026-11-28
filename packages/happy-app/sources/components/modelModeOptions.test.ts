@@ -274,3 +274,10 @@ describe('Antigravity dynamic effort', () => {
         expect(normalizeModelEffortKey('antigravity', 'neon', 'low', metadata)).toBe('xhigh');
     });
 });
+
+it('uses an advertised Antigravity model effort range when its current thought-level snapshot has not arrived', () => {
+    expect(getEffortLevelsForModel('antigravity', 'neon', {
+        currentModelCode: 'neon',
+        models: [{ code: 'neon', value: 'Neon', supportedEffortLevels: ['high', 'xhigh'] }],
+    } as any).map(level => level.key)).toEqual(['high', 'xhigh']);
+});

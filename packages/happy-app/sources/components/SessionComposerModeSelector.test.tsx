@@ -2,18 +2,21 @@ vi.mock('./codingAgents/CodingAgentIcon', () => ({ CodingAgentIcon: 'CodingAgent
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Platform } from 'react-native';
+import { Modal, Platform } from 'react-native';
 import { resolveRunningSessionTurnModes } from '@/utils/runningSessionTurnModes';
 import { SessionComposerModeSelector, getModePanelPlacement, formatComposerModelName } from './SessionComposerModeSelector';
 
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
 
+vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 24, bottom: 16, left: 0, right: 0 }) }));
+
 vi.mock('react-native', () => ({
     Animated: { Value: class { setValue() {} interpolate() { return 1; } }, View: 'AnimatedView', loop: () => ({ start() {}, stop() {} }), sequence: () => ({}), timing: () => ({}) },
     Easing: { linear: () => ({}) },
     Platform: { OS: 'web' },
     Modal: ({ visible, children }: any) => (visible ? children : null),
+    KeyboardAvoidingView: 'KeyboardAvoidingView',
     ScrollView: 'ScrollView',
     TextInput: 'TextInput',
     Pressable: 'Pressable',
@@ -81,6 +84,57 @@ describe('SessionComposerModeSelector', () => {
     afterEach(() => {
         Platform.OS = 'web';
         consoleErrorSpy.mockRestore();
+    });
+
+    it('opens a native sheet without measuring a keyboard-shifted trigger and can close and reopen', () => {
+        Platform.OS = 'android';
+        const measureInWindow = vi.fn();
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online
+            model={modelOptions[0]} modelOptions={modelOptions} effort={effortOptions[0]} effortOptions={effortOptions}
+            onModelChange={vi.fn()} onEffortChange={vi.fn()} />, { createNodeMock: () => ({ measureInWindow }) }); });
+        const trigger = () => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' });
+        act(() => trigger().props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(1);
+        expect(measureInWindow).not.toHaveBeenCalled();
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-picker-scrim' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(0);
+        act(() => trigger().props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(1);
+        act(() => renderer.root.findByType(Modal).props.onRequestClose());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(0);
+        act(() => trigger().props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(1);
+        act(() => renderer.unmount());
+    });
+
+    it('keeps initial capability loading and retry reachable with only the default model', () => {
+        Platform.OS = 'android';
+        const refresh = vi.fn().mockResolvedValue(undefined);
+        let renderer: any;
+        const props = { online: true, modelsLoading: true, modelsError: false, preferModelList: true,
+            model: { key: 'default', name: 'Default' }, modelOptions: [{ key: 'default', name: 'Default' }],
+            effort: null, effortOptions: [], onModelChange: vi.fn(), onEffortChange: vi.fn(), onRefreshModels: refresh };
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector {...props} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-loading' })).toHaveLength(1);
+        act(() => renderer.update(<SessionComposerModeSelector {...props} modelsLoading={false} modelsError />));
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-refresh-error' })).toHaveLength(1);
+        act(() => renderer.unmount());
+    });
+
+    it('opens the retry list directly on native capability failure and explains an unavailable selection', () => {
+        Platform.OS = 'android';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online modelsError selectionUnavailable
+            model={modelOptions[0]} modelOptions={modelOptions} effort={effortOptions[0]} effortOptions={effortOptions}
+            onModelChange={vi.fn()} onEffortChange={vi.fn()} onRefreshModels={vi.fn().mockResolvedValue(undefined)} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-refresh-models' })).toHaveLength(1);
+        expect(renderer.root.findByProps({ testID: 'session-composer-model-unavailable' }).props.children).toBe('agentInput.model.chooseAgain');
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-settings' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'session-composer-model-unavailable' }).props.children).toBe('agentInput.model.chooseAgain');
+        act(() => renderer.unmount());
     });
 
     it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])(
@@ -227,7 +281,7 @@ describe('SessionComposerModeSelector', () => {
         const trigger = () => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' });
         expect(trigger().props.disabled).toBe(false);
         act(() => trigger().props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        if (platform === 'web') act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
         expect(renderer.root.findByProps({ testID: 'session-composer-agent-menu' })).toBeDefined();
         act(() => renderer.update(<SessionComposerModeSelector {...props} modelOptions={modelOptions} agentSwitcher={{ id: 'codex', current: 'Codex', options: [{ key: 'codex', label: 'Codex' }], onSelect }} />));
         expect(renderer.root.findAllByProps({ testID: 'session-composer-agent-menu' })).toHaveLength(0);

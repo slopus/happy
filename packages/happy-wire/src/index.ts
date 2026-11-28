@@ -32,3 +32,5 @@ export * from './codexMagpieCatalog';
 export * from './scheduledTasks';
 export * from './delegation';
 export * from './motionWorkbench';
+
+export * from './antigravityModelCatalog';

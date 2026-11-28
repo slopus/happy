@@ -789,7 +789,8 @@ export const ComposeHome = React.memo(({ variant = 'home', roleConfigurationId }
     ) : !isTablet ? (
         <CompactRightPanelToggleButton panelLabel={capabilityHubLabel} />
     ) : null;
-    const HomeBodyContainer = dreamskin ? ScrollView : View;
+    const nativeHome = Platform.OS !== 'web';
+    const HomeBodyContainer = dreamskin || nativeHome ? ScrollView : View;
     const composeContent = (
         <View style={[styles.container, Platform.OS === 'web' && isTablet && { backgroundColor: dreamskin ? 'transparent' : theme.colors.surface }]}>
             <Header
@@ -852,6 +853,10 @@ export const ComposeHome = React.memo(({ variant = 'home', roleConfigurationId }
                         contentContainerStyle: styles.dreamskinScrollContent,
                         keyboardShouldPersistTaps: 'handled' as const,
                         testID: 'dreamskin-home-scroll',
+                    } : nativeHome ? {
+                        contentContainerStyle: styles.nativeScrollContent,
+                        keyboardShouldPersistTaps: 'handled' as const,
+                        testID: 'native-home-scroll',
                     } : {})}
                 >
                 <View style={[styles.greetWrap, dreamskin && windowHeight >= 700 && styles.dreamskinGreetWrap, desktopWeb && styles.desktopGreetWrap]}>
@@ -1267,6 +1272,7 @@ const styles = StyleSheet.create((theme) => ({
     dreamskinScrollContent: {
         flexGrow: 1,
     },
+    nativeScrollContent: { flexGrow: 1 },
     greetWrap: {
         flex: 1,
         justifyContent: 'flex-start',

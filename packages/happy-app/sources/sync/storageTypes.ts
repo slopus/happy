@@ -265,6 +265,7 @@ export const MachineMetadataSchema = z.object({
     shutdownSource: z.enum(['happy-app', 'happy-cli', 'os-signal', 'unknown']).optional(),
     crossAgentContinuation: z.literal(1).optional(),
     magpieModelCatalog: z.literal(1).optional(),
+    antigravityModelCatalog: z.literal(1).optional(),
     cliAvailability: z.object({
         ask: z.boolean().optional(),
         claude: z.boolean(),

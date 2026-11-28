@@ -183,7 +183,8 @@ function makeMachine(): Machine {
             happyCliVersion: 'test',
             homeDir: '/home/user',
             happyHomeDir: '/home/user/.happy',
-            happyLibDir: '/home/user/.happy/lib'
+            happyLibDir: '/home/user/.happy/lib',
+            antigravityModelCatalog: 1
         },
         metadataVersion: 0,
         daemonState: null,
@@ -236,6 +237,74 @@ describe('ApiMachineClient socket reconnection', () => {
     afterEach(() => {
         vi.useRealTimers();
         vi.restoreAllMocks();
+    });
+
+    it('publishes an installed Antigravity catalog on connect and preserves concurrent machine edits', async () => {
+        vi.useFakeTimers();
+        const machine = makeMachine();
+        delete machine.metadata.antigravityModelCatalog;
+        const saved = { ...machine.metadata, displayName: 'My Mac', crossAgentContinuation: 1 as const };
+        machine.metadata = saved;
+        machine.metadataVersion = 7;
+        const concurrent = { ...saved, displayName: 'Renamed in App', homeDir: '/updated/home' };
+        const sent: Array<{ expectedVersion: number; metadata: unknown }> = [];
+        mockSocket.emitWithAck.mockImplementation(
+            async (event: string, payload: { expectedVersion: number; metadata: string }) => {
+                expect(event).toBe('machine-update-metadata');
+                expect(
+                    mockSocket.emit.mock.calls.some(
+                        ([name, value]: [string, { method?: string }]) =>
+                            name === 'rpc-register' && value.method === 'test-machine-id:antigravity-model-catalog',
+                    ),
+                ).toBe(true);
+                sent.push({
+                    expectedVersion: payload.expectedVersion,
+                    metadata: decrypt(machine.encryptionKey, machine.encryptionVariant, decodeBase64(payload.metadata)),
+                });
+                return sent.length === 1
+                    ? {
+                          result: 'version-mismatch',
+                          version: 8,
+                          metadata: encodeBase64(encrypt(machine.encryptionKey, machine.encryptionVariant, concurrent)),
+                      }
+                    : { result: 'success', version: 9, metadata: payload.metadata };
+            },
+        );
+        const client = new ApiMachineClient('fake-token', machine);
+        vi.spyOn(client, 'updateDaemonState').mockResolvedValue(undefined);
+        client.connect();
+        try {
+            emitSocketEvent('connect');
+            expect(sent).toEqual([{ expectedVersion: 7, metadata: { ...saved, antigravityModelCatalog: 1 } }]);
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(sent).toEqual([
+                { expectedVersion: 7, metadata: { ...saved, antigravityModelCatalog: 1 } },
+                { expectedVersion: 8, metadata: { ...concurrent, antigravityModelCatalog: 1 } },
+            ]);
+            expect(machine.metadata).toEqual({ ...concurrent, antigravityModelCatalog: 1 });
+            expect(machine.metadataVersion).toBe(9);
+            emitSocketEvent('connect');
+            expect(sent).toHaveLength(2);
+        } finally {
+            client.shutdown();
+        }
+    });
+
+    it('does not advertise the Antigravity catalog without its installed machine handler', () => {
+        const machine = makeMachine();
+        delete machine.metadata.antigravityModelCatalog;
+        const client = new ApiMachineClient('fake-token', machine);
+        (client as any).rpcHandlerManager.unregisterHandler('antigravity-model-catalog');
+        const update = vi.spyOn(client, 'updateMachineMetadata');
+        vi.spyOn(client, 'updateDaemonState').mockResolvedValue(undefined);
+        client.connect();
+        try {
+            emitSocketEvent('connect');
+            expect(update).not.toHaveBeenCalled();
+            expect(machine.metadata.antigravityModelCatalog).toBeUndefined();
+        } finally {
+            client.shutdown();
+        }
     });
 
     it('advertises delegation only after its handler is installed on an existing machine', async () => {

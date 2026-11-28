@@ -55,7 +55,12 @@ export function resolveMessageModeMeta(
         ?? codeDefaults.effortLevel;
     // Effort resets independently of model selection. Keep the explicit null on
     // the wire so the executor can distinguish reset from an absent override.
-    const effort = flavor === 'codex' && requestedEffort === 'default'
+    // A new ACP worker can hydrate before its per-model effort options. Keep the explicit
+    // first-message choice until that model's capabilities can confirm or reject it.
+    const antigravityEffortPending = flavor === 'antigravity' && !!session.effortLevel && session.effortLevel !== 'default'
+        && !(session.metadata?.currentModelCode === modelMode && session.metadata.thoughtLevels !== undefined)
+        && session.metadata?.models?.find(model => model.code === modelMode)?.supportedEffortLevels === undefined;
+    const effort = antigravityEffortPending ? session.effortLevel : flavor === 'codex' && requestedEffort === 'default'
         ? 'default'
         : normalizeModelEffortKey(flavor, modelMode ?? 'default', requestedEffort, session.metadata);
     const supportsEffort = !flavor

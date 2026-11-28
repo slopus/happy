@@ -144,6 +144,7 @@ export const MachineMetadataSchema = z.object({
   happyLibDir: z.string(),
   crossAgentContinuation: z.literal(1).optional(),
     magpieModelCatalog: z.literal(1).optional(),
+    antigravityModelCatalog: z.literal(1).optional(),
   cliAvailability: z.object({
     ask: z.boolean().optional(),
     claude: z.boolean(),

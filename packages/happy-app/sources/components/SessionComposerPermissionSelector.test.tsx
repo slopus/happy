@@ -2,6 +2,8 @@ vi.mock('react-native-svg', () => ({ default: 'Svg', Path: 'Path', Rect: 'Rect',
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Modal, Platform } from 'react-native';
+vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 24, bottom: 16, left: 0, right: 0 }) }));
 
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
@@ -33,6 +35,8 @@ vi.mock('react-native', async () => {
 
     return {
         Modal,
+        KeyboardAvoidingView: 'KeyboardAvoidingView',
+        ScrollView: 'ScrollView',
         Platform: { OS: 'web' },
         Pressable,
         Text: 'Text',
@@ -91,6 +95,7 @@ describe('SessionComposerPermissionSelector', () => {
     let renderer: any;
 
     beforeEach(() => {
+        Platform.OS = 'web';
         vi.useFakeTimers();
         vi.clearAllMocks();
         mocks.keydownHandler = null;
@@ -115,6 +120,24 @@ describe('SessionComposerPermissionSelector', () => {
         consoleErrorSpy.mockRestore();
         vi.useRealTimers();
         vi.unstubAllGlobals();
+    });
+
+    it('uses a native sheet without a trigger measurement and preserves the value across dismiss/reopen', () => {
+        Platform.OS = 'android';
+        const onLevelChange = vi.fn();
+        act(() => { renderer = TestRenderer.create(<SessionComposerPermissionSelector online supported level="confirm"
+            unavailableReason={null} onLevelChange={onLevelChange} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
+        const panel = renderer.root.findByProps({ testID: 'session-composer-permission-picker' });
+        const flatten = (style: any): any => Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean).map(flatten)) : style;
+        expect(flatten(panel.props.style).position).not.toBe('absolute');
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-scrim' }).props.onPress());
+        expect(onLevelChange).not.toHaveBeenCalled();
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'session-composer-permission-option-confirm' }).props.accessibilityState.checked).toBe(true);
+        act(() => renderer.root.findByType(Modal).props.onRequestClose());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-permission-picker' })).toHaveLength(0);
+        expect(onLevelChange).not.toHaveBeenCalled();
     });
 
     it('opens a stable two-level radio dialog with explicit risk descriptions', () => {

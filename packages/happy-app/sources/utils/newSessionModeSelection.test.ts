@@ -200,3 +200,34 @@ describe('resolveNewSessionModeSelection', () => {
         });
     });
 });
+
+
+describe('Antigravity explicit selections', () => {
+    it('keeps the chosen model and effort before capabilities arrive or when discovery fails', () => {
+        expect(resolveNewSessionModeSelection({ agent: 'antigravity', permissionMode: 'default',
+            modelMode: 'native-neon', effortLevel: 'xhigh', agentDefaultOverrides: {},
+            modelOptions: [{ key: 'default', name: 'default' }], effortMetadata: null,
+        })).toMatchObject({ modelMode: 'native-neon', effortLevel: 'xhigh' });
+    });
+    it('keeps a removed model as the explicit choice so the caller can block send and require reselection', () => {
+        expect(resolveNewSessionModeSelection({ agent: 'antigravity', permissionMode: 'default',
+            modelMode: 'removed-native', effortLevel: 'high', agentDefaultOverrides: {},
+            modelOptions: [{ key: 'current-native', name: 'Current' }],
+            effortMetadata: { models: [{ code: 'current-native', value: 'Current' }] } as any,
+        }).modelMode).toBe('removed-native');
+    });
+});
+
+
+it('uses the advertised Antigravity current model as automatic instead of the first alphabetical model', () => {
+    expect(resolveNewSessionModeSelection({agent:'antigravity',permissionMode:'default',modelMode:'default',effortLevel:null,agentDefaultOverrides:{},
+        modelOptions:[{key:'argon',name:'Argon'},{key:'neon',name:'Neon'}],effortMetadata:{currentModelCode:'neon'} as any,
+    }).modelMode).toBe('neon');
+});
+
+it('follows a changed Antigravity effort default without rewriting the retained explicit draft', () => {
+    expect(resolveNewSessionModeSelection({agent:'antigravity',permissionMode:'default',modelMode:'neon',effortLevel:'xhigh',
+        effortSelection:{agent:'antigravity',defaultValue:'xhigh'},agentDefaultOverrides:{antigravity:{effortLevel:'high'}},
+        modelOptions:[{key:'neon',name:'Neon'}],effortMetadata:null,
+    }).effortLevel).toBe('high');
+});

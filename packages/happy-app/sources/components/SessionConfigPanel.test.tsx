@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     browseDirectory: vi.fn(),
     confirm: vi.fn(),
     readClaudeModels: vi.fn(),
+    readAntigravityModels: vi.fn(),
     magpieCatalog: null as any,
     discoverMagpie: false,
     listWorktrees: vi.fn().mockResolvedValue([]),
@@ -37,6 +38,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('./DesktopSettingsModal', () => ({ useDesktopSettingsModal: () => ({ openRoute: mocks.openSettingsRoute }) }));
 vi.mock('@/modal', () => ({ Modal: { confirm: mocks.confirm } }));
+
+vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({top:0,bottom:0,left:0,right:0}) }));
 
 vi.mock('@/hooks/useMagpieModelCatalog', () => ({ useMagpieModelCatalog: () => ({ catalog: mocks.magpieCatalog, refresh: async () => {} }) }));
 
@@ -192,7 +195,7 @@ vi.mock('@/hooks/useNewSessionDraft', async () => {
 });
 vi.mock('@/utils/machineUtils', () => ({ isMachineOnline: () => true }));
 vi.mock('@/utils/worktree', () => ({ listWorktrees: mocks.listWorktrees }));
-vi.mock('@/sync/ops', () => ({ machineBrowseDirectory: mocks.browseDirectory, machineGetClaudeModelCatalog: mocks.readClaudeModels }));
+vi.mock('@/sync/ops', () => ({ machineBrowseDirectory: mocks.browseDirectory, machineGetClaudeModelCatalog: mocks.readClaudeModels, machineGetAntigravityModelCatalog: mocks.readAntigravityModels }));
 vi.mock('@/utils/pathUtils', () => ({ resolveAbsolutePath: (path: string) => path }));
 vi.mock('@/utils/sessionUtils', () => ({
     formatLastSeen: () => 'now',
@@ -254,6 +257,7 @@ describe('SessionConfigPanel composer layout', () => {
         vi.useFakeTimers();
         vi.clearAllMocks();
         mocks.readClaudeModels.mockReset().mockRejectedValue(new Error('Old runtime'));
+        mocks.readAntigravityModels.mockReset().mockRejectedValue(new Error('Old runtime'));
         mocks.codexAccounts = { loading: false, error: null, bindings: [] };
         mocks.sessionsOverride = null;
         mocks.magpieCatalog = null;
@@ -274,6 +278,286 @@ describe('SessionConfigPanel composer layout', () => {
         renderer = undefined;
         consoleErrorSpy.mockRestore();
         vi.useRealTimers();
+    });
+
+    it('discovers Antigravity on first use and preserves explicit choices while the catalog is pending or fails', async () => {
+        mocks.cliAvailability.antigravity = true;
+        mocks.configuredAgents.mac = ['antigravity'];
+        mocks.sessionsOverride = [];
+        let reject!: (error: Error) => void;
+        mocks.readAntigravityModels.mockReturnValue(
+            new Promise((_resolve, fail) => {
+                reject = fail;
+            }),
+        );
+        mocks.draftStore.setState({
+            selectedPath: '/Users/test/happy',
+            agentType: 'antigravity',
+            modelMode: 'neon',
+            effortLevel: 'xhigh',
+            permissionMode: 'default',
+            modelSelection: undefined,
+            effortSelection: undefined,
+        });
+        const ref = React.createRef<any>();
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />);
+        });
+        expect(mocks.readAntigravityModels).toHaveBeenCalledWith('mac', '/Users/test/happy');
+        expect(mocks.draftStore.getState()).toMatchObject({ modelMode: 'neon', effortLevel: 'xhigh' });
+        expect(ref.current.getSelection()).toMatchObject({ modelKey: 'neon', effortKey: 'xhigh' });
+        await act(async () => {
+            reject(new Error('offline'));
+        });
+        expect(mocks.draftStore.getState()).toMatchObject({ modelMode: 'neon', effortLevel: 'xhigh' });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        await act(async () => {
+            renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress();
+        });
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-refresh-error' }).length).toBeGreaterThan(0);
+    });
+
+    it('blocks a confirmed removed Antigravity model until the user selects an available model', async () => {
+        mocks.cliAvailability.antigravity = true;
+        mocks.configuredAgents.mac = ['antigravity'];
+        mocks.sessionsOverride = [];
+        mocks.readAntigravityModels.mockResolvedValue({
+            source: 'antigravity-native',
+            observedAt: 1,
+            currentModelCode: 'argon',
+            models: [{ code: 'argon', value: 'Argon', supportedEffortLevels: ['high'] }],
+        });
+        mocks.draftStore.setState({
+            agentType: 'antigravity',
+            modelMode: 'removed',
+            effortLevel: 'high',
+            permissionMode: 'default',
+            modelSelection: undefined,
+            effortSelection: undefined,
+        });
+        const ref = React.createRef<any>();
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />);
+        });
+        expect(mocks.draftStore.getState().modelMode).toBe('removed');
+        expect(ref.current.getSelection()).toMatchObject({ modelUnavailable: true, modelKey: 'removed' });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-model-antigravity::argon' }).props.onPress());
+        expect(ref.current.getSelection()).toMatchObject({ modelKey: 'argon', effortKey: 'high' });
+        expect(ref.current.getSelection().modelUnavailable).toBeUndefined();
+    });
+
+    it('starts an Antigravity selection with its own native model instead of carrying a Codex model and effort', async () => {
+        mocks.cliAvailability.antigravity = true;
+        mocks.configuredAgents.mac = ['codex', 'antigravity'];
+        mocks.readAntigravityModels.mockResolvedValue({
+            source: 'antigravity-native',
+            observedAt: 1,
+            currentModelCode: 'neon',
+            models: [{ code: 'neon', value: 'Neon', supportedEffortLevels: ['high'] }],
+        });
+        const ref = React.createRef<any>();
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />);
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        await act(async () => {
+            renderer.root.findByProps({ testID: 'session-composer-agent-cycle' }).props.onPress();
+        });
+        expect(mocks.draftStore.getState()).toMatchObject({ agentType: 'antigravity', effortLevel: null });
+        expect(ref.current.getSelection().modelKey).toBe('neon');
+        expect(ref.current.getSelection().modelUnavailable).toBeUndefined();
+    });
+
+    it.each([
+        { supportedEffortLevels: undefined },
+        { supportedEffortLevels: [] },
+        { supportedEffortLevels: ['low', 'high'] },
+    ])(
+        'clears previous-model effort on an explicit Antigravity model change when the target range is %j',
+        async ({ supportedEffortLevels }) => {
+            mocks.cliAvailability.antigravity = true;
+            mocks.configuredAgents.mac = ['antigravity'];
+            mocks.sessionsOverride = [];
+            mocks.readAntigravityModels.mockResolvedValue({
+                source: 'antigravity-native',
+                observedAt: 1,
+                currentModelCode: 'neon',
+                thoughtLevels: [{ code: 'xhigh', value: 'Extra' }],
+                models: [
+                    { code: 'neon', value: 'Neon', supportedEffortLevels: ['xhigh'] },
+                    { code: 'other', value: 'Other', supportedEffortLevels },
+                ],
+            });
+            mocks.draftStore.setState({
+                agentType: 'antigravity',
+                modelMode: 'neon',
+                effortLevel: 'xhigh',
+                permissionMode: 'default',
+                modelSelection: undefined,
+                effortSelection: undefined,
+            });
+            const ref = React.createRef<any>();
+            await act(async () => {
+                renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />);
+            });
+            act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+            act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+            act(() => renderer.root.findByProps({ testID: 'session-composer-model-antigravity::other' }).props.onPress());
+            expect(mocks.draftStore.getState().effortLevel).toBeNull();
+            expect(ref.current.getSelection()).toMatchObject({ modelKey: 'other', effortKey: null });
+            expect(ref.current.getSelection().modelUnavailable).toBeUndefined();
+        },
+    );
+
+    it.each([
+        { draft: 'xhigh', levels: ['high'], blocked: false },
+        { draft: 'low', levels: ['low'], blocked: true },
+    ])(
+        'validates the resolved Antigravity effort after a configured default changes: %j',
+        async ({ draft, levels, blocked }) => {
+            mocks.cliAvailability.antigravity = true;
+            mocks.configuredAgents.mac = ['antigravity'];
+            mocks.sessionsOverride = [];
+            mocks.agentDefaultOverrides = { antigravity: { effortLevel: 'high' } };
+            mocks.readAntigravityModels.mockResolvedValue({
+                source: 'antigravity-native',
+                observedAt: 1,
+                currentModelCode: 'neon',
+                models: [{ code: 'neon', value: 'Neon', supportedEffortLevels: levels }],
+            });
+            mocks.draftStore.setState({
+                agentType: 'antigravity',
+                modelMode: 'neon',
+                effortLevel: draft,
+                permissionMode: 'default',
+                effortSelection: { agent: 'antigravity', defaultValue: draft },
+            });
+            const ref = React.createRef<any>();
+            await act(async () => {
+                renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />);
+            });
+            expect(ref.current.getSelection().effortKey).toBe('high');
+            expect(ref.current.getSelection().modelUnavailable).toBe(blocked ? true : undefined);
+        },
+    );
+
+    it('shows a confirmed empty Antigravity catalog without offering a fake default', async () => {
+        mocks.cliAvailability.antigravity = true;
+        mocks.configuredAgents.mac = ['antigravity'];
+        mocks.sessionsOverride = [];
+        mocks.readAntigravityModels.mockResolvedValue({ source: 'antigravity-native', observedAt: 1, models: [] });
+        mocks.draftStore.setState({
+            agentType: 'antigravity',
+            modelMode: 'default',
+            effortLevel: null,
+            permissionMode: 'default',
+            modelSelection: undefined,
+            effortSelection: undefined,
+        });
+        const ref = React.createRef<any>();
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />);
+        });
+        expect(ref.current.getSelection().modelUnavailable).toBe(true);
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        await act(async () => {
+            renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress();
+        });
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-antigravity::default' })).toHaveLength(0);
+        expect(
+            renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'composerContext.empty'),
+        ).toBe(true);
+        expect(renderer.root.findByProps({ testID: 'session-composer-refresh-models' })).toBeDefined();
+    });
+
+    it.each([
+        { range: [] as string[], expectedEffort: null },
+        { range: ['high'], expectedEffort: null },
+        { range: ['xhigh'], expectedEffort: 'xhigh' },
+    ])('recovers an unsupported effort by reselecting the sole current model: %j', async ({ range, expectedEffort }) => {
+        mocks.cliAvailability.antigravity = true;
+        mocks.configuredAgents.mac = ['antigravity'];
+        mocks.sessionsOverride = [];
+        mocks.readAntigravityModels.mockResolvedValue({
+            source: 'antigravity-native',
+            observedAt: 1,
+            currentModelCode: 'neon',
+            thoughtLevels: range.map((code) => ({ code, value: code })),
+            models: [{ code: 'neon', value: 'Neon', supportedEffortLevels: range }],
+        });
+        mocks.draftStore.setState({
+            agentType: 'antigravity',
+            modelMode: 'neon',
+            effortLevel: 'xhigh',
+            permissionMode: 'default',
+            modelSelection: undefined,
+            effortSelection: undefined,
+        });
+        const ref = React.createRef<any>();
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />);
+        });
+        expect(ref.current.getSelection().modelUnavailable).toBe(range.includes('xhigh') ? undefined : true);
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        await act(async () => {
+            renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress();
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-model-antigravity::neon' }).props.onPress());
+        expect(mocks.draftStore.getState().effortLevel).toBe(expectedEffort);
+        expect(ref.current.getSelection()).toMatchObject({ modelKey: 'neon', effortKey: expectedEffort });
+        expect(ref.current.getSelection().modelUnavailable).toBeUndefined();
+    });
+
+    it('keeps Antigravity automatic on entry until the active directory catalog arrives, even when cached history names a still-valid model', async () => {
+        mocks.cliAvailability.antigravity = true;
+        mocks.configuredAgents.mac = ['codex', 'antigravity'];
+        mocks.sessionsOverride = [
+            {
+                id: 'old-agy',
+                activeAt: 1,
+                metadata: {
+                    machineId: 'mac',
+                    flavor: 'antigravity',
+                    path: '/a',
+                    currentModelCode: 'neon',
+                    models: [{ code: 'neon', value: 'Neon' }],
+                },
+            },
+        ];
+        mocks.draftStore.setState({ selectedPath: '/b' });
+        let resolve!: (catalog: any) => void;
+        mocks.readAntigravityModels.mockReturnValue(
+            new Promise((done) => {
+                resolve = done;
+            }),
+        );
+        const ref = React.createRef<any>();
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />);
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        await act(async () => {
+            renderer.root.findByProps({ testID: 'session-composer-agent-cycle' }).props.onPress();
+        });
+        expect(mocks.readAntigravityModels).toHaveBeenCalledWith('mac', '/b');
+        expect(mocks.draftStore.getState().modelMode).toBe('default');
+        expect(ref.current.getSelection().modelKey).toBeUndefined();
+        await act(async () => {
+            resolve({
+                source: 'antigravity-native',
+                observedAt: 2,
+                currentModelCode: 'argon',
+                models: [
+                    { code: 'neon', value: 'Neon' },
+                    { code: 'argon', value: 'Argon' },
+                ],
+            });
+        });
+        expect(mocks.draftStore.getState().modelMode).toBe('default');
+        expect(ref.current.getSelection().modelKey).toBe('argon');
+        expect(ref.current.getSelection().modelUnavailable).toBeUndefined();
     });
 
     it('dismisses sidebar pickers outside while allowing the current trigger to toggle closed', async () => {
