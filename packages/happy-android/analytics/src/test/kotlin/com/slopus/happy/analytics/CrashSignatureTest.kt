@@ -74,10 +74,102 @@ class CrashSignatureTest {
         assertEquals("com.slopus.happy.Thing.<init>:0 com.slopus.happy.Other.run-AbC12:0", signature.frames)
     }
 
+    /** ActivityThread's wrapper for a crash as an activity launches, as Android 15 throws it. */
+    private fun launchFailure(cause: Throwable) = RuntimeException("Unable to start activity ComponentInfo{com.ex3ndr.happy/com.slopus.happy.MainActivity}: $cause", cause).at(
+        frame("android.app.ActivityThread", "performLaunchActivity", 3782),
+        frame("android.app.ActivityThread", "handleLaunchActivity", 4235),
+        frame("android.app.servertransaction.LaunchActivityItem", "execute", 112),
+        frame("android.app.servertransaction.TransactionExecutor", "executeNonLifecycleItem", 174),
+        frame("android.app.servertransaction.TransactionExecutor", "execute", 81),
+        frame("android.app.ActivityThread\$H", "handleMessage", 2636),
+        frame("android.os.Looper", "loop", 317),
+        frame("android.app.ActivityThread", "main", 8705),
+        frame("java.lang.reflect.Method", "invoke", -2),
+        frame("com.android.internal.os.ZygoteInit", "main", 886),
+    )
+
     @Test
-    fun onlyThePlatformIsNoFrames() {
-        assertNull(CrashSignature.of(OutOfMemoryError().at(frame("dalvik.system.VMRuntime", "newNonMovableArray", 0))).frames)
+    fun aCrashThePlatformThrewAndWrappedAloneIsItsInnermostCausesTopFrames() {
+        // 2026.11.1's first v6 report: exception_class and cause_class, and no frame of this build anywhere.
+        val npe = NullPointerException("Attempt to invoke virtual method on a null object reference").at(
+            frame("android.app.Activity", "performCreate", 8990),
+            frame("android.app.Activity", "performCreate", 8968),
+            frame("android.app.Instrumentation", "callActivityOnCreate", 1526),
+            frame("android.app.ActivityThread", "performLaunchActivity", 3755),
+            frame("android.app.ActivityThread", "handleLaunchActivity", 4235),
+            frame("android.app.servertransaction.LaunchActivityItem", "execute", 112),
+        )
+        val signature = CrashSignature.of(launchFailure(npe))
+        assertEquals("java.lang.RuntimeException", signature.exceptionClass)
+        assertEquals("java.lang.NullPointerException", signature.causeClass)
+        assertEquals(
+            "android.app.Activity.performCreate:8990 android.app.Activity.performCreate:8968 android.app.Instrumentation.callActivityOnCreate:1526 " +
+                "android.app.ActivityThread.performLaunchActivity:3755 android.app.ActivityThread.handleLaunchActivity:4235",
+            signature.frames,
+        )
+        val event = AnalyticsEvent.AppCrashed(CrashProcess.App, CrashReason.Crash, "2026.11.1", signature)
+        assertEquals(signature.frames, AnalyticsSchema.check(event.name, event.properties)?.get("crash_frames"))
+        // A library class R8 keeps by name, alone, the same.
+        val camera = IllegalStateException().at(frame("androidx.camera.core.ImageProxy", "getPlanes", 42), frame("android.os.Handler", "dispatchMessage", 107))
+        assertEquals("androidx.camera.core.ImageProxy.getPlanes:42 android.os.Handler.dispatchMessage:107", CrashSignature.of(launchFailure(camera)).frames)
+    }
+
+    @Test
+    fun aCrashWithOnlyThePlatformAndNoCauseIsItsOwnTopFrames() {
+        assertEquals("dalvik.system.VMRuntime.newNonMovableArray:0", CrashSignature.of(OutOfMemoryError().at(frame("dalvik.system.VMRuntime", "newNonMovableArray", 0))).frames)
+        // An innermost cause without a stack: the next one out that has one.
+        val inner = NullPointerException().at()
+        assertEquals("android.app.ActivityThread.performLaunchActivity:3782", CrashSignature.of(launchFailure(inner)).frames?.substringBefore(' '))
         assertNull(CrashSignature.of(OutOfMemoryError().at()).frames)
+    }
+
+    @Test
+    fun aBundledLibraryUnderComAndroidIsThisBuildsCode() {
+        // Play's pre-launch crawler starting Play Billing 8.3.0's ProxyBillingActivity with no extras, 2026-11-19.
+        val npe = NullPointerException("Attempt to invoke virtual method 'android.content.IntentSender android.app.PendingIntent.getIntentSender()' on a null object reference").at(
+            frame("android.app.PendingIntent", "getIntentSender", 1366),
+            frame("com.android.billingclient.api.ProxyBillingActivity", "onCreate", 97),
+            frame("android.app.Activity", "performCreate", 8990),
+            frame("android.app.Activity", "performCreate", 8968),
+            frame("android.app.Instrumentation", "callActivityOnCreate", 1526),
+            frame("android.app.ActivityThread", "performLaunchActivity", 3755),
+        )
+        val launch = RuntimeException("Unable to start activity ComponentInfo{com.ex3ndr.happy/com.android.billingclient.api.ProxyBillingActivity}: $npe", npe)
+            .at(*launchFailure(npe).stackTrace)
+        val signature = CrashSignature.of(launch)
+        assertEquals("java.lang.RuntimeException", signature.exceptionClass)
+        assertEquals("java.lang.NullPointerException", signature.causeClass)
+        assertEquals(
+            "com.android.billingclient.api.ProxyBillingActivity.onCreate:97 android.app.Activity.performCreate:8990 android.app.Activity.performCreate:8968 " +
+                "android.app.Instrumentation.callActivityOnCreate:1526 android.app.ActivityThread.performLaunchActivity:3755",
+            signature.frames,
+        )
+        // The boot classpath's com.android packages are still the platform.
+        for (platform in listOf("com.android.internal.os.ZygoteInit", "com.android.org.conscrypt.ConscryptEngine", "com.android.okhttp.internal.http.HttpEngine", "com.android.icu.util.Calendar", "com.android.server.am.ActivityManagerService")) {
+            assertTrue(platform, CrashSignature.isPlatform(platform))
+        }
+        assertFalse(CrashSignature.isPlatform("com.android.billingclient.api.BillingClientImpl"))
+        assertFalse(CrashSignature.isPlatform("com.android.installreferrer.api.InstallReferrerClientImpl"))
+    }
+
+    @Test
+    fun anAppFrameStillWinsOverThePlatformFallback() {
+        val npe = NullPointerException().at(
+            frame("android.app.Activity", "performCreate", 8990),
+            frame("ng0", "b", 41),
+            frame("com.slopus.happy.MainActivity", "onCreate", 77),
+        )
+        assertEquals("ng0.b:41 com.slopus.happy.MainActivity.onCreate:77", CrashSignature.of(launchFailure(npe)).frames)
+    }
+
+    @Test
+    fun longPlatformFramesAreFewerNotNone() {
+        val long = "android.app.servertransaction.SomeVeryLongPlatformClassNameThatKeepsGoingOnAndOn"
+        val stack = (1..5).map { frame("$long$it", "executeNonLifecycleItemWithAVeryLongName", 1000 + it) }.toTypedArray()
+        val frames = CrashSignature.of(IllegalStateException().at(*stack)).frames!!
+        assertTrue(frames.length <= AnalyticsSchema.MAX_FRAMES_LENGTH)
+        assertTrue(AnalyticsSchema.isFrameList(frames))
+        assertEquals(3, frames.split(' ').size)
     }
 
     @Test

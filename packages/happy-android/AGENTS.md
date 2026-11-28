@@ -1184,7 +1184,10 @@ module's own uncaught-exception handler, chained ahead of the platform's: it
 writes them to `noBackupFilesDir/crash_signature` only while analytics is
 on, the next start reads and deletes the file, and they go only with that
 same process's crash. Frames start at the first outside the platform and
-the libraries; in a store build they are R8's names and lines, retraced
+the libraries (`CrashSignature.PLATFORM`; a library this build bundles
+under `com.android.`, Play Billing's, is listed in `BUNDLED` so it counts
+as ours; a crash with none there, thrown and wrapped by the platform
+alone, sends its innermost cause's top frames instead); in a store build they are R8's names and lines, retraced
 with the build's mapping. Turning analytics off deletes the file.
 
 Fewer events and more privacy: an event is only what no other event
