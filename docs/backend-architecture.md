@@ -297,7 +297,7 @@ erDiagram
 ```
 
 - `Account`: public key identity, profile, settings, seq counters.
-- `Session` + `SessionMessage`: encrypted session metadata and message blobs.
+- `Session` + `SessionMessage`: encrypted session metadata and message blobs. Messages are stored when a client posts them, whether or not another client is connected. See [When session data is sent](cli-architecture.md#when-session-data-is-sent).
 - `Machine`: encrypted machine metadata + daemon state.
 - `Artifact`: encrypted header/body + per-artifact key.
 - `AccessKey`: encrypted per-session-per-machine access keys.

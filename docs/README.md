@@ -15,7 +15,7 @@ mention their paths describe historical implementations available in Git.
 - encryption.md: Encryption boundaries and on-wire encoding.
 - backend-architecture.md: Internal backend structure, data flow, and key subsystems.
 - deployment.md: How to deploy the backend and required infrastructure.
-- cli-architecture.md: CLI and daemon architecture and how they interact with the server.
+- cli-architecture.md: CLI and daemon architecture, including when session data is uploaded and when a deleted session is removed from the server.
 - multi-process.md: Deeper multi-replica Socket.IO + Redis streams behavior, failure modes, and integration-test history.
 - dev-environments.md: Local `packages/dev-environments/data/` workflow, lab-rat project provisioning, `env:cli` passthrough behavior, and daemon usage.
 - session-protocol.md: Unified encrypted chat event protocol.
