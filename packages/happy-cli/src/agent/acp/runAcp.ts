@@ -529,10 +529,17 @@ export async function runAcp(opts: {
   let sawModels = false;
 
   const happyServer = await startHappyServer(session);
+  // Launch the bridge via `node <path>` (rather than relying on the .mjs
+  // shebang) so it works on Windows, where the shell cannot execute shebang
+  // scripts directly. Mirrors the launcher pattern already used in
+  // `runCodex.ts`. Without this, the MCP server never connects on Windows,
+  // `change_title` is invisible to the model, and the agent improvises by
+  // echoing into the shell.
+  const bridgeEntrypoint = join(projectPath(), 'bin', 'happy-mcp.mjs');
   const mcpServers = {
     happy: {
-      command: join(projectPath(), 'bin', 'happy-mcp.mjs'),
-      args: ['--url', happyServer.url],
+      command: process.execPath,
+      args: ['--no-warnings', '--no-deprecation', bridgeEntrypoint, '--url', happyServer.url],
     },
   };
 
