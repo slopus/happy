@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import type { View } from 'react-native';
+import type { ComposerContextHostProps } from './ComposerContextHost';
 
 /** Follow the actual input panel, including attachment growth, before paint. */
-export function ComposerContextHost({ children, anchorRef }: { children: React.ReactNode; anchorRef: React.RefObject<View | null> }) {
+export function ComposerContextHost({ children, anchorRef }: ComposerContextHostProps) {
     const overlayRef = React.useRef<HTMLDivElement>(null);
     const updateRef = React.useRef<() => void>(() => {});
     React.useLayoutEffect(() => {

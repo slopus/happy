@@ -1232,7 +1232,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
 
                 </View>
                 {contextOpen && <View style={styles.contextOverlay}>
-                    <ComposerContextHost anchorRef={composerPanelRef}>
+                    <ComposerContextHost anchorRef={composerPanelRef} fromButton={contextFromButton} onClose={() => closeContext(false)}>
                         <ComposerContextPicker
                             ref={contextPickerRef}
                             ownerRef={composerContentRef}

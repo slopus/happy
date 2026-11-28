@@ -100,7 +100,9 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
         // Keep management reachable even for accounts with many saved roles.
         all.push(...filterContextItems(roleItems, 'agents', props.query).slice(0, props.query.trim() ? 20 : 8));
         if (props.canManageRoles) all.push({ id: 'manage-agent-roles', category: 'agents', title: t('delegation.manageRoles'), detail: '', text: '', icon: 'settings-outline', action: 'manage-roles' });
-        all.push(...pluginItems, ...siteItems, ...sessionItems);
+        // Keep Android recommendations compact; @ searches still cover all loaded conversations.
+        const recommendedSessions = Platform.OS === 'android' && !props.query.trim() ? sessionItems.slice(0, 2) : sessionItems;
+        all.push(...pluginItems, ...siteItems, ...recommendedSessions);
         return filterContextItems(all, 'all', props.query).slice(0, props.query.trim() ? 60 : 30);
     }, [files, roleItems, pluginItems, siteItems, sessionItems, props.onPickFiles, props.canManageRoles, props.query]);
     React.useEffect(() => { keyboardSelection.current = false; setSelected(0); }, [props.query]);
@@ -162,7 +164,7 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
     let offset = 0;
     rowOffsets.current.clear();
     return <View ref={rootRef} style={styles.container} testID="composer-context-picker">
-        <ScrollView ref={scrollRef} style={styles.results} keyboardShouldPersistTaps="handled" testID="composer-context-results" showsVerticalScrollIndicator>
+        <ScrollView ref={scrollRef} style={styles.results} keyboardShouldPersistTaps="handled" nestedScrollEnabled testID="composer-context-results" showsVerticalScrollIndicator>
             {groups.map(group => {
                 const rows = items.filter(item => item.category === group);
                 if (!rows.length) return null;
