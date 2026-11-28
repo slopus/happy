@@ -172,14 +172,19 @@ describe('persistent project canvas previews', () => {
     });
 
     it('keeps preview reads usable when updating cached LRU metadata hits quota', async () => {
+        let now = 100;
+        vi.spyOn(Date, 'now').mockImplementation(() => now++);
         const first = await mountedClient();
         servePreview();
         await first.readPreview(asset, signal());
         const remounted = await mountedClient();
-        vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError'); });
+        let fail!: () => void;
+        const failed = new Promise<void>(resolve => { fail = resolve; });
+        vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => { fail(); throw new DOMException('full', 'QuotaExceededError'); });
         request.mockClear();
         servePreview();
         expect((await remounted.readPreview(asset, signal())).size).toBe(bytes.length);
-        expect(request).toHaveBeenCalledTimes(1);
+        await failed;
+        expect(request).not.toHaveBeenCalled();
     });
 });
