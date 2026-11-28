@@ -319,6 +319,32 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
         fs.rmSync(root, { recursive: true, force: true });
       }
     });
+
+    it('uses an executable wrapper script without an adjacent npm package on non-Windows platforms', () => {
+      if (process.platform === 'win32') {
+        return;
+      }
+
+      const root = `/tmp/test-claude-wrapper-${process.pid}-${Date.now()}`;
+      const binDir = `${root}/bin`;
+      const wrapperDir = `${root}/store/claude-code/bin`;
+      const originalPath = process.env.PATH;
+
+      fs.mkdirSync(binDir, { recursive: true });
+      fs.mkdirSync(wrapperDir, { recursive: true });
+      fs.writeFileSync(`${wrapperDir}/claude`, '#!/bin/sh\nexec /opt/claude/bin/.claude-wrapped "$@"\n');
+      fs.chmodSync(`${wrapperDir}/claude`, 0o755);
+      fs.symlinkSync(`${wrapperDir}/claude`, `${binDir}/claude`);
+
+      try {
+        process.env.PATH = `${binDir}:${originalPath ?? ''}`;
+        expect(findClaudeInPath()).toEqual({ path: fs.realpathSync(`${wrapperDir}/claude`), source: 'PATH' });
+      } finally {
+        process.env.PATH = originalPath;
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    });
+
   });
 
   describe('/goal hook JSON validation warning', () => {
