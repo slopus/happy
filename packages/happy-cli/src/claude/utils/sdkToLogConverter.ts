@@ -111,7 +111,10 @@ export class SDKToLogConverter {
      * Convert SDK message to log format
      */
     convert(sdkMessage: SDKMessage): RawJSONLines | null {
-        const uuid = randomUUID()
+        // Keep the SDK's uuid: it is the entry's uuid in Claude's JSONL, which claudeUuid must match
+        // (rewind/fork read it from disk; resume matches the session history against the file).
+        const sdkUuid = (sdkMessage as { uuid?: unknown }).uuid
+        const uuid = typeof sdkUuid === 'string' && sdkUuid.length > 0 ? sdkUuid : randomUUID()
         const timestamp = new Date().toISOString()
         let parentUuid = this.lastUuid;
         let isSidechain = false;

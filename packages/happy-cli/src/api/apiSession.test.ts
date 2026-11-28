@@ -865,6 +865,41 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect((client as any).lastReceivedSeq).toBe(1);
     });
 
+    it('on reconnect, skips existing messages but records what they hold of the Claude conversation', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        expect(client.syncedTranscript()).toBeNull();
+        client.skipExistingMessages();
+
+        const history = [
+            { role: 'user', content: { type: 'text', text: 'hello' } },
+            { role: 'session', content: { role: 'agent', claudeUuid: 'a1', ev: { t: 'text', text: 'Hi!' } } },
+            { role: 'user', content: { type: 'text', text: 'no reply yet' } },
+        ];
+        mockAxiosGet.mockResolvedValueOnce({
+            data: {
+                messages: history.map((body, i) => ({
+                    id: `msg-${i + 1}`,
+                    seq: i + 1,
+                    content: { t: 'encrypted', c: encryptContent(session, body) },
+                    localId: null,
+                    createdAt: 1000,
+                    updatedAt: 1000,
+                })),
+                hasMore: false,
+            },
+        });
+
+        await (client as any).fetchMessages();
+
+        expect(onUserMessage).not.toHaveBeenCalled();
+        expect((client as any).lastReceivedSeq).toBe(3);
+        const synced = await client.syncedTranscript();
+        expect([...synced!.claudeUuids]).toEqual(['a1']);
+        expect(synced!.trailingUserTexts).toEqual(['no reply yet']);
+    });
+
     it('fetchMessages uses incremental cursor and paginates while hasMore is true', async () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();

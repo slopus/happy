@@ -24,6 +24,8 @@ import {
     type ClaudeSessionProtocolState,
 } from '@/claude/utils/sessionProtocolMapper';
 import { InvalidateSync } from '@/utils/sync';
+import { Future } from '@/utils/future';
+import { collectSyncedTranscript, type SyncedTranscript } from '@/claude/utils/transcriptResync';
 import axios from 'axios';
 
 /**
@@ -219,6 +221,8 @@ export class ApiSessionClient extends EventEmitter {
     private closed = false;
     private ignoreArchiveSignal = false;
     private skipInitialMessages = false;
+    /** Set on reconnect: what the skipped history holds of the Claude conversation. */
+    private syncedTranscriptFuture: Future<SyncedTranscript> | null = null;
     private claudeSessionProtocolState: ClaudeSessionProtocolState = {
         currentTurnId: null,
         uuidToProviderSubagent: new Map<string, string>(),
@@ -609,6 +613,7 @@ export class ApiSessionClient extends EventEmitter {
             logger.debug('[API] Reconnect mode: skipping existing messages, advancing lastReceivedSeq');
         }
 
+        const skippedBodies: unknown[] = [];
         let afterSeq = this.lastReceivedSeq;
         while (true) {
             const response = await axios.get<V3GetSessionMessagesResponse>(
@@ -631,14 +636,16 @@ export class ApiSessionClient extends EventEmitter {
                     maxSeq = message.seq;
                 }
 
-                if (skipRouting) continue;
-
                 if (message.content?.t !== 'encrypted') {
                     continue;
                 }
 
                 try {
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c));
+                    if (skipRouting) {
+                        skippedBodies.push(body);
+                        continue;
+                    }
                     this.routeIncomingMessage(body);
                 } catch (error) {
                     logger.debug('[API] Failed to decrypt fetched message', {
@@ -662,6 +669,9 @@ export class ApiSessionClient extends EventEmitter {
             if (!hasMore) {
                 break;
             }
+        }
+        if (skipRouting) {
+            this.syncedTranscriptFuture?.resolve(collectSyncedTranscript(skippedBodies));
         }
     }
 
@@ -942,6 +952,15 @@ export class ApiSessionClient extends EventEmitter {
 
     skipExistingMessages() {
         this.skipInitialMessages = true;
+        this.syncedTranscriptFuture = new Future<SyncedTranscript>();
+    }
+
+    /**
+     * On reconnect, what the session history already holds of the Claude conversation, read while the
+     * existing messages are skipped; `null` when this client is not reattaching to a session.
+     */
+    syncedTranscript(): Promise<SyncedTranscript> | null {
+        return this.syncedTranscriptFuture?.promise ?? null;
     }
 
     updateMetadata(handler: (metadata: Metadata) => Metadata) {
