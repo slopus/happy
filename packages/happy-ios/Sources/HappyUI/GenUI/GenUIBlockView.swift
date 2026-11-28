@@ -43,7 +43,8 @@ final class GenUIAnswers {
     /// Each group's chosen element.
     private(set) var chosen: [String: String] = [:]
     /// The secret each secret element's form saved, by the element's key:
-    /// the name its form opens on when tapped again.
+    /// the name its form opens on when tapped again; for a `plugin`
+    /// element, the plugin reported set up.
     private(set) var saved: [String: String] = [:]
     private let shown = NSHashTable<GenUIInteraction>.weakObjects()
 
@@ -60,6 +61,12 @@ final class GenUIAnswers {
     func save(_ key: String, secret id: String) {
         saved[key] = id
         for interaction in shown.allObjects { interaction.showSaved(key) }
+    }
+
+    /// `key`'s plugin `pluginId` was reported set up to the version's
+    /// agent; every view showing it marks it, and it opens the page still.
+    func setUp(_ key: String, plugin pluginId: String) {
+        save(key, secret: pluginId)
     }
 
     fileprivate func watch(_ interaction: GenUIInteraction) { shown.add(interaction) }
@@ -165,7 +172,9 @@ final class GenUIInteraction {
 
     /// A saved secret button keeps its label and colours, its leading
     /// glyph a check; a pressable row that opens a form takes the accent's
-    /// soft ground. VoiceOver hears "Saved" on either.
+    /// soft ground. VoiceOver hears "Saved" on either. A plugin set up is
+    /// marked the same, "Set up"; a plugin button with no glyph takes the
+    /// chosen look instead: the accent's soft fill, its ring if it has one.
     fileprivate func showSaved(_ key: String) {
         guard let mark = secrets[key] else { return }
         switch mark.look {
@@ -173,13 +182,19 @@ final class GenUIInteraction {
             let fill = Color(GenUITone.accent.fill)
             ground.updateStyle { $0.backgroundColor = fill }
             mark.node.onPressOut = { ground.updateStyle { $0.backgroundColor = fill } }
-        case .button(let saved):
-            if let saved, !saved.isSaved {
+        case .button(let saved?):
+            if !saved.isSaved {
                 saved.isSaved = true
                 redraw?()
             }
+        case .button(nil):
+            guard mark.plugin else { break }
+            mark.node.updateStyle { style in
+                style.backgroundColor = Color(GenUITone.accent.fill)
+                if style.borderColor != nil { style.borderColor = Color(GenUITone.accent.ink) }
+            }
         }
-        mark.node.accessibility.hint = Strings.GenUI.saved
+        mark.node.accessibility.hint = mark.plugin ? Strings.GenUI.setUp : Strings.GenUI.saved
     }
 
     /// An element was activated: report it, and if it's in a group, mark it
@@ -240,6 +255,8 @@ final class GenUIBlockView: UIView {
     private var shown: (planner: GenUIPlanner, width: CGFloat, identity: String?, runs: GenUIRuns)?
     /// Whose document it shows, as `show` was told.
     var identity: String? { shown?.identity }
+    /// What its elements may run, as `show` was told.
+    var runs: GenUIRuns? { shown?.runs }
     /// The version a conversation shows in it (`apply(_: GenUIEmbed)`).
     var conversationVersion: (artifactId: String, version: Int)?
     var conversationMessage: String?

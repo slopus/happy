@@ -182,17 +182,25 @@ public struct GenUIHost: Equatable, Sendable {
     public var secretActions: Bool
     /// Health's `capabilities.plugins`.
     public var plugins: Bool
+    /// Health's `capabilities.artifactPluginActions`.
+    public var pluginActions: Bool
 
-    public init(server: Server, origin: Bool, secretActions: Bool, plugins: Bool) {
+    public init(server: Server, origin: Bool, secretActions: Bool, plugins: Bool, pluginActions: Bool = false) {
         self.server = server
         self.origin = origin
         self.secretActions = secretActions
         self.plugins = plugins
+        self.pluginActions = pluginActions
     }
 
     public init(server: Server, origin: Bool, served: GenUIServed) {
-        self.init(server: server, origin: origin, secretActions: served.secretActions, plugins: served.plugins)
+        self.init(server: server, origin: origin, secretActions: served.secretActions, plugins: served.plugins, pluginActions: served.pluginActions)
     }
+
+    /// Whether a `plugin` element of this version tells its origin agent
+    /// once the plugin is set up (`GenUIPluginSetup`): only an artifact
+    /// version's, with a live origin, on a server that takes the report.
+    public var reportsPluginSetup: Bool { origin && plugins && pluginActions }
 
     public func enables(_ action: GenUIAction) -> Bool {
         switch action {
@@ -213,14 +221,18 @@ public struct GenUIHost: Equatable, Sendable {
 public struct GenUIServed: Equatable, Sendable {
     public var secretActions: Bool
     public var plugins: Bool
+    /// Takes a `plugin` element's setup report.
+    public var pluginActions: Bool
 
-    public init(secretActions: Bool = false, plugins: Bool = false) {
+    public init(secretActions: Bool = false, plugins: Bool = false, pluginActions: Bool = false) {
         self.secretActions = secretActions
         self.plugins = plugins
+        self.pluginActions = pluginActions
     }
 
     public init(_ capabilities: AgentWire.Health.Capabilities?) {
-        self.init(secretActions: capabilities?.artifactSecretActions == true, plugins: capabilities?.plugins == true)
+        self.init(secretActions: capabilities?.artifactSecretActions == true, plugins: capabilities?.plugins == true,
+                  pluginActions: capabilities?.artifactPluginActions == true)
     }
 }
 

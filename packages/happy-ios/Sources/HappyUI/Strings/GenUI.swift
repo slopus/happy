@@ -12,6 +12,8 @@ extension Strings {
         static var unavailable: String { localized("native.genui.unavailable", "Unavailable here") }
         /// A secret action whose form saved.
         static var saved: String { localized("native.genui.saved", "Saved") }
+        /// A plugin action whose plugin was set up, and its agent told.
+        static var setUp: String { localized("native.genui.setUp", "Set up") }
     }
 }
 

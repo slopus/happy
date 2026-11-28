@@ -125,6 +125,7 @@ final class GenUIActionsTests: XCTestCase {
         }
         XCTAssertEqual(try served(#"{"vaults":true}"#), GenUIServed(secretActions: false, plugins: false))
         XCTAssertEqual(try served(#"{"artifactSecretActions":true,"plugins":true}"#), GenUIServed(secretActions: true, plugins: true))
+        XCTAssertEqual(try served(#"{"plugins":true,"artifactPluginActions":true}"#), GenUIServed(plugins: true, pluginActions: true))
         XCTAssertEqual(GenUIServed(nil), GenUIServed())
     }
 
@@ -133,7 +134,7 @@ final class GenUIActionsTests: XCTestCase {
         for language in AppLanguage.supported.map(\.code) { _ = await TranslationCatalog.load(language) }
         let english = TranslationCatalog.genUISources["en"] ?? [:]
         XCTAssertEqual(Set(TranslationCatalog.genUISources.keys), Set(AppLanguage.supported.map(\.code)))
-        XCTAssertEqual(english.count, 3)
+        XCTAssertEqual(english.count, 4)
         for language in AppLanguage.supported.map(\.code) {
             let words = TranslationCatalog.genUISources[language] ?? [:]
             let catalog = TranslationCatalog.catalog(for: language)

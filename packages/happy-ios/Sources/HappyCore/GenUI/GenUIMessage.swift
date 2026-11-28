@@ -24,11 +24,13 @@ public enum GenUIMessage {
         return text
     }
 
+    /// `plugin` only opens the plugin's page, and only where the server
+    /// serves plugins (`GenUIHost.enables`); it never reports a setup here.
     public static func enables(_ action: GenUIAction) -> Bool {
         switch action {
-        case .message, .copy: true
+        case .message, .copy, .plugin: true
         case .open(let address): safeURL(address)
-        case .plugin, .tool, .secret, .clusterSecret, .unsupported: false
+        case .tool, .secret, .clusterSecret, .unsupported: false
         }
     }
 

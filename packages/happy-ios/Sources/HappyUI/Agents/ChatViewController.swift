@@ -2383,6 +2383,8 @@ extension ChatViewController: PageHosting {
 extension ChatViewController: GenUIMessageActing {
     func genUIMessage(run action: GenUIAction, agentId: String) {
         guard agentId == media.agentId, !previewing, GenUIMessage.enables(action) else { return }
+        // Direct Gen UI opens a plugin's page where the server serves plugins; it reports nothing.
+        if case .plugin = action, !session.snapshot.references.genUIServed.plugins { return }
         if GenUIActionRunner.run(action, session: session, from: self, agentId: agentId) { return }
         guard case .message(let text) = action else { return }
         Haptics.play(.send)
@@ -2397,6 +2399,9 @@ extension ChatViewController: GenUIActing {
     /// A `message` goes as the person's next message here, the origin
     /// agent's own conversation (the only place it is enabled).
     func genUI(run action: GenUIAction, key: String, artifactId: String, version: Int, in block: GenUIBlockView) {
+        if case .plugin(let pluginId) = action {
+            return GenUIActionRunner.openPlugin(pluginId, key: key, artifactId: artifactId, version: version, in: block, session: session, from: self)
+        }
         if GenUIActionRunner.run(action, session: session, from: self, agentId: media.agentId) { return }
         if action.opensSecretForm {
             return GenUIActionRunner.openForm(action, key: key, artifactId: artifactId, version: version, in: block, client: session.client, from: self)

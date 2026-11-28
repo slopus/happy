@@ -37,6 +37,8 @@ public final class AgentClient: Sendable {
     public let chatReads = ChatReads()
     /// Routes of a feature the person turned off for their account.
     public let featureRefusals = FeatureRefusals()
+    /// Gen UI `plugin` elements' setup reports: one submission each.
+    public let pluginSetupReports = GenUIPluginSetupReports()
 
     init(transport: any AgentTransport, token: String, signsIn: Bool = false) {
         self.transport = transport

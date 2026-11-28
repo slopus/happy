@@ -11,11 +11,12 @@ enum PluginScreens {
     /// `plugin` action, a plugins gate in onboarding, a row of the list.
     /// Pushed on the controller's navigation; presented in one of its own
     /// when it has none.
-    static func open(pluginId: String, session: Session, from controller: UIViewController) {
+    @discardableResult
+    static func open(pluginId: String, session: Session, from controller: UIViewController) -> PluginViewController {
         let page = PluginViewController(session: session, pluginId: pluginId)
         if let navigation = controller.navigationController ?? (controller as? UINavigationController) {
             navigation.pushViewController(page, animated: true)
-            return
+            return page
         }
         page.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak page] _ in
             page?.dismiss(animated: true)
@@ -23,6 +24,7 @@ enum PluginScreens {
         let navigation = UINavigationController(rootViewController: page)
         AppCoordinator.applyAppearance(to: navigation.navigationBar)
         controller.present(navigation, animated: true)
+        return page
     }
 }
 
@@ -171,6 +173,12 @@ final class PluginViewController: SettingsPageViewController {
     private(set) var busy: Set<String> = []
     /// The provider's page while a sign-in runs there, and the installation it is for.
     private var browser: (page: SFSafariViewController, installationId: String)?
+    /// Hears every catalog the page reads while it lives, the one it
+    /// opens on first: a Gen UI `plugin` element that opened it watches
+    /// for an active installation.
+    var onCatalog: ((PluginCatalog) -> Void)? {
+        didSet { session.plugins.state.catalog.map { onCatalog?($0) } }
+    }
 
     init(session: Session, pluginId: String) {
         self.session = session
@@ -186,6 +194,7 @@ final class PluginViewController: SettingsPageViewController {
 
     private func changed() {
         guard let catalog = session.plugins.state.catalog else { return reload() }
+        onCatalog?(catalog)
         title = catalog.name(of: pluginId)
         // Signed in on the provider's page: the server says so, and the page goes.
         if let browser, catalog.installations?.first(where: { $0.id == browser.installationId })?.status == .active {

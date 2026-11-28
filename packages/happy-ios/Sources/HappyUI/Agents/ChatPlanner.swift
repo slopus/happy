@@ -412,7 +412,8 @@ actor ChatPlanner {
                 }
             case .genUI(let toolCallId, let document):
                 let inner = MessageLayout.agentInner(width: key.width, maxContentWidth: key.maxContentWidth)
-                let embed = GenUIMessageEmbed(agentId: key.agentId, toolCallId: toolCallId, document: document, width: inner, environment: environment)
+                let embed = GenUIMessageEmbed(agentId: key.agentId, toolCallId: toolCallId, document: document, width: inner, environment: environment,
+                                              plugins: key.references.genUIServed.plugins)
                 drafts.append(.genUIMessage(embed))
                 parts.append(.page(height: embed.height))
                 spoken.append(document.fallback)

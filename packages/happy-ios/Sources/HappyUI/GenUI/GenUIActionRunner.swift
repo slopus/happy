@@ -59,6 +59,27 @@ enum GenUIActionRunner {
         present(form, from: controller)
     }
 
+    /// Opens a `plugin` element's page. Where its version reports a setup
+    /// (`GenUIHost.reportsPluginSetup`), the page watches for an active
+    /// installation of the plugin, already there or made while it shows,
+    /// and then tells the origin agent once; reported, the element is
+    /// marked wherever its version shows. The tap itself sends nothing.
+    static func openPlugin(_ pluginId: String, key: String, artifactId: String, version: Int, in block: GenUIBlockView,
+                           session: Session, from controller: UIViewController) {
+        let page = PluginScreens.open(pluginId: pluginId, session: session, from: controller)
+        let answers = block.interaction.answers
+        guard block.runs?.host.reportsPluginSetup == true, answers.saved[key] == nil else { return }
+        let client = session.client
+        // Held while the page lives, so the mark lands even if every view of the version went.
+        page.onCatalog = { catalog in
+            guard answers.saved[key] == nil, GenUIPluginSetup.isSetUp(pluginId, in: catalog.installations) else { return }
+            Task { @MainActor in
+                let outcome = await client.pluginSetupReports.report(artifactId: artifactId, version: version, element: key, via: client)
+                if case .reported = outcome { answers.setUp(key, plugin: pluginId) }
+            }
+        }
+    }
+
     /// Opens a secret action's form, if it is one.
     static func openForm(_ action: GenUIAction, key: String, artifactId: String, version: Int, in block: GenUIBlockView,
                          client: AgentClient, from controller: UIViewController) {

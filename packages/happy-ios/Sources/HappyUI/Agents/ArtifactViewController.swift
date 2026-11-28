@@ -498,6 +498,9 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         let fromVault = vault != nil
         block.interaction.onAction = { [weak self, weak block] key, action in
             guard let self, let block else { return }
+            if case .plugin(let pluginId) = action, !fromVault {
+                return GenUIActionRunner.openPlugin(pluginId, key: key, artifactId: artifactId, version: version.number, in: block, session: self.session, from: self)
+            }
             if GenUIActionRunner.run(action, session: self.session, from: self) { return }
             guard !fromVault else { return }
             GenUIActionRunner.openForm(action, key: key, artifactId: artifactId, version: version.number, in: block, client: self.session.client, from: self)

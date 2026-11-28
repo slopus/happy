@@ -6,51 +6,61 @@ extension TranslationCatalog {
             "native.genui.selected": "Selected",
             "native.genui.unavailable": "Unavailable here",
             "native.genui.saved": "Saved",
+            "native.genui.setUp": "Set up",
         ],
         "ru": [
             "native.genui.selected": "Выбрано",
             "native.genui.unavailable": "Здесь недоступно",
             "native.genui.saved": "Сохранено",
+            "native.genui.setUp": "Настроено",
         ],
         "pl": [
             "native.genui.selected": "Wybrano",
             "native.genui.unavailable": "Niedostępne tutaj",
             "native.genui.saved": "Zapisano",
+            "native.genui.setUp": "Skonfigurowano",
         ],
         "es": [
             "native.genui.selected": "Seleccionado",
             "native.genui.unavailable": "No disponible aquí",
             "native.genui.saved": "Guardado",
+            "native.genui.setUp": "Configurado",
         ],
         "it": [
             "native.genui.selected": "Selezionato",
             "native.genui.unavailable": "Non disponibile qui",
             "native.genui.saved": "Salvato",
+            "native.genui.setUp": "Configurato",
         ],
         "pt": [
             "native.genui.selected": "Selecionado",
             "native.genui.unavailable": "Indisponível aqui",
             "native.genui.saved": "Salvo",
+            "native.genui.setUp": "Configurado",
         ],
         "ca": [
             "native.genui.selected": "Seleccionat",
             "native.genui.unavailable": "No disponible aquí",
             "native.genui.saved": "Desat",
+            "native.genui.setUp": "Configurat",
         ],
         "zh-Hans": [
             "native.genui.selected": "已选择",
             "native.genui.unavailable": "此处不可用",
             "native.genui.saved": "已保存",
+            "native.genui.setUp": "已设置",
         ],
         "zh-Hant": [
             "native.genui.selected": "已選取",
             "native.genui.unavailable": "此處無法使用",
             "native.genui.saved": "已儲存",
+            "native.genui.setUp": "已設定",
         ],
         "ja": [
             "native.genui.selected": "選択済み",
             "native.genui.unavailable": "ここでは使用できません",
             "native.genui.saved": "保存済み",
+            "native.genui.setUp": "設定済み",
         ],
     ]
 }

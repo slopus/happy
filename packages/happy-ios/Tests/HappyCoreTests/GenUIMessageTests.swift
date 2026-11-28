@@ -39,7 +39,7 @@ final class GenUIMessageTests: XCTestCase {
         XCTAssertTrue(GenUIMessage.enables(.open("https://example.com")))
         XCTAssertFalse(GenUIMessage.enables(.open("javascript:alert(1)")))
         XCTAssertFalse(GenUIMessage.enables(.open("file:///secret")))
-        XCTAssertFalse(GenUIMessage.enables(.plugin(id: "p")))
+        XCTAssertTrue(GenUIMessage.enables(.plugin(id: "p")), "opens the page where the server serves plugins")
         XCTAssertFalse(GenUIMessage.enables(.tool(name: "delete", input: .object([:]))))
         XCTAssertFalse(GenUIMessage.enables(.secret(.init(variables: [.init(name: "TOKEN")]))))
         XCTAssertFalse(GenUIMessage.enables(.clusterSecret(.init(kind: .environment, name: "secret"))))

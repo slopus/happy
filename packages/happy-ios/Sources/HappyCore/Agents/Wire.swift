@@ -133,6 +133,9 @@ extension AgentWire {
             /// Saves Gen UI secret actions' forms
             /// (`POST /v0/artifacts/:id/versions/:n/actions`); missing is none.
             public var artifactSecretActions: Bool?
+            /// Takes a Gen UI `plugin` element's setup report on the same
+            /// route, once the plugin has an active installation; missing is none.
+            public var artifactPluginActions: Bool?
         }
         public var ready: Bool
         public var capabilities: Capabilities?

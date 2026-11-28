@@ -16,7 +16,8 @@ struct GenUIBuilt: @unchecked Sendable {
     let drawn: [(node: UltraNode, make: @Sendable (_ dark: Bool) -> any Drawing)]
     /// The elements of single-choice groups, by key.
     let choices: [String: GenUIChoiceNodes]
-    /// The elements that open a secret form, by key: marked once it saved.
+    /// The elements that open a secret form or a plugin's page, by key:
+    /// marked once its form saved or its plugin was reported set up.
     let secrets: [String: GenUIChoiceNodes]
     /// Carousels that settle one card at a time.
     let snaps: [(node: UltraScrollNode, stops: [CGFloat])]
@@ -40,6 +41,8 @@ struct GenUIChoiceNodes: @unchecked Sendable {
     let group: String
     let node: UltraNode
     let look: Look
+    /// A `plugin` element: done once its plugin was reported set up.
+    var plugin = false
 }
 
 /// Something drawn with UIKit into an Ultraview bitmap, in light or dark.
@@ -126,6 +129,14 @@ extension GenUIAction {
         default: false
         }
     }
+
+    var opensPlugin: Bool {
+        if case .plugin = self { return true }
+        return false
+    }
+
+    /// Its element is marked once done: a secret saved, a plugin set up.
+    var marksDone: Bool { opensSecretForm || opensPlugin }
 }
 
 /// Builds a plan's nodes. Used on one thread at a time.
@@ -348,7 +359,7 @@ final class GenUINodeBuilder {
             node.onPressOut = { ground.updateStyle { $0.backgroundColor = nil } }
         }
         if let group { choices[key] = GenUIChoiceNodes(group: group, node: node, look: .press(ground: ground)) }
-        if action.opensSecretForm { secrets[key] = GenUIChoiceNodes(group: group ?? "", node: node, look: .press(ground: ground)) }
+        if action.marksDone { secrets[key] = GenUIChoiceNodes(group: group ?? "", node: node, look: .press(ground: ground), plugin: action.opensPlugin) }
         return node
     }
 
@@ -371,8 +382,8 @@ final class GenUINodeBuilder {
             var shifted = child
             shifted.frame = child.frame.offsetBy(dx: -inset, dy: -inset)
             let content: UltraNode
-            if enabled, button.action.opensSecretForm, case .glyph(let name, let ink, let rect) = shifted.mark {
-                // The glyph a saved form turns into a check.
+            if enabled, button.action.marksDone, case .glyph(let name, let ink, let rect) = shifted.mark {
+                // The glyph a saved form, or a plugin set up, turns into a check.
                 let glyph = GenUISavedGlyph()
                 saved = glyph
                 content = UltraNode(style: self.style(shifted.frame))
@@ -394,7 +405,7 @@ final class GenUINodeBuilder {
         node.onPress = { [weak interaction = self.interaction] in interaction?.activate(key, action, group: group) }
         node.pressedOpacity = 0.6
         if let group { choices[key] = GenUIChoiceNodes(group: group, node: node, look: .button(saved: nil)) }
-        if action.opensSecretForm { secrets[key] = GenUIChoiceNodes(group: group ?? "", node: node, look: .button(saved: saved)) }
+        if action.marksDone { secrets[key] = GenUIChoiceNodes(group: group ?? "", node: node, look: .button(saved: saved), plugin: action.opensPlugin) }
         return node
     }
 
