@@ -109,10 +109,11 @@ private fun ChatRow.isUserAttachment(): Boolean = (message as? ChatMessage.ToolC
 /**
  * groupMessagesForDisplay over [rows] newest first, returning newest first.
  * Each turn with a final answer folds the visible agent work before that
- * answer (not user rows, attachments or questions) into one group, placed
- * where its oldest member was. The current turn (turn 0) folds only when
- * [collapseCurrentTurn]: while it streams everything renders flat. With
- * [enabled] false (the `groupToolCalls` setting off) rows pass through.
+ * answer (not user rows, attachments, questions or a context boundary) into
+ * one group, placed where its oldest member was. The current turn (turn 0)
+ * folds only when [collapseCurrentTurn]: while it streams everything renders
+ * flat. With [enabled] false (the `groupToolCalls` setting off) rows pass
+ * through.
  */
 fun groupChatRowsForDisplay(rows: List<ChatRow>, enabled: Boolean, collapseCurrentTurn: Boolean): List<ChatDisplayItem> {
     if (!enabled) return rows.filterNot { it.isInvisible() }.map(ChatDisplayItem::Row)
@@ -129,6 +130,8 @@ fun groupChatRowsForDisplay(rows: List<ChatRow>, enabled: Boolean, collapseCurre
             when {
                 message is ChatMessage.UserText -> false
                 row.isInvisible() || row.isUserAttachment() -> false
+                // A context boundary draws where it happened, never folded away.
+                row.isContextBoundaryRow() -> false
                 message is ChatMessage.ToolCallMessage && isInteractiveQuestionToolName(message.tool.name) -> false
                 else -> true
             }
