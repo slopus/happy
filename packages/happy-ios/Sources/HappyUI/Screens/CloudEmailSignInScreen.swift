@@ -177,8 +177,8 @@ enum MailApp: CaseIterable {
 
 /// What a paste control pastes into: plain text, handed over as a string.
 /// `UIPasteControl` reads the pasteboard on the person's tap, so iOS asks
-/// no "Allow Paste" and shows no banner; it enables itself only while the
-/// pasteboard holds what `pasteConfiguration` accepts.
+/// no "Allow Paste"; it enables itself only while the pasteboard holds
+/// what `pasteConfiguration` accepts.
 @MainActor
 final class TextPasteTarget: NSObject, UIPasteConfigurationSupporting {
     var pasteConfiguration: UIPasteConfiguration? = UIPasteConfiguration(forAccepting: NSString.self)
