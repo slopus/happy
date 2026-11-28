@@ -38,6 +38,9 @@ class GenUiPluginReportApi(private val client: AgentClient) {
     /** Whether health said `artifactPluginActions`; observable, false until [check] has heard. */
     val served: Boolean get() = capable == true
 
+    /** Whether health said it doesn't take reports; false while it hasn't answered. */
+    val refused: Boolean get() = capable == false
+
     /** The computer's client, which a version's shared [GenUiState] is kept by. */
     internal val computer: Any get() = client
 
@@ -92,8 +95,10 @@ object GenUiPluginReports {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?) = size > KEPT
     }
 
-    private const val KEPT = 64
-    private const val ATTEMPTS = 6
+    /** Taken or refused reports leave at once; this bounds taps whose plugin is never set up. */
+    private const val KEPT = 256
+    private const val ATTEMPTS = 20
+    private const val MAX_DELAY = 60_000L
 
     /** [element] of [artifactId]'s [version] opened [pluginId]'s page: the token its page reports with. */
     internal fun begin(api: GenUiPluginReportApi, artifactId: String, version: Int, element: String, pluginId: String, state: GenUiState): String {
@@ -116,13 +121,22 @@ object GenUiPluginReports {
 
     private fun send(entry: Entry, attempt: Int) {
         scope.launch {
+            // A tap before health answered began a run; one that says no reports is never sent.
+            entry.api.check()
+            if (!entry.api.served) {
+                if (entry.api.refused) entry.run.refuse() else entry.run.answered(PluginReportAnswer.NotSetUp)
+                if (entry.run.finished) synchronized(runs) { runs.remove(entry.run.submission) }
+                return@launch
+            }
             val answer = entry.api.submit(entry.run)
+            // Marked done before the run finishes, so a tap meanwhile still finds this run and its ID.
+            if (answer is PluginReportAnswer.Reported) withContext(Dispatchers.Main) { entry.state.save(entry.run.element, entry.run.pluginId) }
             val again = entry.run.answered(answer)
-            if (entry.run.reported) withContext(Dispatchers.Main) { entry.state.save(entry.run.element, entry.run.pluginId) }
             if (entry.run.finished) synchronized(runs) { runs.remove(entry.run.submission) }
             if (again && attempt < ATTEMPTS) {
-                delay(1_000L shl attempt)
-                if (entry.run.resend()) send(entry, attempt + 1)
+                val timed = entry.run.attempt
+                delay(minOf(1_000L shl minOf(attempt, 6), MAX_DELAY))
+                if (entry.run.resend(timed)) send(entry, attempt + 1)
             }
         }
     }
@@ -143,7 +157,8 @@ class GenUiPluginReporter internal constructor(
 ) {
     /** The token for the page [element] opens on [pluginId], or null where this tap reports nothing. */
     fun begin(element: String, pluginId: String, origin: Boolean, plugins: Boolean): String? {
-        val capabilities = GenUiCapabilities(plugins = plugins, artifactPluginActions = api.served)
+        // Before health has answered the tap still begins a report; sending checks again.
+        val capabilities = GenUiCapabilities(plugins = plugins, artifactPluginActions = !api.refused)
         if (!GenUiPluginReport.applies(capabilities, artifact = true, origin = origin) || state.saved(element) != null) return null
         return GenUiPluginReports.begin(api, artifactId, version, element, pluginId, state)
     }

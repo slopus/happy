@@ -96,8 +96,8 @@ class GenUiPluginActionTest {
         val opened = ArrayList<Pair<String, String?>>()
         val inline = GenUiInline(computer(reportsTaken = false), null, "a1", onMessage = {}, onOpenWeb = {}, plugins = MutableStateFlow(true), onOpenPlugin = { id, report -> opened += id to report })
         rule.setHappyContent { GenUiInlineBlock("p1", 1, inline, label = { it }) }
-        rule.waitUntil(5_000) { inline.block("p1", 1) != null }
-        rule.waitForIdle()
+        // Health has said no; before it answers a tap still begins a report, which sending drops.
+        rule.waitUntil(5_000) { inline.block("p1", 1) != null && inline.pluginReports.refused }
         button().performClick()
         assertEquals(listOf("linear" to null), opened)
         assertEquals(emptyList<String>(), reports.toList())
@@ -115,7 +115,7 @@ class GenUiPluginActionTest {
         token!!
         // Tapped again before it was set up: the same report, so the same submission ID.
         button().performClick()
-        assertEquals(token, tokens.last())
+        assertEquals(listOf(token, token), tokens)
         assertNull(button().fetchSemanticsNode().config.getOrNull(SemanticsProperties.StateDescription))
 
         // The page reads the plugin installed but not set up, then active, then again.

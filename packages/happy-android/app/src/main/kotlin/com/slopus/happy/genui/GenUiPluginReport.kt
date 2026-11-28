@@ -94,6 +94,10 @@ object GenUiPluginReport {
 class PluginReportRun(val artifactId: String, val version: Int, val element: String, val pluginId: String, val submission: String) {
     private var sending = false
 
+    /** Counts attempts, so a retry timed for one that another attempt has since followed does nothing. */
+    var attempt = 0
+        private set
+
     /** Taken or refused for good. */
     var finished = false
         private set
@@ -106,13 +110,21 @@ class PluginReportRun(val artifactId: String, val version: Int, val element: Str
     @Synchronized
     fun seen(installations: List<PluginInstallation>): Boolean = GenUiPluginReport.setUp(installations, pluginId) && start()
 
-    /** A retry after [PluginReportAnswer.Retry]: whether to send now. */
+    /** The retry timed after attempt [after] answered [PluginReportAnswer.Retry]: whether to send now (no attempt since). */
     @Synchronized
-    fun resend(): Boolean = start()
+    fun resend(after: Int): Boolean = after == attempt && start()
+
+    /** The computer doesn't take reports after all: nothing is ever sent. */
+    @Synchronized
+    fun refuse() {
+        sending = false
+        finished = true
+    }
 
     private fun start(): Boolean {
         if (finished || sending) return false
         sending = true
+        attempt++
         return true
     }
 

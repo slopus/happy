@@ -91,12 +91,12 @@ class GenUiPluginReportTest {
         val active = listOf(installation("linear", InstallationStatus.Active))
         assertTrue(run.seen(active))
         assertFalse("already on its way", run.seen(active))
-        assertFalse(run.resend())
+        assertFalse(run.resend(run.attempt))
         assertFalse(run.answered(PluginReportAnswer.Reported(PluginReported("linear", emptyList(), "m1"))))
         assertTrue(run.finished)
         assertTrue(run.reported)
         assertFalse("done: never again", run.seen(active))
-        assertFalse(run.resend())
+        assertFalse(run.resend(run.attempt))
     }
 
     @Test
@@ -106,15 +106,33 @@ class GenUiPluginReportTest {
         assertTrue(run.seen(active))
         assertTrue("retry later", run.answered(PluginReportAnswer.Retry))
         assertFalse(run.finished)
-        assertTrue(run.resend())
+        val timed = run.attempt
+        assertTrue(run.resend(timed))
         assertEquals("s1", run.submission)
         // The server didn't see it set up yet: nothing, until the page sees it again.
         assertFalse(run.answered(PluginReportAnswer.NotSetUp))
         assertFalse(run.finished)
         assertTrue(run.seen(active))
         assertFalse(run.answered(PluginReportAnswer.Refused))
+        assertFalse("a stale retry never sends", run.resend(timed))
         assertTrue(run.finished)
         assertFalse("refused: not marked done", run.reported)
         assertFalse(run.seen(active))
+    }
+
+    @Test
+    fun aRetryTimedBeforeAnotherAttemptDoesNothing() {
+        val run = PluginReportRun("g1", 2, "get", "linear", "s1")
+        val active = listOf(installation("linear", InstallationStatus.Active))
+        assertTrue(run.seen(active))
+        assertTrue(run.answered(PluginReportAnswer.Retry))
+        val timed = run.attempt
+        // The page saw it again meanwhile and the server said not yet.
+        assertTrue(run.seen(active))
+        assertFalse(run.answered(PluginReportAnswer.NotSetUp))
+        assertFalse(run.resend(timed))
+        run.refuse()
+        assertTrue(run.finished)
+        assertFalse(run.reported)
     }
 }
