@@ -29,7 +29,7 @@ export async function claudeRemote(opts: {
     signal?: AbortSignal,
     canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: CanCallToolOptions) => Promise<PermissionResult>,
     /** Called when the Query object is ready — allows permission handler to call setPermissionMode */
-    onQueryReady?: (query: { setPermissionMode: (mode: string) => Promise<void> }) => void,
+    onQueryReady?: (query: { setPermissionMode: (mode: string) => Promise<void>, permissionMode: QueryOptions['permissionMode'] }) => void,
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string,
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -180,6 +180,7 @@ export async function claudeRemote(opts: {
     if (opts.onQueryReady) {
         opts.onQueryReady({
             setPermissionMode: (mode: string) => response.setPermissionMode(mode as any),
+            permissionMode: sdkOptions.permissionMode,
         });
     }
 
