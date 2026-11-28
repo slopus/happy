@@ -7,6 +7,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import com.slopus.happy.model.HomeFilter
 import com.slopus.happy.model.WorkspaceOrigin
 
 /**
@@ -28,6 +29,7 @@ class HomeListCallbacks(
     val onProjectMenu: (projectName: String, origin: WorkspaceOrigin) -> Unit,
     /** A finger landed on a session's row, before it is a tap (useSessionPressHandlers' onPressIn). */
     val onPressDown: (sessionId: String) -> Unit = {},
+    val onSelectFilter: (HomeFilter) -> Unit = {},
 )
 
 /**

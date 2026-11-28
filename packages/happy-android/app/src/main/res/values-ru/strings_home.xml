@@ -96,4 +96,22 @@
     <string name="home_worktree_unreachable">Не удалось подключиться к машине</string>
     <string name="home_worktree_not_git">Это не Git-репозиторий</string>
     <string name="home_worktree_failed">Не удалось создать worktree</string>
+    <!-- Filter chips -->
+    <string name="home_filter_all">Все</string>
+    <string name="home_filter_bots">Боты</string>
+    <string name="home_filter_tasks">Задачи</string>
+    <string name="home_filter_projects">Проекты</string>
+    <string name="home_filter_unread">Непрочитанные</string>
+    <string name="home_filter_empty_all">Нет чатов</string>
+    <string name="home_filter_empty_bots">Нет ботов</string>
+    <string name="home_filter_empty_tasks">Нет задач</string>
+    <string name="home_filter_empty_projects">Нет проектов</string>
+    <string name="home_filter_empty_unread">Нет непрочитанных чатов</string>
+    <plurals name="home_filter_unread_desc_with_count">
+        <item quantity="one">%1$s, %2$d чат</item>
+        <item quantity="few">%1$s, %2$d чата</item>
+        <item quantity="many">%1$s, %2$d чатов</item>
+        <item quantity="other">%1$s, %2$d чата</item>
+    </plurals>
+    <string name="home_filter_badge_overflow">99+</string>
 </resources>

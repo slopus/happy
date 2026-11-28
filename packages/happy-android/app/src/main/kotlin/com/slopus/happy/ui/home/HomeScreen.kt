@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.model.DayTitle
 import com.slopus.happy.model.HomeEmptyState
+import com.slopus.happy.model.HomeFilter
 import com.slopus.happy.model.ProjectHomeRow
 import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.net.ConnectionStatus
@@ -90,6 +91,10 @@ object HomeTags {
     const val SHOW_ARCHIVED = "home.showArchived"
     /** Every row in a card: its column, the card [HomeCardSpec.inset] in from it. */
     const val CARD_ROW = "home.cardRow"
+    const val FILTER_CHIPS = "home.filterChips"
+    fun filterChip(filter: HomeFilter) = "home.filterChip.${filter.wire}"
+    const val FILTER_UNREAD_BADGE = "home.filterChip.unread.badge"
+    const val FILTER_EMPTY = "home.filterEmpty"
 }
 
 /** MainView.tsx and SessionsList.tsx on a phone. */
@@ -300,16 +305,38 @@ fun HomeList(
                 HomeBanners(state.offlineBanner, update, actions, migration)
             }
         }
+        item(key = "filter-chips", contentType = "filter-chips") {
+            HomeFilterChips(
+                selected = state.filter,
+                unreadCount = state.unreadCount,
+                onSelect = callbacks.onSelectFilter,
+                carded = carded,
+            )
+        }
         if (carded) {
+            val hasCardRows = state.cards.any { it.row.isCardRow }
+            if (!hasCardRows && !state.hasArchivedSessions && state.filter != HomeFilter.All) {
+                item(key = "filter-empty", contentType = "filter-empty") {
+                    HomeFilterEmptyNotice(state.filter)
+                }
+            }
             items(state.cards, key = { it.key }, contentType = { (it.row as? HomeRow.Project)?.row?.let { row -> row::class } ?: it.row::class }) { entry ->
                 HomeCardItem(entry, callbacks, selectedSessionId)
             }
-        } else items(state.rows, key = { it.key }, contentType = { it::class }) { row ->
-            when (row) {
-                is HomeRow.Chat -> FlatSessionRow(row.row, row.showBorder, row.archived, callbacks, selected = row.row.session.id == selectedSessionId)
-                is HomeRow.ArchiveToggle -> ArchiveToggleRow(row.hidden, row.banded, callbacks)
-                is HomeRow.DayHeader -> DayHeaderRow(row.title, flat)
-                is HomeRow.Project -> ProjectHomeRowContent(row.row, callbacks)
+        } else {
+            val hasContentRows = state.rows.any { it.isCardRow }
+            if (!hasContentRows && !state.hasArchivedSessions && state.filter != HomeFilter.All) {
+                item(key = "filter-empty", contentType = "filter-empty") {
+                    HomeFilterEmptyNotice(state.filter)
+                }
+            }
+            items(state.rows, key = { it.key }, contentType = { it::class }) { row ->
+                when (row) {
+                    is HomeRow.Chat -> FlatSessionRow(row.row, row.showBorder, row.archived, callbacks, selected = row.row.session.id == selectedSessionId)
+                    is HomeRow.ArchiveToggle -> ArchiveToggleRow(row.hidden, row.banded, callbacks)
+                    is HomeRow.DayHeader -> DayHeaderRow(row.title, flat)
+                    is HomeRow.Project -> ProjectHomeRowContent(row.row, callbacks)
+                }
             }
         }
         item(key = "bottom", contentType = "bottom") { bottomSpacer() }

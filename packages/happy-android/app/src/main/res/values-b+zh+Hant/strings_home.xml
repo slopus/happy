@@ -96,4 +96,19 @@
     <string name="home_worktree_unreachable">無法連線到裝置</string>
     <string name="home_worktree_not_git">不是 Git 儲存庫</string>
     <string name="home_worktree_failed">無法建立 Worktree</string>
+    <!-- Filter chips -->
+    <string name="home_filter_all">全部</string>
+    <string name="home_filter_bots">機器人</string>
+    <string name="home_filter_tasks">任務</string>
+    <string name="home_filter_projects">專案</string>
+    <string name="home_filter_unread">未讀</string>
+    <string name="home_filter_empty_all">暫無對話</string>
+    <string name="home_filter_empty_bots">暫無機器人</string>
+    <string name="home_filter_empty_tasks">暫無任務</string>
+    <string name="home_filter_empty_projects">暫無專案</string>
+    <string name="home_filter_empty_unread">暫無未讀對話</string>
+    <plurals name="home_filter_unread_desc_with_count">
+        <item quantity="other">%1$s，%2$d 個對話</item>
+    </plurals>
+    <string name="home_filter_badge_overflow">99+</string>
 </resources>

@@ -14,6 +14,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.AppGraph
 import com.slopus.happy.data.MachineRecord
+import com.slopus.happy.model.HomeFilter
 import com.slopus.happy.model.HomeModelFixtures.machine
 import com.slopus.happy.model.HomeModelFixtures.machineMetadata
 import com.slopus.happy.model.HomeModelFixtures.metadata
@@ -61,22 +62,24 @@ class LegacyHomeShots {
     }
 
     private val flat
-        get() = deriveHomeList(
-            HomeListInputs(
-                HomeSnapshot(
-                    listOf(
-                        session("a", titled("/Users/dev/happy", "Port the legacy home to cards"), thinking = true, lastMessageSentAt = noon),
-                        session("b", titled("/Users/dev/site", "Fix the pricing page"), lastMessageSentAt = noon - 60_000),
-                        session("c", titled("/Users/dev/happy", "Release notes for 1.4"), lastMessageSentAt = noon - 86_400_000),
-                        session("d", titled("/Users/dev/infra", "Rotate the staging keys"), active = false, lastMessageSentAt = noon - 2 * 86_400_000),
-                    ),
-                    listOf(machine("m1", machineMetadata { put("displayName", "Studio") })),
+        get() = flat(HomeFilter.All)
+
+    private fun flat(filter: HomeFilter) = deriveHomeList(
+        HomeListInputs(
+            HomeSnapshot(
+                listOf(
+                    session("a", titled("/Users/dev/happy", "Port the legacy home to cards"), thinking = true, lastMessageSentAt = noon),
+                    session("b", titled("/Users/dev/site", "Fix the pricing page"), lastMessageSentAt = noon - 60_000),
+                    session("c", titled("/Users/dev/happy", "Release notes for 1.4"), lastMessageSentAt = noon - 86_400_000),
+                    session("d", titled("/Users/dev/infra", "Rotate the staging keys"), active = false, lastMessageSentAt = noon - 2 * 86_400_000),
                 ),
-                SessionListGrouping.Flat, false, emptySet(), setOf("b"), emptySet(),
+                listOf(machine("m1", machineMetadata { put("displayName", "Studio") })),
             ),
-            ZoneOffset.UTC,
-            LocalDate.of(2026, 10, 16),
-        )
+            SessionListGrouping.Flat, false, emptySet(), setOf("b"), emptySet(), filter,
+        ),
+        ZoneOffset.UTC,
+        LocalDate.of(2026, 10, 16),
+    )
 
     private val projects
         get() = deriveHomeList(
@@ -114,6 +117,9 @@ class LegacyHomeShots {
     @Test fun flatLight() { show(flat); save("legacy-home-flat-light") }
     @Test fun flatDark() { show(flat, dark = true); save("legacy-home-flat-dark") }
     @Test fun flatOffline() { show(flat, ConnectionStatus.DISCONNECTED); save("legacy-home-flat-offline") }
+    @Test fun flatUnreadLight() { show(flat(HomeFilter.Unread)); save("legacy-home-flat-unread-light") }
+    @Test fun flatFilteredEmptyLight() { show(flat(HomeFilter.Bots)); save("legacy-home-flat-empty-light") }
+    @Test fun flatFilteredEmptyDark() { show(flat(HomeFilter.Bots), dark = true); save("legacy-home-flat-empty-dark") }
     @Test fun projectsLight() { show(projects); save("legacy-home-projects-light") }
 
     @Test fun composeChat() = composeChat(dark = false)

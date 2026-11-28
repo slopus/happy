@@ -147,6 +147,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, phone: Boolean = f
                 alert = Alert(name, null, listOf(AlertButton(cancelLabel), AlertButton(createWorkspaceLabel) { onCreateWorkspace(origin) }))
             },
             onPressDown = { id -> graph.account.value?.messages?.preload(id) },
+            onSelectFilter = graph.localSettings::setHomeFilter,
         )
     }
     // Linking from the empty home approves the code with this account, as Settings' scan does (not

@@ -96,4 +96,19 @@
     <string name="home_worktree_unreachable">无法连接到设备</string>
     <string name="home_worktree_not_git">不是 Git 仓库</string>
     <string name="home_worktree_failed">无法创建 Worktree</string>
+    <!-- Filter chips -->
+    <string name="home_filter_all">全部</string>
+    <string name="home_filter_bots">机器人</string>
+    <string name="home_filter_tasks">任务</string>
+    <string name="home_filter_projects">项目</string>
+    <string name="home_filter_unread">未读</string>
+    <string name="home_filter_empty_all">暂无对话</string>
+    <string name="home_filter_empty_bots">暂无机器人</string>
+    <string name="home_filter_empty_tasks">暂无任务</string>
+    <string name="home_filter_empty_projects">暂无项目</string>
+    <string name="home_filter_empty_unread">暂无未读对话</string>
+    <plurals name="home_filter_unread_desc_with_count">
+        <item quantity="other">%1$s，%2$d 个对话</item>
+    </plurals>
+    <string name="home_filter_badge_overflow">99+</string>
 </resources>

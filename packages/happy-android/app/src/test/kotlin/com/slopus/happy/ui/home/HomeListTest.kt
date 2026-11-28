@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.home
 
 import com.slopus.happy.model.DayTitle
+import com.slopus.happy.model.HomeFilter
 import com.slopus.happy.sync.ForkSource
 import com.slopus.happy.sync.OpResult
 import com.slopus.happy.model.HomeEmptyState
@@ -64,7 +65,9 @@ class HomeListTest {
         grouping: SessionListGrouping = SessionListGrouping.Flat,
         archiveHidden: Boolean = true,
         archiving: Set<String> = emptySet(),
-    ) = HomeListInputs(HomeSnapshot(sessions, machines), grouping, archiveHidden, emptySet(), emptySet(), archiving)
+        unread: Set<String> = emptySet(),
+        filter: HomeFilter = HomeFilter.All,
+    ) = HomeListInputs(HomeSnapshot(sessions, machines), grouping, archiveHidden, emptySet(), unread, archiving, filter)
 
     private fun derive(inputs: HomeListInputs) = deriveHomeList(inputs, zone, today)
 
@@ -340,4 +343,157 @@ class HomeListTest {
         assertEquals("12/31/25", formatSessionListTimestamp(LocalDate.of(2025, 12, 31).atStartOfDay(zone).toInstant().toEpochMilli(), now, zone, Locale.US))
     }
 
+    private fun botSession(id: String, at: Long = noon, active: Boolean = true, machineId: String = "m1") = session(
+        id,
+        metadata = metadata(path = "/Users/dev/$id") {
+            put("machineId", machineId)
+            putJsonObject("bot") {
+                put("id", "b-$id")
+                put("name", id)
+                put("username", id)
+                put("workspaceId", "w1")
+                put("orderKey", "1")
+            }
+        },
+        active = active,
+        lastMessageSentAt = at,
+    )
+
+    private fun taskSession(id: String, at: Long = noon, active: Boolean = true, machineId: String = "m1") = session(
+        id,
+        metadata = metadata(path = "/Users/dev/$id") {
+            put("machineId", machineId)
+            putJsonObject("task") { put("id", "t-$id"); put("name", id); put("orderKey", "1") }
+        },
+        active = active,
+        lastMessageSentAt = at,
+    )
+
+    @Test fun filterChipsFilterSessionsByKind() {
+        val bot = botSession("bot1")
+        val task = taskSession("task1")
+        val proj = cli("proj1", noon)
+        val sessions = listOf(bot, task, proj)
+
+        // All: shows all sessions
+        val allState = derive(inputs(sessions, filter = HomeFilter.All))
+        assertEquals(HomeFilter.All, allState.filter)
+        assertEquals(3, allState.rows.count { it is HomeRow.Chat })
+
+        // Bots: shows only bot chats
+        val botsState = derive(inputs(sessions, filter = HomeFilter.Bots))
+        assertEquals(HomeFilter.Bots, botsState.filter)
+        assertEquals(listOf("chat:bot1:last"), shape(botsState))
+
+        // Tasks: shows only task chats
+        val tasksState = derive(inputs(sessions, filter = HomeFilter.Tasks))
+        assertEquals(HomeFilter.Tasks, tasksState.filter)
+        assertEquals(listOf("chat:task1:last"), shape(tasksState))
+
+        // Projects: shows only project chats
+        val projectsState = derive(inputs(sessions, filter = HomeFilter.Projects))
+        assertEquals(HomeFilter.Projects, projectsState.filter)
+        assertEquals(listOf("chat:proj1:last"), shape(projectsState))
+    }
+
+    @Test fun filterChipsFilterUnreadChatsAndCalculateUnreadCount() {
+        val s1 = cli("s1", noon)
+        val s2 = cli("s2", noon - 1000)
+        val s3 = botSession("bot1")
+        val sessions = listOf(s1, s2, s3)
+
+        // s1 and bot1 are unread
+        val unreadState = derive(inputs(sessions, unread = setOf("s1", "bot1"), filter = HomeFilter.Unread))
+        assertEquals(HomeFilter.Unread, unreadState.filter)
+        assertEquals(2, unreadState.unreadCount)
+        assertEquals(listOf("chat:bot1", "chat:s1:last"), shape(unreadState))
+
+        // On All tab, unreadCount is still 2
+        val allState = derive(inputs(sessions, unread = setOf("s1", "bot1"), filter = HomeFilter.All))
+        assertEquals(2, allState.unreadCount)
+        assertEquals(3, allState.rows.count { it is HomeRow.Chat })
+    }
+
+    @Test fun filterChipsEmptyStateWhenNoMatchingItems() {
+        val sessions = listOf(cli("proj1", noon))
+
+        // Filter to Bots when no bots exist
+        val state = derive(inputs(sessions, filter = HomeFilter.Bots))
+        assertEquals(HomeFilter.Bots, state.filter)
+        assertTrue(state.rows.isEmpty())
+        assertTrue(state.cards.isEmpty())
+        // Account has sessions, so emptyState is List (handled by inline filter notice, not full-screen NoSessions)
+        assertEquals(HomeEmptyState.List, state.emptyState)
+    }
+
+    @Test fun filterChipsRespectArchiveHiddenPerFilter() {
+        val activeBot = botSession("bot-live", noon, active = true)
+        val archivedBot = botSession("bot-archived", noon - day, active = false)
+        val sessions = listOf(activeBot, archivedBot)
+
+        // Bots filter with archiveHidden = true
+        val hiddenState = derive(inputs(sessions, archiveHidden = true, filter = HomeFilter.Bots))
+        assertTrue(hiddenState.hasArchivedSessions)
+        assertTrue(hiddenState.archiveHidden)
+        assertEquals(listOf("chat:bot-live:last", "toggle:show"), shape(hiddenState))
+
+        // Bots filter with archiveHidden = false
+        val shownState = derive(inputs(sessions, archiveHidden = false, filter = HomeFilter.Bots))
+        assertTrue(shownState.hasArchivedSessions)
+        assertFalse(shownState.archiveHidden)
+        assertEquals(
+            listOf("chat:bot-live:last", "toggle:hide", "header:Yesterday", "chat:bot-archived:archived:last"),
+            shape(shownState),
+        )
+
+        // Tasks filter when no tasks exist: hasArchivedSessions is false, no toggle
+        val tasksState = derive(inputs(sessions, archiveHidden = false, filter = HomeFilter.Tasks))
+        assertFalse(tasksState.hasArchivedSessions)
+        assertTrue(tasksState.rows.isEmpty())
+    }
+
+    @Test fun filterChipsCardGroupingsRemainVisuallyConsistent() {
+        val bot = botSession("bot1", noon)
+        val sessions = listOf(bot, cli("proj1", noon))
+        val state = derive(inputs(sessions, filter = HomeFilter.Bots))
+        assertEquals(1, state.cards.size)
+        val card = state.cards[0]
+        assertEquals("flat-session-bot1", card.key)
+        // Single card in card group has first = true, last = true, separated = false
+        val place = card.place!!
+        assertTrue(place.first)
+        assertTrue(place.last)
+        assertFalse(place.separated)
+    }
+
+    @Test fun archivedProjectWithFlavorMatchesProjectsNotBots() {
+        val archivedProj = session(
+            "proj-arch",
+            metadata = metadata(path = "/Users/dev/proj-arch") {
+                put("machineId", "m1")
+                put("flavor", "claude")
+            },
+            active = false,
+            lastMessageSentAt = noon - day,
+        )
+        val sessions = listOf(archivedProj)
+
+        val botsHidden = derive(inputs(sessions, archiveHidden = false, filter = HomeFilter.Bots))
+        assertTrue(botsHidden.rows.isEmpty())
+
+        val projShown = derive(inputs(sessions, archiveHidden = false, filter = HomeFilter.Projects))
+        assertEquals(listOf("toggle:hide", "header:Yesterday", "chat:proj-arch:archived:last"), shape(projShown))
+    }
+
+    @Test fun unreadCountRespectsArchiveVisibility() {
+        val live = cli("live", noon)
+        val archived = cli("arch", noon - day, active = false)
+        val sessions = listOf(live, archived)
+
+        val hidden = derive(inputs(sessions, archiveHidden = true, unread = setOf("live", "arch"), filter = HomeFilter.All))
+        assertEquals(1, hidden.unreadCount)
+
+        val shown = derive(inputs(sessions, archiveHidden = false, unread = setOf("live", "arch"), filter = HomeFilter.All))
+        assertEquals(2, shown.unreadCount)
+    }
 }

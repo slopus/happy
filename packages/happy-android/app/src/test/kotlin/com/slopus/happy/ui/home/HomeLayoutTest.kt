@@ -13,10 +13,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -37,6 +39,7 @@ import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.HomeEmptyState
+import com.slopus.happy.model.HomeFilter
 import com.slopus.happy.model.HomeModelFixtures.machine
 import com.slopus.happy.model.HomeModelFixtures.machineMetadata
 import com.slopus.happy.model.HomeModelFixtures.metadata
@@ -114,6 +117,7 @@ class HomeLayoutTest {
     private val menus = mutableListOf<String>()
     private val archived = mutableListOf<String>()
     private val archiveHidden = mutableListOf<Boolean>()
+    private val selectedFilters = mutableListOf<HomeFilter>()
 
     private val callbacks = HomeListCallbacks(
         onOpen = { opened += it },
@@ -124,6 +128,7 @@ class HomeLayoutTest {
         onOpenMachine = {},
         onCreateWorkspace = {},
         onProjectMenu = { _, _ -> },
+        onSelectFilter = { selectedFilters += it },
     )
     private var newSession = 0
     private var composed = 0
@@ -154,8 +159,9 @@ class HomeLayoutTest {
         hidden: Boolean = true,
         machines: List<com.slopus.happy.model.Machine> = listOf(studio),
         unread: Set<String> = emptySet(),
+        filter: HomeFilter = HomeFilter.All,
     ) = deriveHomeList(
-        HomeListInputs(HomeSnapshot(sessions, machines), grouping, hidden, emptySet(), unread, emptySet()),
+        HomeListInputs(HomeSnapshot(sessions, machines), grouping, hidden, emptySet(), unread, emptySet(), filter),
         ZoneOffset.UTC,
         LocalDate.of(2026, 10, 16),
     )
@@ -278,8 +284,11 @@ class HomeLayoutTest {
         show(state(listOf(cli("a"), cli("b", noon - 1))))
         val rows = rule.onAllNodesWithTag(FlatRowTags.ROW, useUnmergedTree = true)
         rows.assertCountEquals(2)
+        val chips = rule.node(HomeTags.FILTER_CHIPS).bounds
+        assertDp("filter chips start below feather", barBottom + GlassSpec.feather + 8.dp, chips.top)
+        assertDp("filter chips span carded width", PHONE_WIDTH.dp, chips.right - chips.left)
         val row = rows[0].bounds
-        assertBox("first row, in its card", row, 16.dp, barBottom + GlassSpec.feather + 8.dp, (PHONE_WIDTH - 32).dp, 81.dp)
+        assertBox("first row, in its card", row, 16.dp, chips.bottom, (PHONE_WIDTH - 32).dp, 81.dp)
         val avatar = rule.onAllNodesWithTag(FlatRowTags.AVATAR, useUnmergedTree = true)[0].bounds
         assertBox("avatar", avatar, 32.dp, row.top + 20.5.dp, 40.dp, 40.dp)
         val title = rule.onAllNodesWithTag(FlatRowTags.TITLE, useUnmergedTree = true)[0].bounds
@@ -381,9 +390,11 @@ class HomeLayoutTest {
         }
         val offline = rule.node(HomeStateTags.OFFLINE_BANNER).bounds
         val changelog = rule.node(HomeStateTags.CHANGELOG_BANNER).bounds
+        val chips = rule.node(HomeTags.FILTER_CHIPS).bounds
         val row = rule.node(FlatRowTags.ROW).bounds
         assertDp("changelog under the offline plaque", offline.bottom, changelog.top)
-        assertDp("rows 16 under the last card's bottom margin", changelog.bottom, row.top)
+        assertDp("filter chips below changelog banner", changelog.bottom, chips.top)
+        assertDp("rows below filter chips", chips.bottom, row.top)
         rule.node(HomeStateTags.CHANGELOG_BANNER).performClick()
         assertEquals(1, whatsNew)
     }
@@ -507,8 +518,9 @@ class HomeLayoutTest {
         // One computer heads nothing, and the projects' section heading is no more than the room above its card.
         rule.onAllNodesWithTag(ProjectListTags.MACHINE, useUnmergedTree = true).assertCountEquals(0)
         rule.onAllNodesWithTag(ProjectListTags.SECTION, useUnmergedTree = true).assertCountEquals(0)
+        val chips = rule.node(HomeTags.FILTER_CHIPS).bounds
         val project = rule.node(ProjectListTags.PROJECT).bounds
-        assertBox("project row, in its card", project, 16.dp, barBottom + GlassSpec.feather + 8.dp, (PHONE_WIDTH - 32).dp, 52.dp)
+        assertBox("project row, in its card", project, 16.dp, chips.bottom, (PHONE_WIDTH - 32).dp, 52.dp)
         val worktree = rule.node(ProjectListTags.WORKTREE).bounds
         assertBox("worktree, in the same card", worktree, 16.dp, project.bottom, (PHONE_WIDTH - 32).dp, 48.dp)
         val stem = rule.node(ProjectListTags.TREE_STEM).bounds
@@ -579,5 +591,48 @@ class HomeLayoutTest {
 
         // Before the first sync, no machines is "not read yet", not "link a computer".
         assertFalse(homeSnapshots(store, presence, MutableStateFlow(emptyMap()), synced = flowOf(false)).first().ready)
+    }
+
+    @Test
+    fun filterChipsRenderSelectBadgeAndEmptyStates() {
+        var current by mutableStateOf(state(listOf(cli("a"), cli("b", noon - 1)), unread = setOf("a", "b")))
+        rule.setHappyContent {
+            HomeScreen(current, ConnectionStatus.CONNECTED, current.grouping, callbacks, actions, accounts = accounts)
+        }
+        rule.onNodeWithTag(HomeTags.FILTER_CHIPS).assertExists()
+        for (filter in HomeFilter.entries) {
+            rule.onNodeWithTag(HomeTags.filterChip(filter)).assertExists()
+        }
+        rule.onNodeWithTag(HomeTags.filterChip(HomeFilter.All)).assertIsSelected()
+        rule.onNodeWithTag(HomeTags.filterChip(HomeFilter.Bots)).assertIsNotSelected()
+
+        // Unread badge shows 2 and merged chip has a single TalkBack description without duplicated text nodes.
+        rule.onNodeWithTag(HomeTags.FILTER_UNREAD_BADGE, useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("2", useUnmergedTree = true).assertExists()
+        val unreadNode = rule.onNodeWithTag(HomeTags.filterChip(HomeFilter.Unread)).fetchSemanticsNode()
+        assertEquals(listOf("Unread, 2 chats"), unreadNode.config.getOrNull(SemanticsProperties.ContentDescription))
+        assertNull(unreadNode.config.getOrNull(SemanticsProperties.Text))
+
+        // Clicking Bots dispatches onSelectFilter(HomeFilter.Bots).
+        rule.onNodeWithTag(HomeTags.filterChip(HomeFilter.Bots)).performClick()
+        assertEquals(listOf(HomeFilter.Bots), selectedFilters)
+
+        // Switching to Bots with 0 bots shows empty notice; badge overflow >99 renders 99+.
+        current = state(listOf(cli("a")), filter = HomeFilter.Bots).copy(unreadCount = 120)
+        rule.waitForIdle()
+        rule.onNodeWithText("99+", useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag(HomeTags.FILTER_EMPTY).assertExists()
+        rule.onNodeWithText("No bots").assertExists()
+
+        // Hidden archive-only sessions do NOT show HomeFilterEmptyNotice above Show archived.
+        current = state(listOf(cli("gone", noon, active = false)), hidden = true, filter = HomeFilter.All)
+        rule.waitForIdle()
+        rule.onNodeWithTag(HomeTags.ARCHIVE_TOGGLE).assertExists()
+        rule.onAllNodesWithTag(HomeTags.FILTER_EMPTY).assertCountEquals(0)
+
+        current = state(listOf(cli("gone", noon, active = false)), hidden = true, filter = HomeFilter.Projects)
+        rule.waitForIdle()
+        rule.onNodeWithTag(HomeTags.ARCHIVE_TOGGLE).assertExists()
+        rule.onAllNodesWithTag(HomeTags.FILTER_EMPTY).assertCountEquals(0)
     }
 }

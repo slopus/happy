@@ -4,8 +4,10 @@ import androidx.compose.runtime.Immutable
 import com.slopus.happy.model.DayTitle
 import com.slopus.happy.model.FlatSessionRowData
 import com.slopus.happy.model.HomeEmptyState
+import com.slopus.happy.model.HomeFilter
 import com.slopus.happy.model.ProjectHomeRow
 import com.slopus.happy.model.ProjectWorktree
+import com.slopus.happy.model.filterSessions
 import com.slopus.happy.model.projectWorktreesBySession
 import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.model.SessionListInputs
@@ -75,7 +77,7 @@ data class HomeCardEntry(val row: HomeRow, val place: HomeCardPlace?) {
 }
 
 /** A row of a card, as opposed to a heading, a gap or the archive toggle. */
-private val HomeRow.isCardRow: Boolean
+internal val HomeRow.isCardRow: Boolean
     get() = when (this) {
         is HomeRow.Chat -> true
         is HomeRow.Project -> when (row) {
@@ -144,6 +146,8 @@ data class HomeListState(
     val worktrees: Map<String, ProjectWorktree> = emptyMap(),
     /** A Happy Agent reaches this account through the Happy server ([isRigMachine]): the migration card's path. */
     val hasServerAgent: Boolean = false,
+    val filter: HomeFilter = HomeFilter.All,
+    val unreadCount: Int = 0,
 )
 
 /** Everything one derivation reads. */
@@ -154,7 +158,64 @@ data class HomeListInputs(
     val expandedProjects: Set<String>,
     val unreadSessionIds: Set<String>,
     val archivingSessionIds: Set<String>,
+    val filter: HomeFilter = HomeFilter.All,
 )
+
+/**
+ * Filters [items] according to the selected [filter]:
+ * - [HomeFilter.All]: no filtering
+ * - [HomeFilter.Bots]: only Bot sessions
+ * - [HomeFilter.Tasks]: only Task sessions
+ * - [HomeFilter.Projects]: only Project sessions and worktrees
+ * - [HomeFilter.Unread]: only sessions where hasUnread is true
+ */
+fun filterSessionListItems(items: List<SessionListItem>, filter: HomeFilter): List<SessionListItem> {
+    if (filter == HomeFilter.All) return items
+    val result = mutableListOf<SessionListItem>()
+    var pendingHeader: SessionListItem.Header? = null
+    for (item in items) {
+        when (item) {
+            is SessionListItem.Bots -> if (filter == HomeFilter.Bots) {
+                result.add(item)
+            } else if (filter == HomeFilter.Unread) {
+                val unread = item.sessions.filter { it.hasUnread }
+                if (unread.isNotEmpty()) result.add(SessionListItem.Bots(unread))
+            }
+            is SessionListItem.Tasks -> if (filter == HomeFilter.Tasks) {
+                result.add(item)
+            } else if (filter == HomeFilter.Unread) {
+                val unread = item.sessions.filter { it.hasUnread }
+                if (unread.isNotEmpty()) result.add(SessionListItem.Tasks(unread))
+            }
+            is SessionListItem.ProjectsHeader -> if (filter == HomeFilter.Projects) {
+                result.add(item)
+            }
+            is SessionListItem.ProjectItem -> if (filter == HomeFilter.Projects) {
+                result.add(item)
+            } else if (filter == HomeFilter.Unread) {
+                item.project.filterSessions { it.hasUnread }?.let { result.add(item.copy(project = it)) }
+            }
+            is SessionListItem.Header -> {
+                pendingHeader = item
+            }
+            is SessionListItem.SessionItem -> {
+                val matches = when (filter) {
+                    HomeFilter.All -> true
+                    HomeFilter.Bots -> item.session.botId != null
+                    HomeFilter.Tasks -> item.session.task && item.session.botId == null
+                    HomeFilter.Projects -> !item.session.task && item.session.botId == null
+                    HomeFilter.Unread -> item.session.hasUnread
+                }
+                if (matches) {
+                    pendingHeader?.let { result.add(it) }
+                    pendingHeader = null
+                    result.add(item)
+                }
+            }
+        }
+    }
+    return result
+}
 
 /**
  * SessionsListWrapper, SessionsList and ProjectHomeList's data: the list
@@ -169,8 +230,18 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
         zone,
         today,
     )
-    val visible = visibleSessionListItems(all, inputs.archiveHidden)
-    val hasArchived = hasArchivedSessions(all)
+    val unreadCount = all.sumOf { item ->
+        when (item) {
+            is SessionListItem.Bots -> item.sessions.count { it.hasUnread }
+            is SessionListItem.Tasks -> item.sessions.count { it.hasUnread }
+            is SessionListItem.ProjectItem -> item.project.workspaces.sumOf { w -> w.sessions.count { s -> s.hasUnread } }
+            is SessionListItem.SessionItem -> if (!inputs.archiveHidden && item.session.hasUnread) 1 else 0
+            else -> 0
+        }
+    }
+    val filteredAll = filterSessionListItems(all, inputs.filter)
+    val visible = visibleSessionListItems(filteredAll, inputs.archiveHidden)
+    val hasArchived = hasArchivedSessions(filteredAll)
     val choices = collectMachineChoices(snapshot.machines)
     val online = choices.count { it.online }
     val rows = when (inputs.grouping) {
@@ -178,8 +249,14 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
         SessionListGrouping.Project -> buildProjectHomeRows(visible, machines, "", inputs.expandedProjects, hasArchived, inputs.archiveHidden)
             .map(HomeRow::Project)
     }
+    val accountHasSessions = all.isNotEmpty()
+    val emptyState = if (accountHasSessions && inputs.filter != HomeFilter.All) {
+        HomeEmptyState.List
+    } else {
+        resolveHomeEmptyState(visible.size, hasArchived, choices.size, online)
+    }
     return HomeListState(
-        emptyState = resolveHomeEmptyState(visible.size, hasArchived, choices.size, online),
+        emptyState = emptyState,
         grouping = inputs.grouping,
         hasArchivedSessions = hasArchived,
         archiveHidden = inputs.archiveHidden,
@@ -190,6 +267,8 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
         computers = choices.map { it.name },
         worktrees = if (inputs.grouping == SessionListGrouping.Project) projectWorktreesBySession(all) else emptyMap(),
         hasServerAgent = snapshot.machines.any { it.metadata.isRigMachine() },
+        filter = inputs.filter,
+        unreadCount = unreadCount,
     )
 }
 
@@ -251,12 +330,12 @@ class HomeListModel(
     val state: StateFlow<HomeListState?> = combine(
         snapshots,
         settings.map { it.sessionListGrouping to it.hideInactiveSessions }.distinctUntilChanged(),
-        localSettings.map { values -> values.expandedProjects.filterValues { it }.keys }.distinctUntilChanged(),
+        localSettings.map { values -> values.expandedProjects.filterValues { it }.keys to values.homeFilter }.distinctUntilChanged(),
         unreadSessionIds,
         archivingSessionIds,
-    ) { snapshot, (grouping, archiveHidden), expanded, unread, archiving ->
+    ) { snapshot, (grouping, archiveHidden), (expanded, homeFilter), unread, archiving ->
         // Missing snapshots must reach combine and scan to release the old account's metadata graph.
-        snapshot?.takeIf { it.ready }?.let { HomeListInputs(it, grouping, archiveHidden, expanded, unread, archiving) }
+        snapshot?.takeIf { it.ready }?.let { HomeListInputs(it, grouping, archiveHidden, expanded, unread, archiving, homeFilter) }
     }
         .distinctUntilChanged()
         .map { inputs ->
