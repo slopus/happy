@@ -17,26 +17,53 @@ export type ResumeLaunch = {
 export type ResumeLaunchOptions = {
     claudeStartingMode?: 'local' | 'remote';
     startedBy?: 'daemon' | 'terminal';
+    /** Extra args forwarded verbatim to the resumed agent (e.g. -p <prompt>, --yolo). */
+    passthroughArgs?: string[];
 };
 
-export function parseResumeCommandArgs(args: string[]): { showHelp: boolean; sessionId: string } {
+export function parseResumeCommandArgs(args: string[]): { showHelp: boolean; sessionId: string; passthroughArgs: string[] } {
     if (args.includes('-h') || args.includes('--help')) {
         return {
             showHelp: true,
             sessionId: '',
+            passthroughArgs: [],
         };
     }
 
     if (args.length === 0) {
         throw new Error('Happy session ID is required: happy resume <session-id>');
     }
-    if (args.length > 1) {
-        throw new Error(`Unexpected arguments for happy resume: ${args.slice(1).join(' ')}`);
+
+    // First positional is the session id; everything after is forwarded to the
+    // resumed agent verbatim (headless resume: `happy resume <id> -p "..."`).
+    // Only known-safe flags are allowed so a typo'd session id doesn't silently
+    // become a passthrough arg.
+    const [sessionId, ...rest] = args;
+    const passthroughArgs: string[] = [];
+    for (let i = 0; i < rest.length; i++) {
+        const arg = rest[i];
+        if (arg === '-p' || arg === '--print') {
+            passthroughArgs.push(arg);
+            if (i + 1 < rest.length) {
+                passthroughArgs.push(rest[++i]);
+            }
+            continue;
+        }
+        if (arg === '--yolo' || arg === '--dangerously-skip-permissions') {
+            passthroughArgs.push(arg);
+            continue;
+        }
+        if (arg === '--model' && i + 1 < rest.length) {
+            passthroughArgs.push(arg, rest[++i]);
+            continue;
+        }
+        throw new Error(`Unexpected arguments for happy resume: ${rest.slice(i).join(' ')}`);
     }
 
     return {
         showHelp: false,
-        sessionId: args[0],
+        sessionId,
+        passthroughArgs,
     };
 }
 
@@ -62,6 +89,9 @@ export function buildResumeLaunch(session: ResumableHappySession, options: Resum
         if (options.startedBy) {
             args.push('--started-by', options.startedBy);
         }
+        if (options.passthroughArgs?.length) {
+            args.push(...options.passthroughArgs);
+        }
         return {
             cwd: metadata.path,
             args,
@@ -80,6 +110,9 @@ export function buildResumeLaunch(session: ResumableHappySession, options: Resum
             args.push('--started-by', options.startedBy);
         }
         args.push('--resume', metadata.claudeSessionId);
+        if (options.passthroughArgs?.length) {
+            args.push(...options.passthroughArgs);
+        }
         return {
             cwd: metadata.path,
             args,
@@ -94,14 +127,17 @@ export function formatResumeHelp(): string {
         'happy resume - Resume a previous Happy session',
         '',
         'Usage:',
-        '  happy resume <happy-session-id>',
+        '  happy resume <happy-session-id> [-p <prompt>] [--yolo] [--model <model>]',
         '',
         'Examples:',
         '  happy resume cmmij8olq00dp5jcxr3wtbpau',
         '  happy resume cmmij8',
+        '  happy resume cmmij8 --yolo -p "continua dal punto in cui eri"',
         '',
         'This reuses the saved worktree/path and resumes the underlying agent session',
-        'when the backend supports it.',
+        'when the backend supports it. Extra flags (-p/--print, --yolo, --model) are',
+        'forwarded to the resumed agent, enabling headless resume in the SAME Happy',
+        'session instead of a new one.',
     ].join('\n');
 }
 
@@ -161,7 +197,7 @@ export async function handleResumeCommand(args: string[]): Promise<void> {
     }
 
     if (reconnectableSession) {
-        const launch = buildResumeLaunch(reconnectableSession);
+        const launch = buildResumeLaunch(reconnectableSession, { passthroughArgs: parsed.passthroughArgs });
 
         if (!existsSync(launch.cwd)) {
             throw new Error(`Saved session path does not exist: ${launch.cwd}`);
@@ -178,7 +214,7 @@ export async function handleResumeCommand(args: string[]): Promise<void> {
     if (!session) {
         throw localError;
     }
-    const launch = buildResumeLaunch(session);
+    const launch = buildResumeLaunch(session, { passthroughArgs: parsed.passthroughArgs });
 
     if (!existsSync(launch.cwd)) {
         throw new Error(`Saved session path does not exist: ${launch.cwd}`);
