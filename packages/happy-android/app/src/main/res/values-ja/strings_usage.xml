@@ -16,4 +16,13 @@
     <string name="usage_empty_detail">アカウントがプランを報告するかトークンを使うと、ここに表示されます。</string>
     <string name="usage_grid_label">日ごとのトークン使用量</string>
     <string name="usage_strip_label">%1$s の日ごとのトークン使用量</string>
+    <!-- The context gauge popup under the composer. -->
+    <string name="usage_context_title">コンテキストウィンドウ</string>
+    <string name="usage_context_window_unknown">ウィンドウ不明</string>
+    <string name="usage_context_tokens_only">%1$sトークン</string>
+    <string name="usage_context_input">入力</string>
+    <string name="usage_context_cache_read">キャッシュ読み取り</string>
+    <string name="usage_context_cache_write">キャッシュ書き込み</string>
+    <string name="usage_context_output">出力</string>
+    <string name="usage_context_model">モデル</string>
 </resources>

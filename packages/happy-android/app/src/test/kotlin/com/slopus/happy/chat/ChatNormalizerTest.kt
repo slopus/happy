@@ -32,6 +32,11 @@ class ChatNormalizerTest {
         assertEquals(UsageData(1200, 80, 40, 500), n.usage)
     }
 
+    @Test fun `keeps a model named in usage`() {
+        val n = envelope("""{"id":"e","time":1,"role":"agent","turn":"t","usage":{"input_tokens":1200,"output_tokens":80,"model":"claude-sonnet-4-5"},"ev":{"t":"text","text":"x"}}""")!!
+        assertEquals("claude-sonnet-4-5", n.usage?.model)
+    }
+
     @Test fun `usage-only service envelopes need no turn and carry no content`() {
         val n = envelope("""{"id":"e","time":1,"role":"agent","usage":{"input_tokens":1200,"output_tokens":80},"ev":{"t":"service","text":""}}""")!!
         assertEquals(emptyList<AgentContent>(), n.content)

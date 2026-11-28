@@ -74,6 +74,12 @@ class ChatReducerTest {
         assertEquals(ContextUsage(10422, 2140, 0, 113536, 123958, 258400), result.usage)
     }
 
+    @Test fun `keeps the model when the producer names it`() {
+        val usage = UsageData(inputTokens = 1200, outputTokens = 80, contextWindow = 200000.0, model = "claude-sonnet-4-5")
+        val result = state.reduce(agentMsg("m", 1000, usage = usage))
+        assertEquals(ContextUsage(1200, 80, 0, 0, 1200, 200000, "claude-sonnet-4-5"), result.usage)
+    }
+
     @Test fun `processes several text blocks in one agent message`() {
         val result = state.reduce(agentMsg("agent1", 1000, text("Part 1"), text("Part 2")))
         assertEquals(listOf("Part 1", "Part 2"), result.messages.map { (it as ChatMessage.AgentText).text })

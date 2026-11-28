@@ -16,4 +16,13 @@
     <string name="usage_empty_detail">帳號回報方案或使用 token 後，就會顯示在這裡。</string>
     <string name="usage_grid_label">每日 token 用量</string>
     <string name="usage_strip_label">%1$s 每日 token 用量</string>
+    <!-- The context gauge popup under the composer. -->
+    <string name="usage_context_title">上下文視窗</string>
+    <string name="usage_context_window_unknown">視窗未知</string>
+    <string name="usage_context_tokens_only">%1$s 個 token</string>
+    <string name="usage_context_input">輸入</string>
+    <string name="usage_context_cache_read">快取讀取</string>
+    <string name="usage_context_cache_write">快取寫入</string>
+    <string name="usage_context_output">輸出</string>
+    <string name="usage_context_model">模型</string>
 </resources>

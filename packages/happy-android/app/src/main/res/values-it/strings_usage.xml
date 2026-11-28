@@ -16,4 +16,13 @@
     <string name="usage_empty_detail">Quando un account segnala il suo piano o usa dei token, compare qui.</string>
     <string name="usage_grid_label">Token usati ogni giorno</string>
     <string name="usage_strip_label">Token usati da %1$s ogni giorno</string>
+    <!-- The context gauge popup under the composer. -->
+    <string name="usage_context_title">Finestra di contesto</string>
+    <string name="usage_context_window_unknown">Finestra sconosciuta</string>
+    <string name="usage_context_tokens_only">%1$s token</string>
+    <string name="usage_context_input">Input</string>
+    <string name="usage_context_cache_read">Lettura cache</string>
+    <string name="usage_context_cache_write">Scrittura cache</string>
+    <string name="usage_context_output">Output</string>
+    <string name="usage_context_model">Modello</string>
 </resources>

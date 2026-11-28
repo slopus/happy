@@ -16,4 +16,13 @@
     <string name="usage_empty_detail">Quan un compte informi del seu pla o gasti tokens, apareixerà aquí.</string>
     <string name="usage_grid_label">Tokens usats cada dia</string>
     <string name="usage_strip_label">Tokens que %1$s ha usat cada dia</string>
+    <!-- The context gauge popup under the composer. -->
+    <string name="usage_context_title">Finestra de context</string>
+    <string name="usage_context_window_unknown">Finestra desconeguda</string>
+    <string name="usage_context_tokens_only">%1$s tokens</string>
+    <string name="usage_context_input">Entrada</string>
+    <string name="usage_context_cache_read">Lectura de memòria cau</string>
+    <string name="usage_context_cache_write">Escriptura de memòria cau</string>
+    <string name="usage_context_output">Sortida</string>
+    <string name="usage_context_model">Model</string>
 </resources>

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
@@ -31,9 +32,10 @@ import org.robolectric.annotation.Config
  * AgentInputUsageRow under the composer card. Spec: right-aligned 18 in
  * from the composer's inner edge (8 + 18 = 26 from the screen edge), 6
  * below the card, at least 18 high; "N% week" then, 10 apart, "N% context"
- * 5 before a 14 gauge. Tapping the context swaps in "used / total
- * context"; tapping the week opens the Session/Week popup. Nothing shows
- * with plenty of context left unless `alwaysShowContextSize`.
+ * 5 before a 14 gauge. Tapping the context opens its detail popup (percent
+ * left, used / window and the token breakdown); tapping the week opens the
+ * Session/Week popup. With the context size setting off, nothing shows
+ * with plenty of context left.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -83,12 +85,34 @@ class UsageRowLayoutTest {
     }
 
     @Test
-    fun tappingTheContextShowsExactCounts() {
-        setComposer(ContextUsage(0, 0, 0, 0, contextSize = 192_400, contextWindow = 200_000))
+    fun tappingTheContextOpensTheWindowDetails() {
+        setComposer(
+            ContextUsage(12_000, 4_000, 8_000, 60_000, contextSize = 80_000, contextWindow = 200_000, model = "claude-sonnet-4-5"),
+        )
+        rule.node(UsageRowTags.CONTEXT_TEXT).assertTextEquals("40% context")
         rule.node(UsageRowTags.CONTEXT).performClick()
-        rule.onNode(hasText("192k / 200k context"), useUnmergedTree = true).assertExists()
+        rule.node(UsageRowTags.CONTEXT_DETAIL).assertExists()
+        rule.onNode(hasText("60% left"), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("80k / 200k context"), useUnmergedTree = true).assertExists()
+        rule.node(UsageRowTags.contextDetail("input")).assertExists()
+        rule.node(UsageRowTags.contextDetail("cacheRead")).assertExists()
+        rule.node(UsageRowTags.contextDetail("cacheCreation")).assertExists()
+        rule.node(UsageRowTags.contextDetail("output")).assertExists()
+        rule.onNode(hasText("12k"), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("60k"), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("8k"), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("4k"), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("claude-sonnet-4-5"), useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun unknownWindowShowsTheTokenCountAndSaysTheWindowIsUnknown() {
+        setComposer(ContextUsage(0, 0, 0, 0, contextSize = 150_000, contextWindow = null))
+        rule.node(UsageRowTags.CONTEXT_TEXT).assertTextEquals("150k tokens")
         rule.node(UsageRowTags.CONTEXT).performClick()
-        rule.onNode(hasText("96% context"), useUnmergedTree = true).assertExists()
+        rule.node(UsageRowTags.CONTEXT_TOKENS).assertTextEquals("150k tokens")
+        rule.node(UsageRowTags.CONTEXT_PERCENT_LEFT).assertDoesNotExist()
+        rule.onNode(hasText("Window unknown"), useUnmergedTree = true).assertExists()
     }
 
     @Test
@@ -102,8 +126,18 @@ class UsageRowLayoutTest {
     }
 
     @Test
-    fun plentyOfContextShowsNothing() {
+    fun plentyOfContextShowsByDefault() {
         setComposer(ContextUsage(0, 0, 0, 0, contextSize = 20_000, contextWindow = 200_000))
+        rule.onNode(hasText("10% context"), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("61% week"), useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun plentyOfContextShowsNothingWhenTurnedOff() {
+        setComposer(
+            ContextUsage(0, 0, 0, 0, contextSize = 20_000, contextWindow = 200_000),
+            display = UsageDisplay(alwaysShowContextSize = false),
+        )
         rule.node(UsageRowTags.ROW).assertDoesNotExist()
         val panel = rule.node(ComposerTags.PANEL).bounds
         assertDp("the composer ends 8 under the card", 8, rule.node(ComposerTags.COMPOSER).bounds.bottom - panel.bottom)

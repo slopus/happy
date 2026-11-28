@@ -16,4 +16,13 @@
     <string name="usage_empty_detail">Аккаунт появится здесь, как только сообщит о своём тарифе или потратит токены.</string>
     <string name="usage_grid_label">Токены по дням</string>
     <string name="usage_strip_label">Токены %1$s по дням</string>
+    <!-- The context gauge popup under the composer. -->
+    <string name="usage_context_title">Окно контекста</string>
+    <string name="usage_context_window_unknown">Окно неизвестно</string>
+    <string name="usage_context_tokens_only">%1$s токенов</string>
+    <string name="usage_context_input">Ввод</string>
+    <string name="usage_context_cache_read">Чтение кэша</string>
+    <string name="usage_context_cache_write">Запись кэша</string>
+    <string name="usage_context_output">Вывод</string>
+    <string name="usage_context_model">Модель</string>
 </resources>

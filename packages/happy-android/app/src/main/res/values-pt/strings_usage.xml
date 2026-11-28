@@ -16,4 +16,13 @@
     <string name="usage_empty_detail">Quando uma conta informar seu plano ou gastar tokens, ela aparece aqui.</string>
     <string name="usage_grid_label">Tokens usados por dia</string>
     <string name="usage_strip_label">Tokens que %1$s usou por dia</string>
+    <!-- The context gauge popup under the composer. -->
+    <string name="usage_context_title">Janela de contexto</string>
+    <string name="usage_context_window_unknown">Janela desconhecida</string>
+    <string name="usage_context_tokens_only">%1$s tokens</string>
+    <string name="usage_context_input">Entrada</string>
+    <string name="usage_context_cache_read">Leitura de cache</string>
+    <string name="usage_context_cache_write">Gravação de cache</string>
+    <string name="usage_context_output">Saída</string>
+    <string name="usage_context_model">Modelo</string>
 </resources>

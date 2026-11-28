@@ -131,13 +131,13 @@ class SettingsTest {
     // settingsDefaults
 
     @Test
-    fun defaultsAreHappyAppsDefaults() {
+    fun defaultsAreTheSchemaDefaults() {
         assertEquals(
             json(
                 """{
                 "schemaVersion":2,"viewInline":false,"expandTodos":true,"showLineNumbers":true,
                 "showLineNumbersInToolViews":false,"wrapLinesInDiffs":true,"diffStyle":"unified","analyticsOptOut":false,
-                "inferenceOpenAIKey":null,"experiments":false,"alwaysShowContextSize":false,"agentInputEnterToSend":true,
+                "inferenceOpenAIKey":null,"experiments":false,"alwaysShowContextSize":true,"agentInputEnterToSend":true,
                 "avatarStyle":"brutalist","avatarMonochrome":false,"sessionListGrouping":"flat","showFlavorIcons":false,
                 "showHarnessIconInSessionHeader":true,"userMessageBubbleColor":"gray","usageLimitShowRemaining":false,
                 "hideInactiveSessions":true,"sortSessionsByActivity":true,"expResumeSession":true,"fileDiffsSidebar":false,
@@ -150,6 +150,12 @@ class SettingsTest {
             defaultsJson,
         )
         assertEquals(defaults, Settings.parse(defaultsJson))
+    }
+
+    @Test
+    fun contextSizeShowsByDefaultAndCanBeTurnedOff() {
+        assertTrue("an account that never picked shows it", Settings.parse(json("{}")).alwaysShowContextSize)
+        assertFalse("turning it off is kept", Settings.parse(json("""{"alwaysShowContextSize":false}""")).alwaysShowContextSize)
     }
 
     @Test

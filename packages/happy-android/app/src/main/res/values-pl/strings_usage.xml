@@ -16,4 +16,13 @@
     <string name="usage_empty_detail">Konto pojawi się tutaj, gdy zgłosi swój plan lub zużyje tokeny.</string>
     <string name="usage_grid_label">Tokeny zużyte każdego dnia</string>
     <string name="usage_strip_label">Tokeny zużyte przez %1$s każdego dnia</string>
+    <!-- The context gauge popup under the composer. -->
+    <string name="usage_context_title">Okno kontekstu</string>
+    <string name="usage_context_window_unknown">Nieznane okno</string>
+    <string name="usage_context_tokens_only">%1$s tokenów</string>
+    <string name="usage_context_input">Wejście</string>
+    <string name="usage_context_cache_read">Odczyt pamięci podręcznej</string>
+    <string name="usage_context_cache_write">Zapis pamięci podręcznej</string>
+    <string name="usage_context_output">Wyjście</string>
+    <string name="usage_context_model">Model</string>
 </resources>
