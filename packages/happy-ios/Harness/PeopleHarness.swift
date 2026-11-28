@@ -13,10 +13,11 @@ private struct PeopleNoSocket: WebSocketConnector {
     func connect(to url: URL) async throws -> WebSocketConnection { throw URLError(.notConnectedToInternet) }
 }
 
-/// A Happy Cloud team server, as happy-cluster answers: Steve signed in,
-/// two tasks of his; search finds a task and two people for "ad" (Ada
-/// with a picture, Adam without), and Ada's profile is served with her
-/// numbers and the tasks she was last at.
+/// A Happy Cloud server, as happy-cluster answers: Steve signed in, two
+/// tasks of his; search finds a task and two people for "ad" (Ada with a
+/// picture, Adam without), and Ada's profile is served with her numbers
+/// and the tasks she was last at. Ada is an owner, in Design and
+/// Research; Design sits inside Studio.
 private actor PeopleServer: AgentTransport {
     static let adaHash = "HBkSHYSIeHiPiHh8eJd4eTN0EEQG"
     static let steveHash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"
@@ -65,8 +66,21 @@ private actor PeopleServer: AgentTransport {
         if path.hasPrefix("/v0/users?ids=") {
             return ok(#"{"users":[{"id":"ada","name":"Ada Lovelace","photo":{"thumbhash":"\#(Self.adaHash)"}},{"id":"adam","name":"Adam Novak","photo":null},{"id":"steve","name":"Steve","photo":{"thumbhash":"\#(Self.steveHash)"}}]}"#)
         }
-        if path == "/v0/permissions" { return ok(#"{"granted":["content.write","bots.manage","pools.manage"]}"#) }
-        if path == "/v0/roles" { return ok(#"{"roles":[{"id":"owner","name":"Owner","builtIn":true},{"id":"member","name":"Member","builtIn":true}]}"#) }
+        if path == "/v0/permissions" { return ok(#"{"owner":false,"teams":["members"],"granted":["content.write","bots.manage","pools.manage"],"role":"member"}"#) }
+        if path == "/v0/members" {
+            return ok(#"""
+            {"members":[{"accountId":"acc-steve","userId":"steve","name":"Steve","teams":[],"owner":false,"role":"member"},
+                        {"accountId":"acc-ada","userId":"ada","name":"Ada Lovelace","teams":["design","research"],"owner":true,"role":"owner"},
+                        {"accountId":"acc-adam","userId":"adam","name":"Adam Novak","teams":[],"owner":false,"role":"member"}]}
+            """#)
+        }
+        if path == "/v0/teams" {
+            return ok(#"""
+            {"teams":[{"id":"owners","kind":"owners","name":"Owners","teams":[]},{"id":"members","kind":"members","name":"Members","teams":[]},
+                      {"id":"design","kind":"custom","name":"Design","teams":[]},{"id":"research","kind":"custom","name":"Research","teams":[]},
+                      {"id":"studio","kind":"custom","name":"Studio","teams":["design"]}]}
+            """#)
+        }
         if path.hasPrefix("/v0/users/ada/profile") { return ok(Self.profile()) }
         if let picture = Self.picture(path) { return HTTP1Response(status: 200, headers: ["content-type": "image/png"], body: picture) }
         return HTTP1Response(status: 404, body: Data(#"{"error":"Not here.","code":"not_found"}"#.utf8))

@@ -3,12 +3,13 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// A team member's profile on a Happy Cloud server, opened from a person
-/// search found: their picture large, their name, job title and role on
-/// the team; what they have done as tiles (tasks, active tasks, active
-/// days in the last 30, when they were last active); their tokens over
-/// the past hour, day, week and month, summed across providers and
-/// models; then the tasks they were last at, each opening its chat. A
+/// Someone's profile on a Happy Cloud server, opened from a person search
+/// found: their picture large, their name, job title and whether they are
+/// an owner; what they have done as tiles (tasks, active tasks, active
+/// days in the last 30, when they were last active); the teams they are
+/// in; their tokens over the past hour, day, week and month, summed
+/// across providers and models; then the tasks they were last at, each
+/// opening its chat. A
 /// conversation's detail draws the same way, so its pieces are reused, at
 /// `SessionDetailLayout`'s frames. Read once as it opens
 /// (`GET /v0/users/:id/profile`); a refusal says why under the name.
@@ -17,8 +18,9 @@ final class UserProfileViewController: UIViewController {
     private let userId: String
     private var user: AgentWire.ProfileUser
     private var profile: AgentWire.UserProfile?
-    /// What the team calls its roles; empty until read, or if it can't be.
-    private var roleNames: [String: String] = [:]
+    /// Their owner flag and teams (`GET /v0/members`); nil until read, or
+    /// if it can't be.
+    private var standing: TeamStanding?
     private var failure: String?
     private var loading: Task<Void, Never>?
 
@@ -30,7 +32,7 @@ final class UserProfileViewController: UIViewController {
     private let tasksCard = DetailActivityCardView()
 
     /// Only a Happy Cloud server has profiles; a computer of one's own has
-    /// no team to show.
+    /// nobody else to show.
     static func offered(_ session: Session) -> Bool { session.isCloud }
 
     /// `user` is what the opener already knows of them (a search's name,
@@ -77,12 +79,12 @@ final class UserProfileViewController: UIViewController {
         let userId = userId
         let session = session
         loading = Task { [weak self] in
-            async let names = session.teamRoleNames()
+            async let standing = session.standing(of: userId)
             do {
                 let read = try await client.userProfile(userId)
-                let roleNames = await names
+                let standing = await standing
                 guard let self, !Task.isCancelled else { return }
-                self.roleNames = roleNames ?? [:]
+                self.standing = standing
                 profile = read
                 user = read.user
                 failure = nil
@@ -107,7 +109,7 @@ final class UserProfileViewController: UIViewController {
 
     private func apply() {
         header.name.text = user.name.isEmpty ? Strings.none : user.name
-        header.subtitle.text = failure ?? [user.role?.trimmingCharacters(in: .whitespacesAndNewlines), profile.map { _ in Strings.UserProfile.teamRole(user.teamRole, names: roleNames) }]
+        header.subtitle.text = failure ?? [user.role?.trimmingCharacters(in: .whitespacesAndNewlines), profile.map { _ in Strings.UserProfile.standing(owner: standing?.owner, teamRole: user.teamRole) }]
             .compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ")
         header.avatar = .mark(Self.mark(user, me: session.home.userId, myPhoto: session.home.profilePhoto))
         applyNumbers()
@@ -134,11 +136,14 @@ final class UserProfileViewController: UIViewController {
             (stats?.lastActivityAt.map { Text.ago(DetailFormat.age(since: $0, now: now)) } ?? Strings.none, Text.lastActive),
         ]
         for (tile, (value, label)) in zip(tiles, values) { tile.show(value: value, label: label) }
-        sections.show(stats.map { stats in
+        let teams = profile == nil ? [] : standing?.teams ?? []
+        sections.show((teams.isEmpty ? [] : [ProfileSection(id: "teams", heading: Text.teams, rows: teams.enumerated().map { index, name in
+            SettingsRow(id: "team-\(index)", title: name, accessory: .none)
+        })]) + (stats.map { stats in
             [ProfileSection(id: "tokens", heading: Text.tokens, rows: AgentWire.UsageWindow.allCases.map { window in
                 SettingsRow(id: "tokens-\(window.rawValue)", title: Text.window(window), value: DetailFormat.tokens(stats.tokens(window)), accessory: .none)
             })]
-        } ?? [])
+        } ?? []))
     }
 
     private var tasks: [AgentWire.Task] { profile?.recentTasks ?? [] }
@@ -195,6 +200,7 @@ final class UserProfileViewController: UIViewController {
     // MARK: Tests
 
     var shownTiles: [String?] { tiles.map(\.accessibilityValue) }
+    var shownTeams: [String] { sections.sections.first { $0.id == "teams" }?.rows.map(\.title) ?? [] }
     var shownTaskCount: Int { tasks.count }
     func selectTask(_ index: Int) { openTask(index) }
 }

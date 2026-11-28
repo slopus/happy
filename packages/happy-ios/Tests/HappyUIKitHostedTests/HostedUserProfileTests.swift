@@ -6,12 +6,15 @@ import HappyWire
 import UIKit
 import XCTest
 
-/// A team server whose bootstrap says it searches, that finds Ada by
-/// name (`POST /v0/search`'s `user` result), names her picture (`GET /v0/users`) and serves her profile;
-/// her role is one the team made, named by `GET /v0/roles` unless
-/// `rolesFail`.
+/// A Happy Cloud server whose bootstrap says it searches, that finds Ada
+/// by name (`POST /v0/search`'s `user` result), names her picture
+/// (`GET /v0/users`) and serves her profile. She is in Designers, which
+/// sits inside Studio (`GET /v0/members`, `GET /v0/teams`), unless
+/// `teams` fails, or the server is from before teams (`beforeTeams`):
+/// her role is then Designers, named by `GET /v0/roles`.
 private struct PeopleTransport: AgentTransport {
-    var rolesFail = false
+    enum Teams { case served, fail, beforeTeams }
+    var teams = Teams.served
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         if path == "/v0/bootstrap/desktop" {
@@ -26,13 +29,30 @@ private struct PeopleTransport: AgentTransport {
         if path.hasPrefix("/v0/users?ids=") {
             return HTTP1Response(status: 200, body: Data(#"{"users":[{"id":"ada","name":"Ada Lovelace","photo":{"thumbhash":"HBkSHYSIeHiPiHh8eJd4eTN0EEQG"}}]}"#.utf8))
         }
-        if path == "/v0/roles" {
-            if rolesFail { return HTTP1Response(status: 500) }
+        if path == "/v0/members" {
+            let ada = teams == .beforeTeams ? #""role":"r_7f3a""# : #""teams":["r_7f3a"],"owner":false,"role":"r_7f3a""#
+            return HTTP1Response(status: 200, body: Data(#"""
+            {"members":[{"accountId":"acc-me","userId":"me","name":"Me","teams":[],"owner":true,"role":"owner"},
+                        {"accountId":"acc-ada","userId":"ada","name":"Ada Lovelace",\#(ada)}]}
+            """#.utf8))
+        }
+        if path == "/v0/teams" {
+            switch teams {
+            case .served:
+                return HTTP1Response(status: 200, body: Data(#"""
+                {"teams":[{"id":"owners","kind":"owners","name":"Owners","teams":[]},{"id":"members","kind":"members","name":"Members","teams":[]},
+                          {"id":"r_7f3a","kind":"custom","name":"Designers","teams":[]},{"id":"studio","kind":"custom","name":"Studio","teams":["r_7f3a"]}]}
+                """#.utf8))
+            case .fail: return HTTP1Response(status: 500)
+            case .beforeTeams: return HTTP1Response(status: 404, body: Data(#"{"error":"Not here.","code":"not_found"}"#.utf8))
+            }
+        }
+        if path == "/v0/roles", teams == .beforeTeams {
             return HTTP1Response(status: 200, body: Data(#"{"roles":[{"id":"owner","name":"Owner","builtIn":true},{"id":"r_7f3a","name":"Designers","builtIn":false}]}"#.utf8))
         }
         if path.hasPrefix("/v0/users/ada/profile") {
             return HTTP1Response(status: 200, body: Data(#"""
-            {"user":{"id":"ada","name":"Ada Lovelace","photo":{"thumbhash":"HBkSHYSIeHiPiHh8eJd4eTN0EEQG"},"role":"Design lead","teamRole":"r_7f3a"},
+            {"user":{"id":"ada","name":"Ada Lovelace","photo":{"thumbhash":"HBkSHYSIeHiPiHh8eJd4eTN0EEQG"},"role":"Design lead","teamRole":"\#(teams == .beforeTeams ? "r_7f3a" : "member")"},
              "stats":{"tasks":{"total":12,"active":3},"lastActivityAt":null,"activeDays":14,
                       "usage":{"hour":{},"day":{"anthropic":{"opus":{"input":1000,"cacheRead":0,"cacheWrite":0,"output":200,"reasoning":0}}},"week":{},"month":{}}},
              "recentTasks":[{"id":"t1","name":"Ship the profile","agent":{"id":"a1","workspaceId":"w1","status":"idle"}}]}
@@ -47,10 +67,10 @@ private struct PeopleTransport: AgentTransport {
 
 @MainActor
 final class HostedUserProfileTests: XCTestCase {
-    private func rig(server: String?, rolesFail: Bool = false) async throws -> (AppContext, String) {
+    private func rig(server: String?, teams: PeopleTransport.Teams = .served) async throws -> (AppContext, String) {
         let account = AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "people-test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
-            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in PeopleTransport(rolesFail: rolesFail) })
+            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in PeopleTransport(teams: teams) })
         await account.agentConnections.setForeground(false)
         let connection: AgentConnection
         if let server {
@@ -87,8 +107,8 @@ final class HostedUserProfileTests: XCTestCase {
         XCTAssertTrue(condition())
     }
 
-    private func search(_ server: String?, rolesFail: Bool = false) async throws -> (HomeViewController, HomeSearchResultsView, UINavigationController) {
-        let (context, id) = try await rig(server: server, rolesFail: rolesFail)
+    private func search(_ server: String?, teams: PeopleTransport.Teams = .served) async throws -> (HomeViewController, HomeSearchResultsView, UINavigationController) {
+        let (context, id) = try await rig(server: server, teams: teams)
         let home = HomeViewController(context: context, computer: id)
         let navigation = try await host(home)
         home.beginSearch()
@@ -114,21 +134,33 @@ final class HostedUserProfileTests: XCTestCase {
         try await until { profile.shownTiles.first == "12" }
         XCTAssertEqual(profile.shownTiles, ["12", "3", "14 of 30", "—"])
         XCTAssertEqual(profile.header.name.text, "Ada Lovelace")
-        XCTAssertEqual(profile.header.subtitle.text, "Design lead · Designers", "the team's own role, by the name it gave it")
+        XCTAssertEqual(profile.header.subtitle.text, "Design lead · Member", "she is no owner")
+        XCTAssertEqual(profile.shownTeams, ["Designers", "Studio"], "her team, and the one holding it, by name")
         XCTAssertEqual(profile.shownTaskCount, 1)
 
         profile.selectTask(0)
         try await until { navigation.topViewController is ChatViewController }
     }
 
-    func testARoleTheTeamCantNameShowsItsID() async throws {
-        let (_, results, navigation) = try await search(HappyCloud.server(named: "people-roles-test"), rolesFail: true)
+    private func openAda(_ server: String, teams: PeopleTransport.Teams) async throws -> UserProfileViewController {
+        let (_, results, navigation) = try await search(HappyCloud.server(named: server), teams: teams)
         try await until { results.list.shownRows.contains { $0.id == "search:people:ada" } }
         let row = try XCTUnwrap(results.list.shownRows.first { $0.id == "search:people:ada" })
         results.list.onSelect?(row)
         try await until { (navigation.topViewController as? UserProfileViewController)?.shownTiles.first == "12" }
-        let profile = try XCTUnwrap(navigation.topViewController as? UserProfileViewController)
-        XCTAssertEqual(profile.header.subtitle.text, "Design lead · r_7f3a")
+        return try XCTUnwrap(navigation.topViewController as? UserProfileViewController)
+    }
+
+    func testTeamsItCantReadShowNone() async throws {
+        let profile = try await openAda("people-teams-test", teams: .fail)
+        XCTAssertEqual(profile.header.subtitle.text, "Design lead · Member")
+        XCTAssertEqual(profile.shownTeams, [])
+    }
+
+    func testAServerBeforeTeamsShowsHerRoleAsATeam() async throws {
+        let profile = try await openAda("people-roles-test", teams: .beforeTeams)
+        XCTAssertEqual(profile.header.subtitle.text, "Design lead · Member")
+        XCTAssertEqual(profile.shownTeams, ["Designers"])
     }
 
     func testAComputerOfOnesOwnShowsNoPeople() async throws {

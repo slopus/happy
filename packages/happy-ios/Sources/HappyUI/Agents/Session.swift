@@ -29,7 +29,7 @@ final class Session {
     private(set) var onboarding: Onboarding?
     private var onboardingWatchers: [UUID: (Onboarding?) -> Void] = [:]
     private var cloudFollowing: Task<Void, Never>?
-    /// What the person's role lets them do on a cloud server; nil until
+    /// What the person's teams let them do on a cloud server; nil until
     /// read, and kept nil if the read fails, so `gate` shows nothing it
     /// would refuse.
     private(set) var permissions: Permissions?
@@ -39,7 +39,7 @@ final class Session {
     /// settings (`PolicyDocument.served`); nil until its permissions are read.
     var policyDocuments: Bool? { PolicyDocument.served(permissions) }
     private var accessWatchers: [UUID: () -> Void] = [:]
-    /// What the controls a role decides follow: a computer gates nothing.
+    /// What the controls permissions decide follow: a computer gates nothing.
     var gate: RoleGate { isCloud ? .cloud(permissions) : .open }
     let engine: SyncEngine
     let client: AgentClient
@@ -249,10 +249,10 @@ final class Session {
 
     /// What a cloud server says of the person, read at once and again on
     /// each event that may change it: onboarding (`Onboarding.refreshEvents`),
-    /// permissions (`role.*`), and the vaults' access (`surface.*`,
-    /// `vault.settings.updated`); everything on a resync. A role changed at
-    /// the accounts service lands with the next token, so a reconnect
-    /// reads the permissions and onboarding again too (`reconnected`).
+    /// permissions (`team.*`, `member.*`; `Permissions.refreshEvents`), and
+    /// the vaults' access (`surface.*`, `vault.settings.updated`);
+    /// everything on a resync. A reconnect reads the permissions and
+    /// onboarding again too (`reconnected`).
     private func followCloud() {
         let store = store
         cloudFollowing = Task { [weak self] in
@@ -318,7 +318,7 @@ final class Session {
                     if let read, read != self?.onboarding { self?.adopt(read) }
                 case .permissions:
                     // A failed read keeps what was read: a dropped link
-                    // isn't a role taken away, and nothing is shown it
+                    // isn't a permission taken away, and nothing is shown it
                     // never had.
                     if let read = try? await client.permissions(), read != self?.permissions { self?.adopt(read) }
                 case .vaults:
@@ -331,17 +331,18 @@ final class Session {
         }
     }
 
-    /// The team's role names by ID (`GET /v0/roles`, cloud only), read
-    /// once, as desktop and Android read them; a read that fails is nil
-    /// and asked again next time.
-    private var roleNames: [String: String]?
-
-    func teamRoleNames() async -> [String: String]? {
-        if let roleNames { return roleNames }
-        guard isCloud, let roles = try? await client.teamRoles() else { return nil }
-        let names = Dictionary(roles.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
-        roleNames = names
-        return names
+    /// What `userId` is on the server, its owner flag and its teams by
+    /// name (`GET /v0/members` and `GET /v0/teams`, cloud only), read each
+    /// time a profile opens, as teams change. Nil where it can't be read,
+    /// or for someone the server doesn't list; their teams are none
+    /// where only the teams can't be.
+    func standing(of userId: String) async -> TeamStanding? {
+        guard isCloud else { return nil }
+        let client = client
+        async let teams = try? client.teams()
+        guard let member = (try? await client.members())?.first(where: { $0.userId == userId }) else { return nil }
+        guard let teams = await teams else { return TeamStanding(owner: member.owner) }
+        return TeamStanding(member, teams: teams)
     }
 
     private func adopt(_ onboarding: Onboarding) {

@@ -3,7 +3,7 @@ import HappyWire
 import XCTest
 @testable import HappyCore
 
-/// A team member's profile on a Happy Cloud server (happy-cluster
+/// Someone's profile on a Happy Cloud server (happy-cluster
 /// `GET /v0/users/:id/profile`) and the people search finds there: the
 /// route as asked, the answer as read, the tokens summed for display.
 final class UserProfileTests: XCTestCase {
@@ -15,11 +15,6 @@ final class UserProfileTests: XCTestCase {
 
         func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
             paths.append("\(method) \(path)")
-            if path == "/v0/roles" {
-                return HTTP1Response(status: 200, body: Data(#"""
-                {"roles":[{"id":"owner","name":"Owner","builtIn":true},{"id":"r_7f3a","name":"Designers","builtIn":false},{"id":7}]}
-                """#.utf8))
-            }
             switch status {
             case 403: return HTTP1Response(status: 403, body: Data(#"{"error":"Profiles need the profiles permission.","code":"profile_required"}"#.utf8))
             case 404: return HTTP1Response(status: 404, body: Data(#"{"error":"No such user.","code":"not_found"}"#.utf8))
@@ -83,14 +78,6 @@ final class UserProfileTests: XCTestCase {
           "openai":{"gpt-6":{"input":50,"cacheRead":40,"cacheWrite":0,"output":20,"reasoning":10}}}}}
         """#.utf8))
         XCTAssertEqual(stats.tokens(.week), 2000 + 300 + 50 + 20)
-    }
-
-    func testTheTeamsRolesAreReadByName() async throws {
-        let server = ProfileServer()
-        let roles = try await AgentClient(transport: server, token: "t").teamRoles()
-        XCTAssertEqual(roles, [TeamRole(id: "owner", name: "Owner"), TeamRole(id: "r_7f3a", name: "Designers")], "a role it can't read is left out")
-        let paths = await server.paths
-        XCTAssertEqual(paths, ["GET /v0/roles"])
     }
 
     func testAProfileWithoutStatsStillReads() throws {

@@ -1,8 +1,8 @@
 import Foundation
 import HappyCore
 
-// A team member's profile on a Happy Cloud server, and the people search
-// finds there. English only, as the rest of V2 is.
+// Someone's profile on a Happy Cloud server, and the people search finds
+// there. English only, as the rest of V2 is.
 extension Strings {
     public enum UserProfile {
         public static let people = "People"
@@ -11,11 +11,14 @@ extension Strings {
         public static let activeDays = "Active days"
         public static let lastActive = "Last active"
         public static let tokens = "Tokens"
+        public static let teams = "Teams"
+        public static let owner = "Owner"
+        public static let member = "Member"
         public static let lastActivity = "Last activity"
         public static let untitledTask = "Untitled task"
-        public static let leftTeam = "Left the team"
-        public static let notAllowed = "Your role can't see profiles"
-        public static let notFound = "Not on your team"
+        public static let leftServer = "Left the server"
+        public static let notAllowed = "You can't see profiles here"
+        public static let notFound = "Not on this server"
         public static let failed = "Couldn't load this profile"
 
         /// "14 of 30".
@@ -31,19 +34,13 @@ extension Strings {
             }
         }
 
-        /// Their role on the team, as the team names it (`names`, from
-        /// `GET /v0/roles`); without that, a built-in one by its usual name
-        /// and a team's own by its ID.
-        public static func teamRole(_ role: String?, names: [String: String] = [:]) -> String {
-            guard let role else { return leftTeam }
-            if let name = names[role], !name.isEmpty { return name }
-            return switch role {
-            case "owner": "Owner"
-            case "admin": "Admin"
-            case "member": "Member"
-            case "viewer": "Viewer"
-            default: role
-            }
+        /// Whether they are an owner of the server: `owner`, their flag
+        /// from `GET /v0/members`, else the profile's `teamRole`, which is
+        /// nil once they left.
+        public static func standing(owner: Bool?, teamRole: String?) -> String {
+            if let owner { return owner ? Self.owner : member }
+            guard let teamRole else { return leftServer }
+            return teamRole == "owner" ? Self.owner : member
         }
 
         /// "2 hours ago", "Just now".

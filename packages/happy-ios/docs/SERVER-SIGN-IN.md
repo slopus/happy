@@ -320,16 +320,18 @@ split contract (v1, frozen 2026-11-15).
   `steps.chiefOfStaff`) and reads it again on `config.updated`,
   `provider.*` and `profile.*` (`Session.watchOnboarding`). A computer's
   Happy bot is as before: not renamed here, and onboarding not read.
-- **Roles.** A cloud session reads `GET /v0/permissions` (`Permissions`)
-  at once, on `role.*`, on a resync and on every reconnect (a role
-  changed in the cluster lands with the next token). Only
-  `granted` decides: `Session.gate` (`RoleGate`) is `.open` on a computer
+- **Teams.** A cloud server's people are in teams (happy-cluster
+  docs/teams.md); roles are gone. A cloud session reads `GET
+  /v0/permissions` (`Permissions`: `owner`, `teams`, `granted`) at once,
+  on `team.*`, `member.*` (and a server before teams' `role.*`), on a
+  resync and on every reconnect. Only `granted` decides, never the owner
+  flag or a team's name: `Session.gate` (`RoleGate`) is `.open` on a computer
   and, on a cloud server, allows nothing until read and keeps what was
   read if a read fails, so no control is shown only to be refused.
   Without `content.write`: no composer (a line says why), compose,
   microphone, call, new work, rename, Todo or document edits, new lists,
   or proposal answers. The Chief of Staff's composer, its rename and the
-  agent's asks also need `bots.manage`. The role table's `403 forbidden`
+  agent's asks also need `bots.manage`. The permission table's `403 forbidden`
   ("This needs the <id> permission.") reads "You don’t have permission to
   do that." (`Strings.refusal`); a computer's own `403` keeps its words.
 - **Vault access.** A cloud session reads the vaults' `access` and
@@ -341,7 +343,13 @@ split contract (v1, frozen 2026-11-15).
   restore, pin or retention. The Policy vault's root `Global` and
   `Security` and their `AGENTS.md` and `SECURITY.md` are never renamed,
   moved or deleted, and its retention isn't offered. The phone never
-  reads or edits `accessPolicy` or roles.
+  reads or edits `accessPolicy` or teams.
+- **Profiles.** Someone's profile says whether they are an owner and
+  lists the custom teams they are in, by name, nested ones included
+  (`TeamStanding`, flattened as `hc_core::team::effective` does), from
+  `GET /v0/members` and `GET /v0/teams`, read as it opens. A server from
+  before teams has its roles as teams (`GET /v0/roles`). Nothing edits
+  teams on the phone.
 - **Display.** A cloud server's address is never shown: it reads like a
   username, `@acme` (`HappyCloud.handle`), in the picker, the create field
   (an `@` in front, no domain), the availability and join messages, the

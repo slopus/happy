@@ -2,17 +2,19 @@ import Foundation
 import HappyWire
 
 extension AgentWire {
-    /// A team member as a Happy Cloud server describes them on their
+    /// Someone on a Happy Cloud server as it describes them on their
     /// profile (`GET /v0/users/:id/profile`, happy-cluster): `TeamUser`'s
-    /// name and picture, with their job title and their role on the team.
-    /// The picture's bytes are at `TeamUser.photoPath`.
+    /// name and picture, with their job title and whether they are an
+    /// owner. Their teams are `GET /v0/members`' (`TeamStanding`). The
+    /// picture's bytes are at `TeamUser.photoPath`.
     public struct ProfileUser: Decodable, Equatable, Sendable {
         public var id: String
         public var name: String
         public var photo: Profile.Photo?
         /// The job title they gave themselves; free text.
         public var role: String?
-        /// `owner`, `member` or a team's own role ID; nil once they left the team.
+        /// `owner` or `member` (a server from before teams: a role of its
+        /// own too); nil once they left the server.
         public var teamRole: String?
 
         public init(id: String, name: String, photo: Profile.Photo? = nil, role: String? = nil, teamRole: String? = nil) {
@@ -149,31 +151,13 @@ extension AgentWire {
     }
 }
 
-/// One of a Happy Cloud team's roles (`GET /v0/roles`): the built-in
-/// owner, admin, member and viewer, or one the team made, by its name.
-public struct TeamRole: Decodable, Equatable, Sendable {
-    public var id: String
-    public var name: String
-
-    public init(id: String, name: String) {
-        self.id = id
-        self.name = name
-    }
-}
-
 extension AgentClient {
-    /// The team's roles, as desktop and Android name them.
-    public func teamRoles() async throws -> [TeamRole] {
-        struct Response: Decodable { let roles: [Lossy<TeamRole>] }
-        return try await decode(Response.self, "GET", "/v0/roles").roles.compactMap(\.value)
-    }
-
     /// How many recent tasks a profile is read with: the server's default.
     public static let profileTaskLimit = 10
 
     /// `GET /v0/users/:id/profile` (Happy Cloud only): `403` with
-    /// `profile_required` when the person's role can't see profiles, `404`
-    /// for someone not on the team.
+    /// `profile_required` when the person may not see profiles, `404` for
+    /// someone not on the server.
     public func userProfile(_ userId: String, limit: Int = AgentClient.profileTaskLimit) async throws -> AgentWire.UserProfile {
         try await decode(AgentWire.UserProfile.self, "GET", "/v0/users/\(Self.escape(userId))/profile?limit=\(min(50, max(1, limit)))")
     }
