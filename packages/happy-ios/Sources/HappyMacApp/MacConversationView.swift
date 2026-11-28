@@ -73,7 +73,10 @@ final class MacConversationView: FlippedView, NSTableViewDataSource, NSTableView
     }
     @objc private func sendPressed() { onSend?() }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "\r", composer.isEditable {
+        // Let the input method consume Return while it is confirming marked
+        // text (for example, a Chinese candidate on macOS). Sending here
+        // would bypass that confirmation and submit the unfinished draft.
+        if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "\r", composer.isEditable, !composer.hasMarkedText() {
             onSend?(); return true
         }
         return super.performKeyEquivalent(with: event)
