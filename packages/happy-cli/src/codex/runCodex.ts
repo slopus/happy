@@ -39,6 +39,7 @@ import { basename, join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { delegationLaunchContext } from '@/daemon/delegationLaunchContext';
+import { createDelegationRetireHandler, finishDelegationRetirement } from '@/daemon/delegation/journal';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { trimIdent } from "@/utils/trimIdent";
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
@@ -531,6 +532,8 @@ export async function runCodex(opts: {
     let delegationPreparation: ReturnType<typeof createCodexDelegationPreparation> | null = null;
     let delegationAbortHandler: ReturnType<typeof createCodexDelegationAbortHandler> | null = null;
     let delegationContextHandler: (() => Promise<Record<string, unknown>>) | null = null;
+    let delegationRetireHandler: ((input: unknown) => Promise<{ retiring: true }>) | null = null;
+    let delegationRetiring = false;
     const mcpAppBindingRegistry = new McpAppBindingRegistry();
     let mcpAppRpcHandlers: ReturnType<typeof registerMcpAppRpcHandlers> | null = null;
     const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
@@ -555,6 +558,10 @@ export async function runCodex(opts: {
             if (delegationPreparation) newSession.rpcHandlerManager.registerHandler('delegation-prepare', delegationPreparation.prepare);
             if (delegationAbortHandler) newSession.rpcHandlerManager.registerHandler('delegation-abort', delegationAbortHandler);
             if (delegationContextHandler) newSession.rpcHandlerManager.registerHandler('delegation-context', delegationContextHandler);
+            if (delegationRetireHandler) newSession.rpcHandlerManager.registerHandler('delegation-retire', async input => {
+                if (session !== newSession) throw new Error('Delegated worker session changed before retirement');
+                return delegationRetireHandler!(input);
+            });
             if (delegationPreparation && delegationAbortHandler && delegationContextHandler) newSession.declareDelegationSupport('codex');
             if (predictionHandlers) {
                 newSession.rpcHandlerManager.registerHandler('composerPrediction', predictionHandlers.request);
@@ -666,6 +673,7 @@ export async function runCodex(opts: {
     // claims the in-flight set atomically; mirrors the Claude path so images
     // sent from the app travel with the next user message.
     session.onFileEvent((fileEvent) => {
+        if (delegationRetiring) return;
         const ev = fileEvent.content.data.ev;
         logger.debug(`[Codex] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);
         const downloadPromise = (async (): Promise<PendingAttachment | null> => {
@@ -705,6 +713,7 @@ export async function runCodex(opts: {
         logger.debug('[Codex] Failed to process remote user message:', error);
     });
     session.onUserMessage((message) => {
+        if (delegationRetiring) return;
         if (applicationPolicy) message.meta = undefined; // Trusted binding fixes configuration for every surface.
         // Claim every file attachment that arrived strictly before this text.
         // New file events from this point on belong to the next user message.
@@ -712,6 +721,7 @@ export async function runCodex(opts: {
 
         return runUserMessageTask(async () => {
             const attachmentsForThisMessage = await attachmentsForThisMessagePromise;
+            if (delegationRetiring) return;
 
             // Resolve permission mode (validate against Codex-native modes)
             let messagePermissionMode = currentPermissionMode;
@@ -931,8 +941,27 @@ export async function runCodex(opts: {
      * Abort stops the current inference but keeps the session alive.
      * Kill terminates the entire process.
      */
-    const handleKillSession = async (archiveReason = 'User terminated') => {
+    const handleKillSession = async (archiveReason = 'User terminated', settledDelegation = false) => {
         logger.debug('[Codex] Kill session requested - terminating process');
+        if (settledDelegation) {
+            const succeeded = await finishDelegationRetirement([
+                { name: 'bindings', run: () => { mcpAppRpcHandlers?.dispose(); mcpAppBindingRegistry.clear(); } },
+                { name: 'archive', run: async () => {
+                    await codexCursorSync;
+                    await session.updateMetadataAndAwait(meta => ({ ...meta, lifecycleState: 'archived',
+                        lifecycleStateSince: Date.now(), archivedBy: 'cli', archiveReason }));
+                    if (session.getMetadata()?.lifecycleState !== 'archived') throw new Error('Delegated worker archive was not acknowledged');
+                } },
+                { name: 'session-death', run: () => session.sendSessionDeath() },
+                { name: 'backend', run: () => client.disconnect({ waitForExit: true }) },
+                { name: 'bridge', run: () => happyServer.stop() },
+                { name: 'outbox', run: () => session.flush() },
+                { name: 'session', run: () => session.close() },
+                { name: 'attachments', run: () => cleanupAllStagedMediaAttachments() },
+                { name: 'account', run: () => accountObserver.finish() },
+            ], (step, error) => logger.debug(`[Codex] Delegation retirement ${step} failed`, error));
+            return process.exit(succeeded ? 0 : 1);
+        }
         await handleAbort();
         logger.debug('[Codex] Abort completed, proceeding with termination');
         mcpAppRpcHandlers?.dispose();
@@ -992,6 +1021,24 @@ export async function runCodex(opts: {
 
     registerSessionTitleWorker(session, 'codex');
     registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
+    const retireDelegatedWorker = createDelegationRetireHandler({
+        launch: delegatedLaunch,
+        state: () => ({ metadata: session.getMetadata() ?? null, queueSize: messageQueue.size(),
+            pendingInputs: pending !== null || session.hasPendingUserInputs(),
+            activeRootTurnId: session.getCurrentRootTurnId() ?? null, thinking }),
+        canRetire: request => session.canRetireDelegation(request),
+        retire: () => {
+            delegationRetiring = true;
+            session.beginDelegationRetirement();
+            void handleKillSession('Delegated task finished', true);
+        },
+    });
+    delegationRetireHandler = async input => retireDelegatedWorker(input);
+    const retirementOwner = session;
+    session.rpcHandlerManager.registerHandler('delegation-retire', async input => {
+        if (session !== retirementOwner) throw new Error('Delegated worker session changed before retirement');
+        return delegationRetireHandler!(input);
+    });
 
     //
     // Initialize Ink UI
@@ -1116,6 +1163,7 @@ export async function runCodex(opts: {
     // call in claudeRemoteLauncher for the full rationale.
     permissionHandler.reset('Previous CLI process exited before responding');
     session.rpcHandlerManager.registerHandler<{ mode: string }, boolean>('setPermissionMode', async (request) => {
+        if (delegationRetiring) throw new Error('Delegated worker is retiring');
         const incoming = request?.mode;
         if (!isRemoteCodexPermissionMode(incoming)) {
             logger.debug(`[Codex] Ignoring invalid RPC permission mode: ${String(incoming)}`);
@@ -1353,7 +1401,7 @@ export async function runCodex(opts: {
     delegationPreparation = createCodexDelegationPreparation({
         state: () => ({ metadata: session.getMetadata() ?? null, applicationBound: !!applicationPolicy,
             thinking, pending: pending !== null, queueSize: messageQueue.size(), pendingUserInputs: session.hasPendingUserInputs(),
-            activeRootTurnId: session.getCurrentRootTurnId() ?? null, shouldExit }),
+            activeRootTurnId: session.getCurrentRootTurnId() ?? null, shouldExit: shouldExit || delegationRetiring }),
         catalog: () => codexModelCatalog,
         async apply(configuration, assertIdle) {
             const targetSession = session;

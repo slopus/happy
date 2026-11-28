@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiMachineClient } from './apiMachine';
-import type { Machine } from './types';
+import type { Machine, Metadata } from './types';
 import type { ComponentObservation } from '@slopus/happy-wire';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { createProcessRunner } from '@/environment/processRunner';
@@ -302,6 +302,56 @@ describe('ApiMachineClient socket reconnection', () => {
             await expect(client.callSessionRpc('child', encryption, 'delegation-prepare', {})).rejects.toThrow('worker disconnected');
             mockSocket.emitWithAck.mockResolvedValue({ ok: true, result: encodeBase64(encrypt(encryption.encryptionKey, variant, { error: 'invalid native model' })) });
             await expect(client.callSessionRpc('child', encryption, 'delegation-prepare', {})).rejects.toThrow('invalid native model');
+        } finally { client.shutdown(); }
+    });
+
+    it.each(['legacy', 'dataKey'] as const)('CAS-writes session metadata once with %s session encryption and a matching next-version receipt', async variant => {
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.connect(); mockSocket.connected = true; mockSocket.timeout = vi.fn(() => mockSocket);
+        const encryption = { encryptionKey: new Uint8Array(32).fill(11), encryptionVariant: variant };
+        const metadata = { path: '/scope', host: 'test-host', lifecycleState: 'archived', delegatedTask: { taskId: 'task', parentSessionId: 'parent' } } as Metadata;
+        mockSocket.emitWithAck.mockImplementation(async (event: string, request: any) => {
+            expect(event).toBe('update-metadata');
+            expect(request.sid).toBe('owned-child'); expect(request.expectedVersion).toBe(7);
+            expect(typeof request.metadata).toBe('string');
+            expect(decrypt(encryption.encryptionKey, variant, decodeBase64(request.metadata))).toEqual(metadata);
+            return { result: 'success', version: 8, metadata: request.metadata };
+        });
+        try {
+            expect(typeof (client as any).compareAndSetSessionMetadata).toBe('function');
+            await (client as any).compareAndSetSessionMetadata('owned-child', encryption, 7, metadata);
+            expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
+            expect(mockSocket.timeout).toHaveBeenCalledExactlyOnceWith(10_000);
+        } finally { client.shutdown(); }
+    });
+
+    it.each(['error', 'version-mismatch', 'stale-version', 'future-version', 'wrong-ciphertext', 'missing-ciphertext', 'missing-reply', 'timeout'])(
+        'rejects a %s session metadata CAS receipt without retrying', async condition => {
+            const client = new ApiMachineClient('fake-token', makeMachine());
+            client.connect(); mockSocket.connected = true; mockSocket.timeout = vi.fn(() => mockSocket);
+            const encryption = { encryptionKey: new Uint8Array(32).fill(11), encryptionVariant: 'legacy' as const };
+            mockSocket.emitWithAck.mockImplementation(async (_event: string, request: any) => {
+                if (condition === 'timeout') throw new Error('operation timed out');
+                if (condition === 'missing-reply') return null;
+                return { result: condition === 'error' || condition === 'version-mismatch' ? condition : 'success',
+                    version: condition === 'stale-version' ? 7 : condition === 'future-version' ? 9 : 8,
+                    metadata: condition === 'wrong-ciphertext' ? encodeBase64(encrypt(encryption.encryptionKey, 'legacy', { lifecycleState: 'running' }))
+                        : condition === 'missing-ciphertext' ? undefined : request.metadata };
+            });
+            try {
+                expect(typeof (client as any).compareAndSetSessionMetadata).toBe('function');
+                await expect((client as any).compareAndSetSessionMetadata('owned-child', encryption, 7, { path: '/scope', host: 'test-host', lifecycleState: 'archived' })).rejects.toThrow();
+                expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
+            } finally { client.shutdown(); }
+        });
+
+    it('refuses session metadata CAS while disconnected without emitting a mutation', async () => {
+        const client = new ApiMachineClient('fake-token', makeMachine()); client.connect();
+        try {
+            expect(typeof (client as any).compareAndSetSessionMetadata).toBe('function');
+            await expect((client as any).compareAndSetSessionMetadata('child', { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy' }, 1,
+                { path: '/scope', host: 'test-host', lifecycleState: 'archived' })).rejects.toThrow('disconnected');
+            expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
         } finally { client.shutdown(); }
     });
 

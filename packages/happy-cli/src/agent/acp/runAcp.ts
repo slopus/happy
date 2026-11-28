@@ -23,6 +23,7 @@ import { encodeBase64 } from '@/api/encryption';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { delegationLaunchContext } from '@/daemon/delegationLaunchContext';
+import { createDelegationRetireHandler, finishDelegationRetirement } from '@/daemon/delegation/journal';
 import { createDelegationPromptLifecycle } from '@/delegation/delegationPrompt';
 import type { RoleSaveObserver } from '@/delegation/roleSaveReceipt';
 import { createPausableDeadline, type PausableDeadline } from './pausableDeadline';
@@ -721,6 +722,7 @@ export async function runAcp(opts: {
   let thinking = false;
   let acpSessionId: string | null = null;
   let shouldExit = false;
+  let delegationRetiring = false;
   let abortController = new AbortController();
   let pendingTurn: PendingTurn | null = null;
   let activeRoot: AcpRootTurn | null = null;
@@ -1374,6 +1376,23 @@ export async function runAcp(opts: {
       await handleAbort();
       return { cancelled: root.cancelled };
     });
+    const retire = createDelegationRetireHandler({
+      launch: delegatedLaunch,
+      state: () => ({ metadata: boundSession === session ? boundSession.getMetadata() ?? null : null,
+        queueSize: messageQueue.size(), pendingInputs: pendingInputCount > 0 || !!boundSession.hasPendingUserInputs?.(),
+        activeRootTurnId: boundSession.getCurrentRootTurnId?.() ?? activeRoot?.turnId ?? null, thinking }),
+      canRetire: request => boundSession.canRetireDelegation(request),
+      retire: () => {
+        // Fence new input and preparation before the RPC ACK. A protected final
+        // receipt proves the native root ended, so do not issue a new cancel.
+        delegationRetiring = true;
+        boundSession.beginDelegationRetirement();
+        archiveReason = 'Delegated task finished';
+        shouldExit = true;
+        messageQueue.close();
+      },
+    });
+    boundSession.rpcHandlerManager.registerHandler('delegation-retire', async request => retire(request));
     boundSession.declareDelegationSupport('antigravity');
   };
   bindDelegationHandlers();
@@ -1511,6 +1530,21 @@ export async function runAcp(opts: {
     }
 
     backend.offMessage?.(onBackendMessage);
+    if (delegationRetiring) {
+      const succeeded = await finishDelegationRetirement([
+        { name: 'backend', run: () => backend.dispose() },
+        { name: 'bridge', run: () => happyServer.stop() },
+        { name: 'archive', run: async () => {
+          await session.updateMetadataAndAwait(meta => ({ ...meta, lifecycleState: 'archived',
+            lifecycleStateSince: Date.now(), archivedBy: 'cli', archiveReason }));
+          if (session.getMetadata()?.lifecycleState !== 'archived') throw new Error('Delegated worker archive was not acknowledged');
+        } },
+        { name: 'session-death', run: () => session.sendSessionDeath() },
+        { name: 'outbox', run: () => session.flush() },
+        { name: 'session', run: () => session.close() },
+      ], (step, error) => logger.debug(`[${opts.agentName}] Delegation retirement ${step} failed`, error));
+      return process.exit(succeeded ? 0 : 1);
+    }
     await backend.dispose();
 
     try {

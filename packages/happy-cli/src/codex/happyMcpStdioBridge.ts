@@ -49,30 +49,69 @@ async function main() {
     process.exit(2);
   }
 
+  const server = new McpServer({
+    name: 'Happy MCP Bridge',
+    version: '1.0.0',
+  });
   let httpClient: Client | null = null;
+  let httpConnection: Promise<Client> | null = null;
+  let stopping = false;
+  let shutdown: Promise<void> | undefined;
+
+  function stopWithOwner(): Promise<void> {
+    if (shutdown) return shutdown;
+    stopping = true;
+    process.stdin.off('end', onOwnerClosed);
+    process.stdin.off('close', onOwnerClosed);
+    // A stalled transport close must not leave this ownerless bridge alive.
+    // This single deadline only exits this dedicated stdio process.
+    const deadline = setTimeout(() => process.exit(0), 2_000);
+    deadline.unref();
+    shutdown = Promise.allSettled([
+      Promise.resolve().then(() => httpClient?.close()),
+      Promise.resolve().then(() => server.close()),
+    ]).then(() => {
+      clearTimeout(deadline);
+      process.exit(0);
+    });
+    return shutdown;
+  }
+  function onOwnerClosed() { void stopWithOwner(); }
+
+  // Install before connecting stdio so EOF during initialization is owned too.
+  process.stdin.once('end', onOwnerClosed);
+  process.stdin.once('close', onOwnerClosed);
 
   async function ensureHttpClient(): Promise<Client> {
-    if (httpClient) return httpClient;
+    if (stopping) throw new Error('Happy MCP bridge owner has closed');
+    if (httpConnection) return httpConnection;
     const client = new Client(
       { name: 'happy-stdio-bridge', version: '1.0.0' },
       { capabilities: {} }
     );
 
     const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
-    await client.connect(transport);
+    // Retain ownership before the first await: EOF must abort in-flight HTTP
+    // initialization, and concurrent tool calls must share this one client.
     httpClient = client;
-    return client;
+    httpConnection = client.connect(transport).then(async () => {
+      if (stopping) {
+        await client.close();
+        throw new Error('Happy MCP bridge owner has closed');
+      }
+      return client;
+    }).catch(async error => {
+      await client.close().catch(() => {});
+      if (httpClient === client) { httpClient = null; httpConnection = null; }
+      throw error;
+    });
+    return httpConnection;
   }
-
-  // Create STDIO MCP server
-  const server = new McpServer({
-    name: 'Happy MCP Bridge',
-    version: '1.0.0',
-  });
 
   registerHappyBridgeTools(server, ensureHttpClient);
 
   // Start STDIO transport
+  if (process.stdin.readableEnded || process.stdin.destroyed) return stopWithOwner();
   const stdio = new StdioServerTransport();
   await server.connect(withHappyMcpSchemaProfile(stdio, schemaProfile));
 }

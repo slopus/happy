@@ -32,7 +32,32 @@ Codex Ultra. If Codex's configured startup model is unavailable, an omitted mode
 uses the current native catalog's unique visible `isDefault` model instead;
 there is no first-item, parent-model or hardcoded fallback. If no unique default
 exists, the caller must specify a model. Actual returned codes are stored on the task. A revision uses the
-same child and resolved snapshot, including after a saved role is edited/deleted.
+same resolved role/model snapshot, including after a saved role is edited/deleted.
+
+After a confirmed completed/failed/cancelled revision is durably stored, the
+coordinator requests automatic archive and executor shutdown through a bound
+`delegation-retire` RPC. Waiting for input and uncertain/interrupted delivery do
+not authorize retirement. The worker checks its exact task binding, process,
+local input/root receipt and idle state before locking further input and using
+the ordinary full cleanup path. A missing old-worker handler never falls back to
+an unbound kill. Reconnect, startup and explicit task reads can retry an
+unconfirmed cleanup; no periodic polling is introduced. Cleanup failure does
+not erase or change a completed result.
+
+The retirement ACK confirms only that input is fenced and cleanup started.
+Completion is retained separately after OS-confirmed worker disappearance and
+fresh archived metadata. On worker exit, reconnect, startup or an explicit read,
+the daemon can repair a failed archive write for that exact stopped, owned child
+with a single encrypted metadata CAS. A version conflict remains unconfirmed
+until a later event; it never retries stale metadata or signals a process.
+
+The parent retains task history and results. An explicit revision starts a fresh
+child with the frozen execution snapshot and up to 200,000 characters of saved
+task instructions, context and results, keeping the original and newest
+revisions. Shortened fields and omitted older revisions are labeled. This is
+context reconstruction, not restoration of native tool history. Each version
+retains its own child identity so delayed exit, report and ACK events cannot
+replace or terminate the new child. The original child remains archived.
 
 Model/effort are optional overrides, not optional runtime settings. Codex startup
 waits for the native thread's actual configuration to be acknowledged in session

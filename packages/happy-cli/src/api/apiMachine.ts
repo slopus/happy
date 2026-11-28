@@ -24,7 +24,7 @@ import { homedir } from 'node:os';
 import { logger } from '@/ui/logger';
 import { withCodexAccountThread } from '@/codex/codexAccountThread';
 import { configuration } from '@/configuration';
-import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody, type Metadata } from './types';
+import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody, type Metadata, type ClientToServerEvents } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
@@ -77,6 +77,7 @@ interface ServerToDaemonEvents {
 }
 
 interface DaemonToServerEvents {
+    'update-metadata': ClientToServerEvents['update-metadata'];
     'machine-alive': (data: {
         machineId: string;
         time: number;
@@ -623,6 +624,22 @@ export class ApiMachineClient {
         const result = decrypt(encryption.encryptionKey, encryption.encryptionVariant, decodeBase64(response.result));
         if (result && typeof result === 'object' && 'error' in result && typeof result.error === 'string') throw new Error(result.error);
         return result as T;
+    }
+
+    /** One encrypted CAS for a session already authorized by the caller.
+     * The server must echo exactly the submitted ciphertext at the next version;
+     * conflicts, malformed receipts and timeouts never retry a stale mutation. */
+    async compareAndSetSessionMetadata(sessionId: string, encryption: { encryptionKey: Uint8Array; encryptionVariant: 'legacy' | 'dataKey' },
+        expectedVersion: number, metadata: Metadata): Promise<void> {
+        if (!this.socket?.connected) throw new Error('Machine relay is disconnected');
+        if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0 || expectedVersion >= Number.MAX_SAFE_INTEGER) throw new Error('Invalid session metadata version');
+        const encrypted = encodeBase64(encrypt(encryption.encryptionKey, encryption.encryptionVariant, metadata));
+        const answer = await this.socket.timeout(10_000).emitWithAck('update-metadata', {
+            sid: sessionId, expectedVersion, metadata: encrypted,
+        });
+        if (!answer || answer.result !== 'success' || answer.version !== expectedVersion + 1 || answer.metadata !== encrypted) {
+            throw new Error('Session metadata compare-and-set was not confirmed');
+        }
     }
 
     /**

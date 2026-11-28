@@ -129,6 +129,7 @@ type V3PostSessionMessagesResponse = {
 
 export class ApiSessionClient extends EventEmitter {
     private readonly delegationReporter: ReturnType<typeof createDelegationReporter> | null;
+    private delegationRetiring = false;
     private readonly scheduledRunTracker: ReturnType<typeof createScheduledRunTracker>;
     private readonly pendingUserInputIds = new Set<string>();
     private readonly acceptedDelegationInputs = new Set<string>();
@@ -425,10 +426,19 @@ export class ApiSessionClient extends EventEmitter {
         this.delegationReporter?.ready();
     }
 
+    canRetireDelegation(input: { localId: string; expectedTurnId?: string }): boolean {
+        return this.delegationReporter?.canRetire(input) ?? false;
+    }
+
+    beginDelegationRetirement(): void {
+        this.delegationRetiring = true;
+    }
+
     // Supplying both handlers installs them atomically before startup messages
     // replay, preserving file/text order and therefore attachment ownership.
     onUserMessage(callback: (data: UserMessage) => void, onFileEvent?: (data: FileEventMessage) => void) {
         this.pendingMessageCallback = message => {
+            if (this.delegationRetiring) return;
             if (message.meta?.delegation) {
                 if (!message.localId || !this.delegationReporter || this.acceptedDelegationInputs.has(message.localId)
                     || !this.delegationReporter.acceptMessage(message)) return;
@@ -460,6 +470,7 @@ export class ApiSessionClient extends EventEmitter {
         // The delegation coordinator owns the durable cancelled receipt after
         // the worker confirms exact queue removal. Do not emit a failed report.
         this.pendingUserInputIds.delete(localId);
+        this.delegationReporter?.acknowledgeQueuedCancellation(localId);
     }
 
     hasPendingUserInputs(): boolean {

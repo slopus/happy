@@ -40,7 +40,7 @@ async function fixture(waitTimeoutMs = 1000) {
             if (sendError) throw sendError;
             return { model: 'gemini-neon-actual', effort: 'high' };
         }),
-        cancel: vi.fn(async () => {}), isChildAlive: child => alive.has(child), publish: vi.fn(async () => {}),
+        cancel: vi.fn(async () => {}), retire: vi.fn(async () => {}), isChildAlive: child => alive.has(child), publish: vi.fn(async () => {}),
     };
     const service = await createDelegationService({ directory, deps, waitTimeoutMs }); disposers.push(service.dispose);
     await service.handle({ action: 'roles-save', parentSessionId: parent.id, role });
@@ -162,7 +162,7 @@ describe('persistent delegation coordinator', () => {
         const revised = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, protocolVersion: 2, requestId: 'one-off-v2',
             taskId: started.taskId!, intent: 'explicit', prompt: 'Make that shorter' });
         const second = await f.nextSent(1);
-        expect(second.child).toBe(first.child); expect(second.options).toMatchObject({ model: 'gemini-neon-actual', effort: 'high' });
+        expect(second.child).not.toBe(first.child); expect(second.options).toMatchObject({ model: 'gemini-neon-actual', effort: 'high' });
         expect(revised.taskId).toBe(started.taskId); finish(second);
     });
 
@@ -209,19 +209,128 @@ describe('persistent delegation coordinator', () => {
         expect(f.deps.spawn).toHaveBeenCalledTimes(1); expect(f.deps.send).toHaveBeenCalledTimes(1);
     });
 
-    it('revises the same live child and keeps historical results and its role snapshot', async () => {
+    it('rebuilds revisions in a fresh child with saved context and the frozen role snapshot', async () => {
         const f = await fixture();
         const first = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, roleId: role.id, requestId: 'request-one', prompt: 'First draft' });
         finish(await f.nextSent(), 'Version one'); await f.service.handle({ action: 'read', parentSessionId: f.parent.id, taskId: first.taskId! });
         await f.service.handle({ action: 'roles-delete', parentSessionId: f.parent.id, roleId: role.id });
         const second = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, taskId: first.taskId!, requestId: 'request-two', prompt: 'Make it shorter' });
-        const next = await f.nextSent(1); expect(next.child).toBe((await f.nextSent()).child); finish(next, 'Version two');
+        const next = await f.nextSent(1); expect(next.child).not.toBe((await f.nextSent()).child);
+        expect(next.prompt).toContain('First draft'); expect(next.prompt).toContain('Version one'); finish(next, 'Version two');
         const result = await f.service.handle({ action: 'read', parentSessionId: f.parent.id, taskId: second.taskId! });
         expect(result.task?.history.map(item => item.result?.text)).toEqual(['Version one', 'Version two']);
-        expect(f.deps.spawn).toHaveBeenCalledTimes(1);
+        expect(f.deps.spawn).toHaveBeenCalledTimes(2);
         f.alive.clear();
-        expect((await f.service.handle({ action: 'start', parentSessionId: f.parent.id, taskId: first.taskId!, requestId: 'request-three', prompt: 'Another revision' })).error).toContain('restoration is unsupported');
-        expect(f.deps.spawn).toHaveBeenCalledTimes(1);
+        expect((await f.service.handle({ action: 'start', parentSessionId: f.parent.id, taskId: first.taskId!, requestId: 'request-three', prompt: 'Another revision' })).success).toBe(true);
+        await f.nextSent(2); expect(f.deps.spawn).toHaveBeenCalledTimes(3);
+    });
+
+    it.each(['completed', 'failed', 'cancelled'] as const)('retires a %s child only after persisting its terminal result', async status => {
+        const f = await fixture();
+        vi.mocked(f.deps.retire).mockImplementation(async (child, binding, turnId) => {
+            const stored = JSON.parse(readFileSync(join(f.directory, 'tasks', `task-${binding.taskId}.json`), 'utf8'));
+            expect(stored.versions[0]).toMatchObject({ status, result: { text: 'Durable result' } });
+            expect(child).toBe('child-1'); expect(turnId).toBe('turn-1');
+        });
+        const waiting = f.service.handle({ action: 'start', parentSessionId: f.parent.id, roleId: role.id, requestId: 'terminal', prompt: 'Do task', wait: true });
+        finish(await f.nextSent(), 'Durable result', status); await waiting;
+        await vi.waitFor(() => expect(f.deps.retire).toHaveBeenCalledTimes(1));
+    });
+
+    it('does not retire waiting or uncertain delivery, and ignores an old child exit after a revision starts', async () => {
+        const f = await fixture();
+        const first = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, roleId: role.id, requestId: 'original', prompt: 'Do task' });
+        const sent = await f.nextSent(); const turn = startTurn(sent); sent.reporter.waitingForInput(true, turn);
+        await f.service.handle({ action: 'read', parentSessionId: f.parent.id, taskId: first.taskId! });
+        expect(f.deps.retire).not.toHaveBeenCalled();
+        sent.reporter.waitingForInput(false, turn); finish(sent, 'Original');
+        await f.service.handle({ action: 'read', parentSessionId: f.parent.id, taskId: first.taskId! });
+        const next = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, taskId: first.taskId!, requestId: 'revision', prompt: 'Revise' });
+        const revised = await f.nextSent(1);
+        await f.service.workerExited(sent.child);
+        expect((await f.service.handle({ action: 'read', parentSessionId: f.parent.id, taskId: next.taskId! })).task).toMatchObject({ childSessionId: revised.child, status: 'starting' });
+        expect(f.deps.retire).not.toHaveBeenCalledWith(revised.child, expect.anything(), expect.anything());
+        const repeated = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, roleId: role.id, requestId: 'original', prompt: 'Do task' });
+        expect(repeated.task).toMatchObject({ version: 1, childSessionId: sent.child });
+    });
+
+    it('preserves completed results when retirement fails and retries on restart without dispatching work', async () => {
+        const f = await fixture(); vi.mocked(f.deps.retire).mockRejectedValue(new Error('Relay offline'));
+        const response = f.service.handle({ action: 'start', parentSessionId: f.parent.id, roleId: role.id, requestId: 'retirement-failure', prompt: 'Do task', wait: true });
+        finish(await f.nextSent(), 'Saved'); const result = await response;
+        expect(result.task).toMatchObject({ status: 'completed', result: { text: 'Saved' } });
+        await vi.waitFor(() => expect(f.deps.retire).toHaveBeenCalledTimes(1));
+        f.service.dispose(); vi.mocked(f.deps.retire).mockResolvedValue(undefined);
+        const restarted = await createDelegationService({ directory: f.directory, deps: f.deps }); disposers.push(restarted.dispose);
+        await vi.waitFor(() => expect(f.deps.retire).toHaveBeenCalledTimes(2));
+        expect(f.deps.spawn).toHaveBeenCalledTimes(1); expect(f.deps.send).toHaveBeenCalledTimes(1);
+        expect((await restarted.handle({ action: 'read', parentSessionId: f.parent.id, taskId: result.taskId! })).task?.result?.text).toBe('Saved');
+    });
+
+    it('retains the child identity of legacy same-child history during migration', async () => {
+        const f = await fixture();
+        const input = { action: 'start' as const, parentSessionId: f.parent.id, roleId: role.id, requestId: 'legacy-original', prompt: 'Legacy instruction' };
+        const first = await f.service.handle(input); finish(await f.nextSent(), 'Legacy result');
+        await f.service.handle({ action: 'read', parentSessionId: f.parent.id, taskId: first.taskId! });
+        f.service.dispose();
+        const file = join(f.directory, 'tasks', `task-${first.taskId}.json`);
+        const stored = JSON.parse(readFileSync(file, 'utf8'));
+        delete stored.versions[0].childSessionId; delete stored.versions[0].retirementRequested;
+        writeDelegationJson(join(f.directory, 'tasks'), `task-${first.taskId}.json`, stored);
+        const reloaded = await createDelegationService({ directory: f.directory, deps: f.deps }); disposers.push(reloaded.dispose);
+        expect((await reloaded.handle(input)).task).toMatchObject({ version: 1, childSessionId: 'child-1', result: { text: 'Legacy result' } });
+        await reloaded.handle({ action: 'start', parentSessionId: f.parent.id, taskId: first.taskId!, requestId: 'after-migration', prompt: 'Revise' });
+        const next = await f.nextSent(1); expect(next.child).toBe('child-2');
+        expect((await reloaded.handle(input)).task?.childSessionId).toBe('child-1');
+    });
+
+    it('rechecks an accepted retirement after worker exit, reconnect and restart to recover an unpersisted archive', async () => {
+        const f = await fixture();
+        const waiting = f.service.handle({ action: 'start', parentSessionId: f.parent.id, roleId: role.id, requestId: 'archive-ack', prompt: 'Do task', wait: true });
+        finish(await f.nextSent(), 'Saved result'); const first = await waiting;
+        await vi.waitFor(() => {
+            const record = JSON.parse(readFileSync(join(f.directory, 'tasks', `task-${first.taskId}.json`), 'utf8'));
+            expect(record.versions[0].retirementRequested).toBe(true);
+        });
+        vi.mocked(f.deps.retire).mockClear();
+        await f.service.workerExited('child-1');
+        await vi.waitFor(() => expect(f.deps.retire).toHaveBeenCalledTimes(1));
+        await new Promise<void>(resolve => setImmediate(resolve));
+        f.service.republish();
+        await vi.waitFor(() => expect(f.deps.retire).toHaveBeenCalledTimes(2));
+        f.service.dispose();
+        const restarted = await createDelegationService({ directory: f.directory, deps: f.deps }); disposers.push(restarted.dispose);
+        await vi.waitFor(() => expect(f.deps.retire).toHaveBeenCalledTimes(3));
+        expect((await restarted.handle({ action: 'read', parentSessionId: f.parent.id, taskId: first.taskId! })).task?.result?.text).toBe('Saved result');
+        expect(f.deps.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not repeat a positively confirmed archive on every reconnect', async () => {
+        const f = await fixture(); vi.mocked(f.deps.retire).mockResolvedValue({ archived: true });
+        const waiting = f.service.handle({ action: 'start', parentSessionId: f.parent.id, roleId: role.id, requestId: 'confirmed-archive', prompt: 'Do task', wait: true });
+        finish(await f.nextSent(), 'Saved'); const result = await waiting;
+        await vi.waitFor(() => {
+            const stored = JSON.parse(readFileSync(join(f.directory, 'tasks', `task-${result.taskId}.json`), 'utf8'));
+            expect(stored.versions[0].retirementComplete).toBe(true);
+        });
+        f.service.republish(); await f.service.workerExited('child-1');
+        await f.service.handle({ action: 'read', parentSessionId: f.parent.id, taskId: result.taskId! });
+        expect(f.deps.retire).toHaveBeenCalledTimes(1);
+    });
+
+    it('consumes one worker-exit event that raced an in-flight retirement acknowledgement', async () => {
+        const f = await fixture(); const ack = deferred<void>();
+        vi.mocked(f.deps.retire).mockImplementationOnce(() => ack.promise).mockResolvedValue({ archived: true });
+        const waiting = f.service.handle({ action: 'start', parentSessionId: f.parent.id, roleId: role.id, requestId: 'exit-before-ack', prompt: 'Do task', wait: true });
+        finish(await f.nextSent(), 'Saved'); const result = await waiting;
+        expect(f.deps.retire).toHaveBeenCalledTimes(1);
+        await f.service.workerExited('child-1');
+        expect(f.deps.retire).toHaveBeenCalledTimes(1);
+        ack.resolve();
+        await vi.waitFor(() => expect(f.deps.retire).toHaveBeenCalledTimes(2));
+        await new Promise<void>(resolve => setImmediate(resolve));
+        expect(f.deps.retire).toHaveBeenCalledTimes(2);
+        expect((await f.service.handle({ action: 'read', parentSessionId: f.parent.id, taskId: result.taskId! })).task?.result?.text).toBe('Saved');
     });
 
     it('keeps cancellation pending until the bound child confirms cancelled', async () => {
@@ -297,14 +406,14 @@ describe('persistent delegation coordinator', () => {
         expect(read.task?.result).toBeUndefined(); expect(read.task?.status).toBe('starting');
     });
 
-    it('keeps a model-preparation failure bound to the same child, without a silent model fallback', async () => {
+    it('retires a model-preparation failure and rebuilds a revision without a silent model fallback', async () => {
         const f = await fixture(); f.setSendError(new DelegationDeliveryError('Neon is unavailable'));
         const response = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, roleId: role.id, requestId: 'request-one', prompt: 'Write README.', wait: true });
         expect(response.task).toMatchObject({ status: 'failed', childSessionId: 'child-1', model: 'Neon', error: 'Neon is unavailable' });
         f.setSendError(undefined);
         const revised = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, taskId: response.taskId!, requestId: 'request-two', prompt: 'Retry this task' });
         const sent = await f.nextSent(); finish(sent);
-        expect(revised.task?.childSessionId).toBe('child-1'); expect(f.deps.spawn).toHaveBeenCalledTimes(1);
+        expect(sent.child).toBe('child-2'); expect(f.deps.spawn).toHaveBeenCalledTimes(2);
     });
 
     it('preserves an unknown delivery outcome and reconciles a late real turn without resending', async () => {

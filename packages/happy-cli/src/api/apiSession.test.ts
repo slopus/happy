@@ -11,6 +11,8 @@ import type { Metadata, Session, Update } from './types';
 import { immediateCodexCommandEnvelopes } from '@/codex/codexImmediateCommand';
 import { z } from 'zod';
 import { DelegationRoleV1Schema, DelegatedTaskSummaryV1Schema, DelegationSnapshotV2Schema } from '@slopus/happy-wire';
+import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { delegationLocalId, writeDelegationBinding } from '@/daemon/delegation/journal';
 
 const {
     mockIo,
@@ -1374,6 +1376,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
     it('rejects delegated input without a bound reporter or with invalid provenance', () => {
         const client = new ApiSessionClient('fake-token', session);
+        expect(client.canRetireDelegation({ localId: 'delegation:forged:1:input', expectedTurnId: 'forged-root' })).toBe(false);
         const callback = vi.fn(); client.onUserMessage(callback);
         const message = { role: 'user', content: { type: 'text', text: 'not a verified task' }, localId: 'bad-input', meta: { delegation: {} } };
         (client as any).pendingMessageCallback(message);
@@ -1395,6 +1398,36 @@ describe('ApiSessionClient v3 messages API migration', () => {
         client.acknowledgeCancelledUserInput('preserved');
         expect(client.hasPendingUserInputs()).toBe(false);
         expect(reject).not.toHaveBeenCalled();
+    });
+
+    it('permits bound idle retirement only after exact queue removal is acknowledged through the real reporter', async () => {
+        const directory = await mkdtemp(join(tmpdir(), 'paws-retire-queued-'));
+        try {
+            const descriptor = { directory, taskId: 'queued-task', parentSessionId: 'queued-parent', nonce: 'a'.repeat(64) };
+            const binding = { taskId: descriptor.taskId, parentSessionId: descriptor.parentSessionId,
+                nonce: descriptor.nonce, version: 1, requestId: 'queued-request' };
+            const localId = delegationLocalId(binding);
+            writeDelegationBinding(directory, { ...binding, childSessionId: session.id, localId });
+            mockDelegationLaunchContext.mockReturnValue(descriptor);
+            const client = new ApiSessionClient('fake-token', session);
+            const queue = new MessageQueue2(() => 'one-mode');
+            client.onUserMessage(message => { queue.push(message.content.text, {}, undefined, message.localId, true); });
+            (client as any).pendingMessageCallback({ localId, content: { type: 'text', text: 'cancel before start' }, meta: { delegation: binding } });
+            expect(queue.size()).toBe(1);
+            expect(client.canRetireDelegation({ localId })).toBe(false);
+            expect(queue.removeByLocalId('another-input')).toBe(false);
+            expect(client.canRetireDelegation({ localId })).toBe(false);
+            expect(queue.removeByLocalId(localId)).toBe(true);
+            client.acknowledgeCancelledUserInput(localId);
+            expect(queue.size()).toBe(0);
+            expect(client.hasPendingUserInputs()).toBe(false);
+            expect(client.canRetireDelegation({ localId })).toBe(true);
+            expect(typeof (client as any).beginDelegationRetirement).toBe('function');
+            (client as any).beginDelegationRetirement();
+            (client as any).pendingMessageCallback({ localId: 'late-user-input', content: { type: 'text', text: 'must not enqueue' } });
+            expect(queue.size()).toBe(0);
+            expect(client.hasPendingUserInputs()).toBe(false);
+        } finally { await rm(directory, { recursive: true, force: true }); }
     });
 
     it.each(['discarded input', 'local command', 'informational event'] as const)('admits a scheduled prompt after a %s has been consumed', async reason => {

@@ -3,6 +3,7 @@ import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 import { DelegatedTaskStatusSchema, type DelegatedTaskStatus, type SessionEnvelope } from '@slopus/happy-wire';
 import { assertDelegationId, readDelegationJson, writeDelegationJson } from './store';
+import type { Metadata } from '@/api/types';
 
 export const DELEGATION_REPORTER_ENV = 'HAPPY_DELEGATION_REPORTER';
 export const DELEGATION_RESULT_TEXT_LIMIT = 64_000;
@@ -124,11 +125,66 @@ export function readDelegationReport(directory: string, filename: string): Deleg
 }
 const terminal = (status: DelegatedTaskStatus) => ['completed', 'failed', 'cancelled'].includes(status);
 
+const retireRequestSchema = z.object({ hostPid: z.number().int().positive(), localId: z.string().min(1).max(512),
+    expectedTurnId: z.string().min(1).max(256).optional() }).strict();
+export type DelegationRetireRequest = z.infer<typeof retireRequestSchema>;
+
+/** A failed or offline archive cannot leave the native process/bridge alive.
+ * Each cleanup has one deadline; no retries or status-query loop. */
+export async function finishDelegationRetirement(steps: ReadonlyArray<{ name: string; run(): unknown }>,
+    onError: (name: string, error: unknown) => void, timeoutMs = 10_000): Promise<boolean> {
+    let succeeded = true;
+    for (const step of steps) {
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+            await Promise.race([Promise.resolve().then(() => step.run()), new Promise<never>((_, reject) => {
+                timeout = setTimeout(() => reject(new Error(`Delegation retirement ${step.name} timed out`)), timeoutMs);
+            })]);
+        } catch (error) {
+            succeeded = false;
+            try { onError(step.name, error); } catch { /* Logging must not skip later cleanup. */ }
+        } finally { if (timeout) clearTimeout(timeout); }
+    }
+    return succeeded;
+}
+
+/** Check authority at the worker, then synchronously fence input/configuration
+ * before acknowledging. Cleanup runs through the runner's ordinary finalizer. */
+export function createDelegationRetireHandler(deps: {
+    launch: Pick<DelegationReporterDescriptor, 'taskId' | 'parentSessionId'> | null;
+    state(): { metadata: Pick<Metadata, 'hostPid' | 'parentSessionId' | 'delegatedTask' | 'application' | 'sandbox'> | null;
+        queueSize: number; pendingInputs: boolean; activeRootTurnId: string | null; thinking: boolean };
+    canRetire(input: DelegationRetireRequest): boolean;
+    retire(): void;
+}) {
+    let retiredRequest: string | undefined;
+    return (raw: unknown): { retiring: true } => {
+        const input = retireRequestSchema.parse(raw);
+        const state = deps.state(), launch = deps.launch, metadata = state.metadata;
+        if (!launch || input.hostPid !== process.pid || metadata?.hostPid !== process.pid
+            || metadata.parentSessionId !== launch.parentSessionId || metadata.delegatedTask?.taskId !== launch.taskId
+            || metadata.delegatedTask.parentSessionId !== launch.parentSessionId || metadata.application || metadata.sandbox?.enabled) {
+            throw new Error('Delegated worker retirement ownership changed');
+        }
+        const identity = JSON.stringify(input);
+        if (retiredRequest === identity) return { retiring: true };
+        if (retiredRequest || state.queueSize || state.pendingInputs
+            || (state.activeRootTurnId && state.activeRootTurnId !== input.expectedTurnId)
+            || (!input.expectedTurnId && (state.thinking || state.activeRootTurnId)) || !deps.canRetire(input)) {
+            throw new Error('Delegated worker has no matching settled input or became busy');
+        }
+        retiredRequest = identity;
+        deps.retire();
+        return { retiring: true };
+    };
+}
+
 /** A worker only reports its explicitly bound input and root turn. No timers or network requests. */
 export function createDelegationReporter({ descriptor, sessionId }: { descriptor: DelegationReporterDescriptor; sessionId: string }) {
     descriptorSchema.parse(descriptor);
     assertDelegationId(sessionId);
     const reports = new Map<string, DelegationJournalReport>();
+    const queuedCancellations = new Set<string>();
     let nativeReady = false;
     const save = (report: DelegationJournalReport): void => {
         report.sequence += 1;
@@ -138,6 +194,33 @@ export function createDelegationReporter({ descriptor, sessionId }: { descriptor
     const matchesDescriptor = (binding: DelegationMessageBinding) => binding.taskId === descriptor.taskId
         && binding.parentSessionId === descriptor.parentSessionId && binding.nonce === descriptor.nonce;
     return {
+        canRetire(input: Pick<DelegationRetireRequest, 'localId' | 'expectedTurnId'>): boolean {
+            const parts = input.localId.split(':');
+            if (parts.length !== 4 || parts[0] !== 'delegation' || parts[1] !== descriptor.taskId || !/^[1-9][0-9]*$/.test(parts[2])) return false;
+            try {
+                const binding = journalBindingSchema.parse(readDelegationJson(descriptor.directory, bindingName(descriptor.taskId, Number(parts[2]))));
+                if (!matchesDescriptor(binding) || binding.childSessionId !== sessionId || binding.localId !== input.localId
+                    || delegationLocalId(binding) !== input.localId) return false;
+                if (!input.expectedTurnId) {
+                    const prior = readDelegationJson(descriptor.directory, reportName(binding.taskId, binding.version), 4 * 1024 * 1024);
+                    if (reports.size === 0) return prior === null;
+                    const accepted = reports.get(input.localId);
+                    const saved = journalReportSchema.safeParse(prior);
+                    return reports.size === 1 && queuedCancellations.has(input.localId) && !!accepted && !accepted.turnId
+                        && saved.success && !saved.data.turnId && matchesDescriptor(saved.data)
+                        && saved.data.childSessionId === sessionId && saved.data.localId === input.localId;
+                }
+                if (!reports.has(input.localId)) return false;
+                const report = readDelegationReport(descriptor.directory, reportName(binding.taskId, binding.version));
+                return !!report && matchesDescriptor(report) && report.childSessionId === sessionId && report.localId === input.localId
+                    && report.requestId === binding.requestId && report.version === binding.version
+                    && report.turnId === input.expectedTurnId && terminal(report.status);
+            } catch { return false; }
+        },
+        acknowledgeQueuedCancellation(localId: string): void {
+            const report = reports.get(localId);
+            if (report && !report.turnId) queuedCancellations.add(localId);
+        },
         ready(): void {
             if (nativeReady) return;
             writeDelegationReady(descriptor.directory, { taskId: descriptor.taskId, parentSessionId: descriptor.parentSessionId,

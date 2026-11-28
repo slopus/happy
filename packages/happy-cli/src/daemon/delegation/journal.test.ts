@@ -1,11 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createEnvelope, type SessionEnvelope } from '@slopus/happy-wire';
 import { createDelegationReporter, DELEGATION_RESULT_TEXT_LIMIT, delegationLocalId, readDelegationReports, writeDelegationBinding,
     readDelegationReady, waitForDelegationReady, writeDelegationReady } from './journal';
 import { writeDelegationJson } from './store';
+import * as journal from './journal';
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -19,6 +20,94 @@ function fixture() {
     return { directory, descriptor, binding, localId, reporter, report: () => readDelegationReports(directory)[0] };
 }
 describe('delegation worker journal', () => {
+    it('bounds an unacknowledged retirement step once and still closes every execution resource with a failure outcome', async () => {
+        expect(typeof (journal as any).finishDelegationRetirement).toBe('function');
+        vi.useFakeTimers();
+        try {
+            const closed: string[] = [], errors: string[] = [];
+            const result = (journal as any).finishDelegationRetirement([
+                { name: 'archive', run: () => new Promise<void>(() => {}) },
+                { name: 'backend', run: () => { closed.push('backend'); } },
+                { name: 'bridge', run: () => { closed.push('bridge'); } },
+                { name: 'session', run: () => { closed.push('session'); } },
+            ], (name: string) => { errors.push(name); }, 100);
+            await vi.advanceTimersByTimeAsync(100);
+            expect(await result).toBe(false);
+            expect(closed).toEqual(['backend', 'bridge', 'session']);
+            expect(errors).toEqual(['archive']);
+            expect(vi.getTimerCount()).toBe(0);
+        } finally { vi.useRealTimers(); }
+    });
+    it.each(['completed', 'failed', 'cancelled'] as const)('permits retirement only after the exact %s root report is durable', status => {
+        const f = fixture();
+        expect(typeof (f.reporter as any).canRetire).toBe('function');
+        const canRetire = (turnId?: string, localId = f.localId) => (f.reporter as any).canRetire({ localId, expectedTurnId: turnId });
+        expect(canRetire()).toBe(true);
+        expect(canRetire(undefined, 'delegation:other-task:1:request-one')).toBe(false);
+        f.reporter.acceptMessage({ localId: f.localId, meta: { delegation: f.binding } });
+        expect(canRetire()).toBe(false);
+        f.reporter.observe(createEnvelope('agent', { t: 'turn-start', localIds: [f.localId] }, { turn: 'root-one' }));
+        f.reporter.waitingForInput(true, 'root-one');
+        expect(canRetire('root-one')).toBe(false);
+        f.reporter.observe(createEnvelope('agent', { t: 'turn-end', status }, { turn: 'root-one' }));
+        expect(canRetire('other-root')).toBe(false);
+        expect(canRetire('root-one')).toBe(true);
+        expect(f.report()).toMatchObject({ status, turnId: 'root-one' });
+    });
+
+    it('does not permit retirement from an interrupted root or a failed protected write', () => {
+        const f = fixture();
+        expect(typeof (f.reporter as any).canRetire).toBe('function');
+        f.reporter.acceptMessage({ localId: f.localId, meta: { delegation: f.binding } });
+        f.reporter.observe(createEnvelope('agent', { t: 'turn-start', localIds: [f.localId] }, { turn: 'root-one' }));
+        f.reporter.processorStartupFailed();
+        expect((f.reporter as any).canRetire({ localId: f.localId, expectedTurnId: 'root-one' })).toBe(false);
+        const path = join(f.directory, 'report-task-one-1.json'); rmSync(path); mkdirSync(path);
+        expect(() => f.reporter.observe(createEnvelope('agent', { t: 'turn-end', status: 'completed' }, { turn: 'root-one' }))).toThrow();
+        expect((f.reporter as any).canRetire({ localId: f.localId, expectedTurnId: 'root-one' })).toBe(false);
+    });
+
+    it('does not mistake a restarted reporter with an existing root receipt for a never-used worker', () => {
+        const f = fixture(); f.reporter.acceptMessage({ localId: f.localId, meta: { delegation: f.binding } });
+        f.reporter.observe(createEnvelope('agent', { t: 'turn-start', localIds: [f.localId] }, { turn: 'old-root' }));
+        f.reporter.processorStartupFailed();
+        const restarted = createDelegationReporter({ descriptor: f.descriptor, sessionId: 'child-one' });
+        expect(restarted.canRetire({ localId: f.localId })).toBe(false);
+    });
+
+    it('locks a bound terminal worker synchronously before acknowledging retirement, including a native completion still unwinding', () => {
+        const f = fixture();
+        expect(typeof (journal as any).createDelegationRetireHandler).toBe('function');
+        f.reporter.acceptMessage({ localId: f.localId, meta: { delegation: f.binding } });
+        f.reporter.observe(createEnvelope('agent', { t: 'turn-start', localIds: [f.localId] }, { turn: 'root-one' }));
+        f.reporter.observe(createEnvelope('agent', { t: 'turn-end', status: 'completed' }, { turn: 'root-one' }));
+        let retiring = false;
+        const handler = (journal as any).createDelegationRetireHandler({
+            launch: f.descriptor, state: () => ({ metadata: { hostPid: process.pid, parentSessionId: 'parent-one',
+                delegatedTask: { taskId: 'task-one', parentSessionId: 'parent-one' } }, queueSize: 0, pendingInputs: false,
+                activeRootTurnId: 'root-one', thinking: true }),
+            canRetire: (input: any) => (f.reporter as any).canRetire(input), retire: () => { retiring = true; },
+        });
+        expect(handler({ hostPid: process.pid, localId: f.localId, expectedTurnId: 'root-one' })).toEqual({ retiring: true });
+        expect(retiring).toBe(true);
+    });
+
+    it.each(['unbound', 'pid', 'parent', 'task', 'application', 'sandbox', 'queue', 'pending', 'new-root', 'unconfirmed'] as const)(
+        'refuses unsafe retirement for %s without stopping a worker', condition => {
+            const f = fixture();
+            expect(typeof (journal as any).createDelegationRetireHandler).toBe('function');
+            let retired = false;
+            const state = { metadata: { hostPid: process.pid, parentSessionId: 'parent-one',
+                delegatedTask: { taskId: condition === 'task' ? 'other' : 'task-one', parentSessionId: condition === 'parent' ? 'other' : 'parent-one' },
+                ...(condition === 'application' ? { application: {} } : {}), ...(condition === 'sandbox' ? { sandbox: { enabled: true } } : {}) },
+                queueSize: condition === 'queue' ? 1 : 0, pendingInputs: condition === 'pending',
+                activeRootTurnId: condition === 'new-root' ? 'another-root' : null, thinking: false };
+            const handler = (journal as any).createDelegationRetireHandler({ launch: condition === 'unbound' ? null : f.descriptor,
+                state: () => state, canRetire: () => condition !== 'unconfirmed', retire: () => { retired = true; } });
+            expect(() => handler({ hostPid: condition === 'pid' ? process.pid + 1 : process.pid,
+                localId: f.localId, expectedTurnId: 'root-one' })).toThrow();
+            expect(retired).toBe(false);
+        });
     it('accepts only its protected task binding and exact delegated local ID', () => {
         const f = fixture();
         expect(f.reporter.acceptMessage({ localId: f.localId, meta: { delegation: { ...f.binding, nonce: 'b'.repeat(64) } } })).toBe(false);

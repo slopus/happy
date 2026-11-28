@@ -7,6 +7,9 @@ import { logger } from '@/ui/logger';
 
 export type DelegationPhase = 'prepared' | 'spawning' | 'sending' | 'sent';
 export interface StoredDelegationVersion extends DelegatedTaskVersion {
+    childSessionId?: string;
+    retirementRequested?: boolean;
+    retirementComplete?: boolean;
     requestId: string;
     inputHash: string;
     phase: DelegationPhase;
@@ -29,6 +32,9 @@ export interface StoredDelegationTask {
 
 const safeId = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const storedVersionSchema = DelegatedTaskVersionSchema.extend({
+    childSessionId: z.string().regex(safeId).optional(),
+    retirementRequested: z.boolean().optional(),
+    retirementComplete: z.boolean().optional(),
     requestId: z.string().regex(safeId),
     inputHash: z.string().regex(/^[a-f0-9]{64}$/),
     phase: z.enum(['prepared', 'spawning', 'sending', 'sent']),

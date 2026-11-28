@@ -59,19 +59,20 @@ async function fixture() {
     const grant = vi.fn(async () => ({ grant: 'opaque-grant' }));
     const spawn = vi.fn(async (_options: SpawnSessionOptions): Promise<SpawnSessionResult> => ({ type: 'success', sessionId: 'child' }));
     const findSession = vi.fn((id: string) => sessions.get(id));
-    const fetchSnapshot = vi.fn(async (id: string) => snapshots.get(id) ?? null);
+    const fetchSnapshot = vi.fn(async (id: string): ReturnType<Parameters<typeof createDaemonDelegationRuntime>[0]['fetchSnapshot']> => snapshots.get(id) ?? null);
+    const compareAndSet = vi.fn(async () => {});
     const isConnected = vi.fn(() => true);
     const retainRecoveredSession = vi.fn((tracked: TrackedSession) => { sessions.set(tracked.happySessionId!, tracked); });
     const coordinator = {} as Awaited<ReturnType<typeof createDelegationService>>;
     mocks.createService.mockResolvedValue(coordinator);
     const runtime = await createDaemonDelegationRuntime({ directory: '/private-test/delegation', machineId: 'machine', serverUrl: 'https://relay.test', token: 'relay-test-token',
-        api: { createCodexSessionGrant: grant }, machineClient: { callSessionRpc: rpc as ApiMachineClient['callSessionRpc'], isConnected }, findSession, fetchSnapshot, spawn, retainRecoveredSession });
+        api: { createCodexSessionGrant: grant }, machineClient: { callSessionRpc: rpc as ApiMachineClient['callSessionRpc'], isConnected, compareAndSetSessionMetadata: compareAndSet }, findSession, fetchSnapshot, spawn, retainRecoveredSession });
     expect(runtime).toBe(coordinator);
     const deps = (mocks.createService.mock.calls.at(-1)![0] as Parameters<typeof createDelegationService>[0]).deps;
     const options: DelegationSendOptions = { agent: 'antigravity', permissionMode: 'yolo', model: 'Neon', effort: 'high',
         appendSystemPrompt: context.appendSystemPrompt, delegation: binding,
         persistPrepared: vi.fn(async () => {}), assertCurrent: vi.fn(async () => {}) };
-    return { deps, sessions, parent, child, parentMetadata, childMetadata, context, prepare, rpc, grant, spawn, findSession, fetchSnapshot, options, isConnected, retainRecoveredSession,
+    return { deps, sessions, parent, child, parentMetadata, childMetadata, context, prepare, rpc, grant, spawn, findSession, fetchSnapshot, options, isConnected, retainRecoveredSession, compareAndSet,
         persist(id: 'parent' | 'child') {
             const value = sessions.get(id)!;
             value.happySessionMetadataFromLocalWebhook = JSON.parse(JSON.stringify(snapshots.get(id)!.metadata)) as Metadata;
@@ -271,8 +272,167 @@ describe('daemon delegation runtime authorization and delivery', () => {
     });
 });
 
+describe('bound delegated worker retirement', () => {
+    async function retireFixture() {
+        const f = await fixture();
+        f.child.happySessionMetadataFromLocalWebhook = structuredClone(f.childMetadata);
+        f.rpc.mockResolvedValue({ retiring: true } as never);
+        return f;
+    }
+
+    it('uses only the exact bound native retirement RPC and retained worker PID', async () => {
+        const f = await retireFixture();
+        await f.deps.retire('child', binding, 'root-one');
+        expect(f.fetchSnapshot).toHaveBeenCalledTimes(1);
+        expect(f.rpc.mock.calls.map(call => [call[0], call[2], call[3]])).toEqual([
+            ['child', 'delegation-retire', { hostPid: 222, localId, expectedTurnId: 'root-one' }],
+        ]);
+        expect(process.kill).toHaveBeenCalledWith(222, 0);
+        expect(vi.mocked(process.kill).mock.calls.every(call => call[1] === 0)).toBe(true);
+        expect(axios.post).not.toHaveBeenCalled(); expect(f.spawn).not.toHaveBeenCalled(); expect(f.grant).not.toHaveBeenCalled();
+    });
+
+    it('passes no root-turn field for a queued input cancelled before it ran', async () => {
+        const f = await retireFixture();
+        await f.deps.retire('child', binding);
+        expect(f.rpc).toHaveBeenCalledWith('child', f.child.encryption, 'delegation-retire', { hostPid: 222, localId });
+    });
+
+    it('uses a persisted child retained positive PID without requiring an active lifecycle context', async () => {
+        const f = await retireFixture(); f.persist('child');
+        await f.deps.retire('child', binding, 'root-one');
+        expect(process.kill).toHaveBeenCalledWith(222, 0);
+        expect(process.kill).not.toHaveBeenCalledWith(0, 0);
+        expect(f.rpc).toHaveBeenCalledTimes(1);
+        expect(f.rpc).toHaveBeenCalledWith('child', f.child.encryption, 'delegation-retire', { hostPid: 222, localId, expectedTurnId: 'root-one' });
+        expect(f.retainRecoveredSession).not.toHaveBeenCalled();
+    });
+
+    it.each(['archived', 'archiveRequested'] as const)('still retires a live worker whose metadata is %s', async lifecycleState => {
+        const f = await retireFixture(); f.childMetadata.lifecycleState = lifecycleState;
+        await f.deps.retire('child', binding, 'root-one');
+        expect(f.rpc).toHaveBeenCalledTimes(1);
+        expect(f.rpc.mock.calls[0][2]).toBe('delegation-retire');
+    });
+
+    it('accepts an OS-confirmed disappearance only after fresh archived metadata confirms the retained ownership', async () => {
+        const f = await retireFixture(); f.childMetadata.lifecycleState = 'archived';
+        vi.mocked(process.kill).mockImplementation(() => { throw Object.assign(new Error('gone'), { code: 'ESRCH' }); });
+        await f.deps.retire('child', binding, 'root-one');
+        expect(f.fetchSnapshot).toHaveBeenCalledTimes(1);
+        expect(f.fetchSnapshot.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(process.kill).mock.invocationCallOrder[0]);
+        expect(f.rpc).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, 'running', 'archiveRequested'] as const)('does not equate ESRCH with archived when lifecycle is %s', async lifecycleState => {
+        const f = await retireFixture(); f.childMetadata.lifecycleState = lifecycleState;
+        vi.mocked(process.kill).mockImplementation(() => { throw Object.assign(new Error('gone'), { code: 'ESRCH' }); });
+        await expect(f.deps.retire('child', binding, 'root-one')).rejects.toThrow();
+        expect(f.rpc).not.toHaveBeenCalled();
+    });
+
+    it('keeps a denied OS probe unknown even when metadata says archived', async () => {
+        const f = await retireFixture(); f.childMetadata.lifecycleState = 'archived';
+        vi.mocked(process.kill).mockImplementation(() => { throw Object.assign(new Error('denied'), { code: 'EPERM' }); });
+        await expect(f.deps.retire('child', binding, 'root-one')).rejects.toThrow();
+        expect(f.rpc).not.toHaveBeenCalled();
+        expect(f.compareAndSet).not.toHaveBeenCalled();
+    });
+
+    it('repairs a failed archive after the exact owned worker is confirmed dead with a fresh metadata version', async () => {
+        const f = await retireFixture();
+        f.fetchSnapshot.mockResolvedValueOnce({ metadata: f.childMetadata, agentState: null, metadataVersion: 7 });
+        vi.mocked(process.kill).mockImplementation(() => { throw Object.assign(new Error('gone'), { code: 'ESRCH' }); });
+        await f.deps.retire('child', binding, 'root-one');
+        expect(f.compareAndSet).toHaveBeenCalledWith('child', f.child.encryption, 7,
+            expect.objectContaining({ ...f.childMetadata, lifecycleState: 'archived', archiveReason: 'Delegated task finished' }));
+        expect(f.rpc).not.toHaveBeenCalled();
+        expect(vi.mocked(process.kill).mock.calls.every(call => call[1] === 0)).toBe(true);
+    });
+
+    it('preserves an unconfirmed archive when its stopped-worker metadata CAS loses a race', async () => {
+        const f = await retireFixture();
+        f.fetchSnapshot.mockResolvedValueOnce({ metadata: f.childMetadata, agentState: null, metadataVersion: 7 });
+        vi.mocked(process.kill).mockImplementation(() => { throw Object.assign(new Error('gone'), { code: 'ESRCH' }); });
+        f.compareAndSet.mockRejectedValueOnce(new Error('Metadata version mismatch'));
+        await expect(f.deps.retire('child', binding, 'root-one')).rejects.toThrow('version mismatch');
+        expect(f.compareAndSet).toHaveBeenCalledTimes(1); expect(f.rpc).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, { success: true }, { retiring: false }, { retiring: true, extra: true }, 'retiring'])('does not acknowledge an invalid native retirement reply %j', async reply => {
+        const f = await retireFixture(); f.rpc.mockResolvedValue(reply as never);
+        await expect(f.deps.retire('child', binding, 'root-one')).rejects.toThrow();
+        expect(f.rpc.mock.calls.map(call => call[2])).toEqual(['delegation-retire']);
+        expect(vi.mocked(process.kill).mock.calls.every(call => call[1] === 0)).toBe(true);
+    });
+
+    it('leaves an old worker without the bound handler unconfirmed without a generic kill fallback', async () => {
+        const f = await retireFixture(); f.rpc.mockRejectedValue(new Error('Unknown RPC method delegation-retire'));
+        await expect(f.deps.retire('child', binding, 'root-one')).rejects.toThrow('Unknown RPC method');
+        expect(f.rpc.mock.calls.map(call => call[2])).toEqual(['delegation-retire']);
+        expect(vi.mocked(process.kill).mock.calls.every(call => call[1] === 0)).toBe(true);
+        expect(axios.post).not.toHaveBeenCalled();
+    });
+
+    it.each(['root-session', 'self-parent', 'daemon-pid', 'parent-pid'])('refuses to retire a %s target', async condition => {
+        const f = await retireFixture(); let id = 'child'; let target = binding;
+        if (condition === 'root-session') id = 'parent';
+        if (condition === 'self-parent') target = { ...binding, parentSessionId: 'child' };
+        if (condition === 'daemon-pid' || condition === 'parent-pid') {
+            const pid = condition === 'daemon-pid' ? process.pid : 111;
+            f.child.pid = pid; f.childMetadata.hostPid = pid; f.child.happySessionMetadataFromLocalWebhook!.hostPid = pid;
+        }
+        await expect(f.deps.retire(id, target, 'root-one')).rejects.toThrow();
+        expect(f.rpc).not.toHaveBeenCalled(); expect(process.kill).not.toHaveBeenCalled();
+    });
+
+    it.each(['missing-retained', 'machine', 'pid', 'path', 'flavor', 'account', 'parent', 'task', 'task-parent', 'application', 'sandbox', 'retained-application', 'retained-sandbox'])('rejects changed or foreign %s ownership before probing or retiring', async condition => {
+        const f = await retireFixture();
+        if (condition === 'missing-retained') delete f.child.happySessionMetadataFromLocalWebhook;
+        if (condition === 'machine') f.childMetadata.machineId = 'foreign-machine';
+        if (condition === 'pid') f.childMetadata.hostPid = 333;
+        if (condition === 'path') f.childMetadata.path = '/different-project';
+        if (condition === 'flavor') f.childMetadata.flavor = 'codex';
+        if (condition === 'account') f.childMetadata.codexAccountProfileId = 'different-account';
+        if (condition === 'parent') f.childMetadata.parentSessionId = 'foreign-parent';
+        if (condition === 'task') f.childMetadata.delegatedTask!.taskId = 'foreign-task';
+        if (condition === 'task-parent') f.childMetadata.delegatedTask!.parentSessionId = 'foreign-parent';
+        if (condition === 'application') f.childMetadata.application = {} as Metadata['application'];
+        if (condition === 'sandbox') f.childMetadata.sandbox = { enabled: true } as Metadata['sandbox'];
+        if (condition === 'retained-application') f.child.happySessionMetadataFromLocalWebhook!.application = {} as Metadata['application'];
+        if (condition === 'retained-sandbox') f.child.happySessionMetadataFromLocalWebhook!.sandbox = { enabled: true } as Metadata['sandbox'];
+        await expect(f.deps.retire('child', binding, 'root-one')).rejects.toThrow();
+        expect(f.rpc).not.toHaveBeenCalled(); expect(process.kill).not.toHaveBeenCalled();
+    });
+
+    it.each([0, -1, 1.5, undefined, Number.NaN])('rejects retained PID %s without any process-group probe', async pid => {
+        const f = await retireFixture(); f.persist('child'); f.child.happySessionMetadataFromLocalWebhook!.hostPid = pid;
+        await expect(f.deps.retire('child', binding, 'root-one')).rejects.toThrow();
+        expect(process.kill).not.toHaveBeenCalled(); expect(f.rpc).not.toHaveBeenCalled();
+    });
+
+    it.each(['pid', 'encryption', 'task-binding'])('rejects a local %s replacement while the fresh snapshot is pending', async condition => {
+        const f = await retireFixture();
+        f.fetchSnapshot.mockImplementationOnce(async () => {
+            if (condition === 'pid') f.child.pid = 333;
+            if (condition === 'encryption') f.child.encryption!.encryptionKey.fill(9);
+            if (condition === 'task-binding') f.child.happySessionMetadataFromLocalWebhook!.delegatedTask!.taskId = 'replacement-task';
+            return { metadata: f.childMetadata, agentState: null };
+        });
+        await expect(f.deps.retire('child', binding, 'root-one')).rejects.toThrow();
+        expect(f.rpc).not.toHaveBeenCalled(); expect(process.kill).not.toHaveBeenCalled();
+    });
+
+    it('requires a connected relay for a live worker even after it was marked archived', async () => {
+        const f = await retireFixture(); f.childMetadata.lifecycleState = 'archived'; f.isConnected.mockReturnValue(false);
+        await expect(f.deps.retire('child', binding, 'root-one')).rejects.toThrow();
+        expect(f.rpc).not.toHaveBeenCalled();
+    });
+});
+
 describe('native preparation durability before relay delivery', () => {
     async function preparedRuntime() {
+        vi.spyOn(process, 'kill').mockReturnValue(true);
         vi.mocked(axios.post).mockReset();
         const actualService = await vi.importActual<typeof import('./delegation/service')>('./delegation/service');
         const actualJournal = await vi.importActual<typeof import('./delegation/journal')>('./delegation/journal');
@@ -296,15 +456,20 @@ describe('native preparation durability before relay delivery', () => {
                 const request = body as { model?: string; effort?: string };
                 return { model: request.model ?? nativeDefault.model, effort: request.effort ?? nativeDefault.effort };
             }
+            if (method === 'delegation-retire') return { retiring: true };
             return { success: true };
         });
         const spawn = vi.fn(async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
             const descriptor = parseDelegationReporterDescriptor(options.environmentVariables![DELEGATION_REPORTER_ENV])!;
-            sessions.set('child', { happySessionId: 'child', pid: process.pid, startedBy: 'daemon', encryption });
-            snapshots.set('child', { metadata: { ...metadata, parentSessionId: 'parent',
-                delegatedTask: { taskId: descriptor.taskId, parentSessionId: 'parent' } }, agentState: null });
-            reporter = createDelegationReporter({ descriptor, sessionId: 'child' }); reporter.ready();
-            return { type: 'success', sessionId: 'child' };
+            const id = `child-${sessions.size}`;
+            const pid = process.pid + sessions.size + 100;
+            const childMetadata = { ...metadata, hostPid: pid, parentSessionId: 'parent', delegatedTask: { taskId: descriptor.taskId, parentSessionId: 'parent' } };
+            sessions.set(id, { happySessionId: id, pid, startedBy: 'daemon', encryption, happySessionMetadataFromLocalWebhook: childMetadata });
+            snapshots.set(id, { metadata: childMetadata, agentState: null });
+            reporter = createDelegationReporter({ descriptor, sessionId: id });
+            actualJournal.writeDelegationReady(descriptor.directory, { taskId: descriptor.taskId, parentSessionId: descriptor.parentSessionId,
+                nonce: descriptor.nonce, childSessionId: id, hostPid: pid, readyAt: Date.now() });
+            return { type: 'success', sessionId: id };
         });
         const input: Parameters<typeof createDaemonDelegationRuntime>[0] = { directory, machineId: 'machine',
             serverUrl: 'https://relay.test', token: 'test-token', api: { createCodexSessionGrant: vi.fn() },
@@ -330,7 +495,7 @@ describe('native preparation durability before relay delivery', () => {
             beforePrepare(value: () => void) { beforePrepare = value; } };
     }
 
-    it('saves the native ACK before HTTP and retains it after fast completion, restart and same-child revision', async () => {
+    it('saves the native ACK before HTTP and retains it after completion, restart and a fresh-child revision', async () => {
         const f = await preparedRuntime(); let service = await f.create();
         const input = { protocolVersion: 2 as const, action: 'start' as const, parentSessionId: 'parent', requestId: 'native-first',
             intent: 'explicit' as const, route: { agent: 'antigravity' as const }, prompt: 'Draft once' };
@@ -357,7 +522,8 @@ describe('native preparation durability before relay delivery', () => {
         expect(f.delivered.map(({ model, effort, version }) => ({ model, effort, version }))).toEqual([
             { model: 'native-first', effort: 'high', version: 1 }, { model: 'native-first', effort: 'high', version: 2 },
         ]);
-        expect(f.spawn).toHaveBeenCalledTimes(1);
+        expect(f.spawn).toHaveBeenCalledTimes(2);
+        expect(new Set(f.delivered.map(value => value.child)).size).toBe(2);
     });
 
     it('does not dispatch or expose an unpersisted native ACK when its task snapshot save fails', async () => {

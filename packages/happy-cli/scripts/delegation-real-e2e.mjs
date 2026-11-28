@@ -9,9 +9,52 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { pathToFileURL } from 'node:url';
 import { parseHarnessOwnerCredentials, resolveHarnessMachineEncryption, resolveHarnessSessionEncryption } from './delegation-real-e2e-credentials.mjs';
 import { parseHarnessArguments, createNativeParentProof, buildNativeParentPrompt } from './delegation-real-e2e-protocol.mjs';
 import { createEventDrivenMessageReplay } from './delegation-real-e2e-replay.mjs';
+
+export function createDelegatedSessionTracker({ knownSessions, parentSessionIds, createdSessionIds, revisions }) {
+    const children = new Map();
+    return { observe(parentId, tasks) {
+        assert(parentSessionIds.has(parentId) && knownSessions.has(parentId), 'Refusing delegated sessions from a parent outside this run');
+        for (const task of tasks ?? []) {
+            assert.equal(task.parentSessionId, parentId, 'Delegated task parent binding changed');
+            if (!task.childSessionId) continue;
+            assert(typeof task.id === 'string' && task.id.length && Number.isSafeInteger(task.version) && task.version > 0,
+                'Delegated revision identity is missing');
+            assert(typeof task.childSessionId === 'string', 'Delegated child identity is missing');
+            const key = JSON.stringify([parentId, task.id, task.version]);
+            const previous = children.get(key);
+            if (previous) {
+                assert.equal(task.childSessionId, previous, 'Delegated revision child identity changed');
+                continue;
+            }
+            assert(!knownSessions.has(task.childSessionId), 'Each delegated revision must create a fresh child');
+            children.set(key, task.childSessionId);
+            knownSessions.add(task.childSessionId);
+            createdSessionIds.push(task.childSessionId);
+            revisions.push({ parentSessionId: parentId, taskId: task.id, version: task.version, childSessionId: task.childSessionId });
+        }
+    } };
+}
+
+export function waitForHarnessEvent(changes, check, label, { timeout = 180_000, failure = () => undefined } = {}) {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (error, value) => {
+            if (settled) return;
+            settled = true; clearTimeout(timer); changes.off('change', inspect); error ? reject(error) : resolve(value);
+        };
+        const inspect = () => {
+            try { const error = failure(); if (error) throw error; const value = check(); if (value) finish(undefined, value); }
+            catch (error) { finish(error); }
+        };
+        const timer = setTimeout(() => finish(new Error(`One event wait timed out: ${label}`)), timeout);
+        changes.on('change', inspect);
+        inspect();
+    });
+}
 
 async function main() {
 const cases = ['Codex -> Antigravity', 'Antigravity -> Codex'];
@@ -21,7 +64,7 @@ const nativeParentRequested = args.get('native-parent') === true;
 if (!args.get('run')) {
     const plan = JSON.stringify({ mode: 'dry-run', connects: false, startsWorkers: false, nativeParentRequested, requiredArguments: required,
         dataKeyOnlyArguments: ['retained-sessions (absolute path to the selected daemon’s existing sessions.json)'],
-        cases, checks: ['actual native model code', 'encrypted result return', 'same task revision reuses child', 'confirmed cancellation', 'revision after cancellation', 'parent metadata publication'],
+        cases, checks: ['actual native model code', 'encrypted result return', 'same task revision creates a fresh child', 'prior revision results remain in parent task history', 'terminal delegated children archive through metadata events', 'confirmed cancellation', 'revision after cancellation', 'parent metadata publication'],
         ...(nativeParentRequested ? { nativeParentChecks: ['real agent_roles(list) and delegate_task calls in the submitted parent root', 'new child task completed with unique result marker', 'parent final markers and completed root'] } : {}),
         scope: 'New dedicated parents and their children only; no existing chat history is read.',
         command: `pnpm exec tsx scripts/delegation-real-e2e.mjs --run${nativeParentRequested ? ' --native-parent true' : ''} --server <origin> --machine <id> --credentials <private-owner-or-cli-json> --retained-sessions <absolute-existing-daemon-sessions.json> --project <dedicated-existing-project> --codex-model <code> --agy-model <code-or-unambiguous-label> --output <private-report.json>` }, null, 2);
@@ -71,7 +114,12 @@ const earlyMetadata = new Map();
 const changes = new EventEmitter();
 let connectionFailure;
 const evidence = { runId, startedAt: new Date().toISOString(), server, machineId, project, nativeParentRequested,
-    parentModelInvokedMcp: false, nativeParentCoverageComplete: false, nativeParentCases: [], cases: [], createdSessionIds: [] };
+    parentModelInvokedMcp: false, nativeParentCoverageComplete: false, nativeParentCases: [], cases: [], createdSessionIds: [], createdDelegationRevisions: [] };
+const delegatedSessions = createDelegatedSessionTracker({ knownSessions, parentSessionIds,
+    createdSessionIds: evidence.createdSessionIds, revisions: evidence.createdDelegationRevisions });
+function trackParentTasks(id) {
+    if (parentSessionIds.has(id)) delegatedSessions.observe(id, records.get(id)?.metadata.delegatedTasks);
+}
 
 async function http(endpoint) {
     const response = await fetch(new URL(endpoint, server), { headers: { Authorization: `Bearer ${credentials.token}` }, signal: AbortSignal.timeout(30_000) });
@@ -94,6 +142,7 @@ async function loadCreatedSession(id) {
     if (buffered?.version > record.version) { record.metadata = decrypt(encryption, buffered.value); record.version = buffered.version; }
     earlyMetadata.delete(id);
     records.set(id, record);
+    trackParentTasks(id);
     changes.emit('change');
     return record;
 }
@@ -121,22 +170,14 @@ socket.on('update', event => {
         } else if (body.metadata.version > record.version) {
             record.metadata = decrypt(record.encryption, body.metadata.value);
             record.version = body.metadata.version;
+            trackParentTasks(body.id);
         }
         changes.emit('change');
     } catch { connectionFailure = new Error('Could not verify a scoped metadata event'); changes.emit('change'); }
 });
 socket.on('disconnect', () => { connectionFailure = new Error('Acceptance socket disconnected; no polling fallback'); changes.emit('change'); });
 function eventWait(check, label, timeout = 180_000) {
-    return new Promise((resolve, reject) => {
-        const finish = (error, value) => { clearTimeout(timer); changes.off('change', inspect); error ? reject(error) : resolve(value); };
-        const inspect = () => {
-            try { if (connectionFailure) throw connectionFailure; const value = check(); if (value) finish(undefined, value); }
-            catch (error) { finish(error); }
-        };
-        const timer = setTimeout(() => finish(new Error(`One event wait timed out: ${label}`)), timeout);
-        changes.on('change', inspect);
-        inspect();
-    });
+    return waitForHarnessEvent(changes, check, label, { timeout, failure: () => connectionFailure });
 }
 async function rpc(id, encryption, method, input, timeout = 100_000) {
     const result = await socket.timeout(timeout).emitWithAck('rpc-call', { method: `${id}:${method}`,
@@ -148,6 +189,7 @@ const machineRpc = (method, input) => rpc(machineId, machineEncryption, method, 
 async function delegation(parentId, input) {
     const result = await machineRpc('delegation', { ...input, parentSessionId: parentId });
     assert(result.success, `Delegation action failed: ${input.action}`);
+    if (result.task) delegatedSessions.observe(parentId, [result.task]);
     return result;
 }
 function waitTask(parentId, taskId, version, desired) {
@@ -157,6 +199,21 @@ function waitTask(parentId, taskId, version, desired) {
         if (desired.includes(summary.status)) return summary;
         assert(!['failed', 'interrupted', 'waiting-for-input', 'completed', 'cancelled'].includes(summary.status), `Unexpected task lifecycle: ${summary.status}`);
     }, `${taskId} revision ${version}: ${desired.join('/')}`);
+}
+async function verifyChild(parent, target, summary, { archived = false } = {}) {
+    delegatedSessions.observe(parent.id, [summary]);
+    assert(summary.childSessionId, 'Expected a new independent delegated worker');
+    const child = records.get(summary.childSessionId) ?? await loadCreatedSession(summary.childSessionId);
+    assert.equal(child.metadata.machineId, machineId);
+    assert.equal(child.metadata.path, project);
+    assert.equal(child.metadata.parentSessionId, parent.id);
+    assert.equal(child.metadata.delegatedTask?.taskId, summary.id);
+    assert.equal(child.metadata.flavor, target.agent);
+    assert.equal(summary.model, target.actual.model, 'Task did not preserve the acknowledged native model code');
+    assert.equal(child.metadata.currentModelCode, summary.model, 'Native worker metadata disagrees with the actual model code');
+    if (archived) await eventWait(() => records.get(summary.childSessionId)?.metadata.lifecycleState === 'archived',
+        `${summary.id} revision ${summary.version}: delegated child archived`);
+    return child;
 }
 async function spawnParent(agent) {
     let codexSessionGrant;
@@ -218,38 +275,34 @@ async function runDirection(parent, target) {
     const taskId = start.taskId ?? start.task?.id;
     assert(taskId, 'Start did not return a task identity');
     const first = await waitTask(parent.id, taskId, 1, ['completed']);
-    assert(first.childSessionId && !knownSessions.has(first.childSessionId), 'Expected a new independent delegated worker');
-    knownSessions.add(first.childSessionId);
-    evidence.createdSessionIds.push(first.childSessionId);
-    const child = await loadCreatedSession(first.childSessionId);
-    assert.equal(child.metadata.parentSessionId, parent.id);
-    assert.equal(child.metadata.delegatedTask?.taskId, taskId);
-    assert.equal(child.metadata.flavor, target.agent);
-    assert.equal(first.model, target.actual.model, 'Task did not preserve the acknowledged native model code');
-    assert.equal(child.metadata.currentModelCode, first.model, 'Native worker metadata disagrees with the actual model code');
+    await verifyChild(parent, target, first, { archived: true });
     const firstRead = (await delegation(parent.id, { action: 'read', taskId })).task;
     assert(firstRead.result?.text.includes(`${marker}_V1`), 'Encrypted task result was not returned');
     await delegation(parent.id, { action: 'start', requestId: `${runId}-${parent.agent}-2`, taskId, prompt: `Revise this same task: reply exactly ${marker}_V2. Do not use tools or modify files.`, wait: false });
     const second = await waitTask(parent.id, taskId, 2, ['completed']);
-    assert.equal(second.childSessionId, first.childSessionId, 'Revision spawned a different worker');
+    await verifyChild(parent, target, second, { archived: true });
     const secondRead = (await delegation(parent.id, { action: 'read', taskId })).task;
     assert(secondRead.result?.text.includes(`${marker}_V2`));
     assert(secondRead.history.find(version => version.version === 1)?.result?.text.includes(`${marker}_V1`), 'Prior revision result was lost');
     await delegation(parent.id, { action: 'start', requestId: `${runId}-${parent.agent}-3`, taskId,
         prompt: `Cancellation acceptance: run one terminal command node -e "setTimeout(() => console.log('WAIT_COMPLETE'), 45000)" and only after it finishes reply ${marker}_V3. Do not edit files or access external services.`, wait: false });
-    await waitTask(parent.id, taskId, 3, ['running']);
+    const running = await waitTask(parent.id, taskId, 3, ['running']);
+    await verifyChild(parent, target, running);
     await delegation(parent.id, { action: 'cancel', taskId });
     const cancelled = await waitTask(parent.id, taskId, 3, ['cancelled']);
-    assert.equal(cancelled.childSessionId, first.childSessionId);
+    await verifyChild(parent, target, cancelled, { archived: true });
     await delegation(parent.id, { action: 'start', requestId: `${runId}-${parent.agent}-4`, taskId, prompt: `After cancellation, revise this same task: reply exactly ${marker}_V4. Do not use tools or modify files.`, wait: false });
     const fourth = await waitTask(parent.id, taskId, 4, ['completed']);
-    assert.equal(fourth.childSessionId, first.childSessionId, 'Cancellation made the worker unusable for a revision');
+    await verifyChild(parent, target, fourth, { archived: true });
     const readback = (await delegation(parent.id, { action: 'read', taskId })).task;
     assert(readback.result?.text.includes(`${marker}_V4`));
+    for (const version of [1, 2]) assert(readback.history.find(item => item.version === version)?.result?.text.includes(`${marker}_V${version}`), 'Prior revision result was lost');
     assert.equal(readback.history.find(version => version.version === 3)?.status, 'cancelled');
-    evidence.cases.push({ parent: parent.agent, executor: target.agent, parentSessionId: parent.id, childSessionId: first.childSessionId,
-        taskId, actualModelCode: first.model, actualEffort: first.effort, revisions: readback.history.map(version => ({ version: version.version, status: version.status })),
-        resultReturned: true, parentMetadataPublished: true, sameChildAcrossRevisions: true, cancellationConfirmed: true });
+    const childByVersion = new Map([first, second, cancelled, fourth].map(version => [version.version, version.childSessionId]));
+    evidence.cases.push({ parent: parent.agent, executor: target.agent, parentSessionId: parent.id,
+        childSessionIds: [...childByVersion.values()],
+        taskId, actualModelCode: first.model, actualEffort: first.effort, revisions: readback.history.map(version => ({ version: version.version, status: version.status, childSessionId: childByVersion.get(version.version) })),
+        resultReturned: true, parentMetadataPublished: true, freshChildAcrossRevisions: true, priorRevisionResultsPreserved: true, terminalChildrenArchived: true, cancellationConfirmed: true });
     return { roleId };
 }
 async function runNativeParentDirection(parent, target, roleId) {
@@ -290,20 +343,13 @@ async function runNativeParentDirection(parent, target, roleId) {
         const task = verified.task;
         assert.equal(task.agent, target.agent, 'Native parent selected a different executor');
         assert.equal(task.model, target.actual.model, 'Native parent selected a different native model');
-        assert(!knownSessions.has(task.childSessionId), 'Native parent did not create a new independent child task');
-        knownSessions.add(task.childSessionId);
-        evidence.createdSessionIds.push(task.childSessionId);
-        const child = await loadCreatedSession(task.childSessionId);
-        assert.equal(child.metadata.parentSessionId, parent.id);
-        assert.equal(child.metadata.delegatedTask?.taskId, task.id);
-        assert.equal(child.metadata.flavor, target.agent);
-        assert.equal(child.metadata.currentModelCode, task.model, 'Native child model metadata disagrees with its task');
+        await verifyChild(parent, target, task, { archived: true });
         const readback = (await delegation(parent.id, { action: 'read', taskId: task.id })).task;
         assert.equal(readback.status, 'completed');
         assert(readback.result?.text.includes(childMarker), 'The actual native child result lacks its unique marker');
         evidence.nativeParentCases.push({ parent: parent.agent, executor: target.agent, parentSessionId: parent.id, childSessionId: task.childSessionId,
             taskId: task.id, rootTurnId: verified.rootTurnId, actualModelCode: task.model, toolCalls: verified.toolCalls,
-            parentFinalMarkersVerified: true, childResultMarkerVerified: true, parentRootCompleted: true, childTaskCompleted: true });
+            parentFinalMarkersVerified: true, childResultMarkerVerified: true, parentRootCompleted: true, childTaskCompleted: true, childArchived: true });
         evidence.parentModelInvokedMcp = true;
     } finally { replay.stop(); nativeParentReplays.delete(parent.id); }
 }
@@ -333,16 +379,19 @@ try {
     evidence.finishedAt = new Date().toISOString();
     await fs.writeFile(outputPath, JSON.stringify(evidence, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
     console.log(JSON.stringify({ status: evidence.status, report: outputPath, createdSessionIds: evidence.createdSessionIds,
+        createdDelegationRevisions: evidence.createdDelegationRevisions,
         caseCount: evidence.cases.length, nativeParentCaseCount: evidence.nativeParentCases.length }));
     // Keep dedicated sessions and role/task evidence reviewable. No daemon change,
     // cleanup RPC, old-session read, or automatic replacement worker is performed.
 }
 }
 
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
 try { await main(); }
 catch {
     // Credential JSON parsing, filesystem errors and provider failures may carry
     // private snippets or structured values. Never print their messages/stacks.
     console.error('Scoped delegation acceptance could not initialize or save evidence; check explicit arguments, private credentials and retained-session access.');
     process.exitCode = 1;
+}
 }

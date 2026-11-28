@@ -29,6 +29,8 @@ const mocks = vi.hoisted(() => {
     processorStarting: vi.fn(() => true),
     processorReady: vi.fn(() => true),
     reportDelegationReady: vi.fn(),
+    canRetireDelegation: vi.fn(() => false),
+    beginDelegationRetirement: vi.fn(),
     declareDelegationSupport: vi.fn(),
     updateMetadata: vi.fn(),
     updateMetadataAndAwait: vi.fn(async (_handler: (metadata: any) => any) => {}),
@@ -245,6 +247,7 @@ describe('runAcp', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.mockSession.canRetireDelegation.mockReturnValue(false);
     mocks.resetAgentState();
     mocks.metadataListeners.clear();
     mocks.connectedListeners.clear();
@@ -1426,6 +1429,31 @@ describe('runAcp', () => {
     } finally { await mocks.getKillHandler()!(); await run; }
   });
 
+  it.each(['none', 'rejected', 'ignored'] as const)('retires a verified idle child and closes every resource when archive acknowledgement is %s', async failureMode => {
+    const failedArchive = failureMode !== 'none';
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      expect(mocks.sessionHandlers.has('delegation-retire')).toBe(true);
+      mocks.mockSession.canRetireDelegation.mockReturnValue(true);
+      if (failureMode === 'rejected') mocks.mockSession.updateMetadataAndAwait.mockRejectedValue(new Error('archive acknowledgement failed'));
+      if (failureMode === 'ignored') mocks.mockSession.updateMetadataAndAwait.mockResolvedValue(undefined);
+      expect(await mocks.sessionHandlers.get('delegation-retire')!({ hostPid: process.pid, localId: 'delegation:task:1:request' })).toEqual({ retiring: true });
+      expect(mocks.mockSession.beginDelegationRetirement).toHaveBeenCalledOnce();
+      await expect(mocks.sessionHandlers.get('delegation-prepare')!({ permissionMode: 'default' })).rejects.toThrow('worker changed or ended');
+      mocks.getUserMessageHandler()!({ content: { text: 'must not start after retirement' } });
+      await run;
+      expect(mocks.backendState.prompts).toEqual([]);
+      expect(mocks.backendState.cancelCalls).toEqual([]);
+      expect(mocks.backendState.disposeCalls).toBe(1);
+      if (!failedArchive) expect(mocks.mockSession.getMetadata().lifecycleState).toBe('archived');
+      expect(mocks.mockSession.sendSessionDeath).toHaveBeenCalledOnce();
+      expect(mocks.mockSession.close).toHaveBeenCalledOnce();
+      expect(exit).toHaveBeenCalledWith(failedArchive ? 1 : 0);
+    } finally { if (!mocks.backendState.disposeCalls) { await mocks.getKillHandler()!(); await run; } exit.mockRestore(); }
+  });
+
   it.each(['gemini-4-neon', 'Gemini 4 Neon', 'gemini 4 neon', 'Neon'])('prepares the advertised native model for %s and confirms refreshed effort', async requested => {
     mocks.backendState.startSessionMessages = [delegationConfig()];
     let actualModel = 'gemini-4-argon';
@@ -1582,6 +1610,7 @@ describe('runAcp', () => {
       await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
       const staleContext = mocks.sessionHandlers.get('delegation-context')!;
       const stalePrepare = mocks.sessionHandlers.get('delegation-prepare')!;
+      const staleRetire = mocks.sessionHandlers.get('delegation-retire')!;
       const freshHandlers = new Map<string, any>();
       const replacement = { ...mocks.mockSession, sessionId: 'session-2', getMetadata: vi.fn(() => ({ ...mocks.mockSession.getMetadata() })),
         declareDelegationSupport: vi.fn(() => {
@@ -1591,10 +1620,11 @@ describe('runAcp', () => {
         updateMetadataAndAwait: vi.fn(async (handler: any) => { replacement.getMetadata.mockReturnValue(handler(replacement.getMetadata())); }) };
       mocks.mockSetupOfflineReconnection.mock.calls[0][0].onSessionSwap(replacement);
       expect(mocks.mockStartHappyServer.mock.calls[0][1].currentDelegationSessionId()).toBe('session-2');
-      expect([...freshHandlers.keys()]).toEqual(expect.arrayContaining(['delegation-context', 'delegation-prepare', 'delegation-abort']));
+      expect([...freshHandlers.keys()]).toEqual(expect.arrayContaining(['delegation-context', 'delegation-prepare', 'delegation-abort', 'delegation-retire']));
       expect(replacement.declareDelegationSupport).toHaveBeenCalledExactlyOnceWith('antigravity');
       await expect(staleContext({})).rejects.toThrow('worker changed');
       await expect(stalePrepare({ model: 'Argon', permissionMode: 'default' })).rejects.toThrow('worker changed');
+      await expect(staleRetire({ hostPid: process.pid, localId: 'delegation:task:1:request' })).rejects.toThrow('ownership changed');
       expect(await freshHandlers.get('delegation-prepare')({ model: 'Argon', permissionMode: 'default' })).toEqual({ model: 'gemini-4-argon', effort: 'medium' });
       expect(replacement.updateMetadataAndAwait).toHaveBeenCalledOnce();
     } finally { await mocks.getKillHandler()!(); await run; }

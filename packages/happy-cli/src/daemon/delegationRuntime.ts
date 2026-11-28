@@ -8,7 +8,7 @@ import { encodeBase64, encrypt } from '@/api/encryption';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import type { TrackedSession } from './types';
 import { createDelegationService, DelegationDeliveryError } from './delegation/service';
-import { delegationLocalId, waitForDelegationReady } from './delegation/journal';
+import { DelegationMessageBindingSchema, delegationLocalId, waitForDelegationReady } from './delegation/journal';
 import { delegationPermissionMode } from './delegationPermissions';
 import { projectDelegationSnapshotV1 } from '@/delegation/compatibility';
 
@@ -17,15 +17,18 @@ const runtimeContextSchema = z.object({ agent: z.enum(['codex', 'antigravity']),
 const nativeCode = z.string().trim().min(1).max(256).refine(value => !/[\u0000-\u001f]/.test(value));
 const preparedSchema = z.object({ model: nativeCode, effort: nativeCode.optional() });
 const grantSchema = z.object({ grant: z.string().min(1).max(8192).refine(value => !/\s/.test(value)) });
+const retirementReplySchema = z.object({ retiring: z.literal(true) }).strict();
+const retirementTurnSchema = z.string().min(1).max(256).optional();
 const archived = (metadata: Metadata) => ['archived', 'archiveRequested'].includes(metadata.lifecycleState ?? '');
 const undelivered = (error: unknown, fallback: string) => error instanceof DelegationDeliveryError ? error
     : new DelegationDeliveryError(error instanceof Error ? error.message : fallback);
 
 export async function createDaemonDelegationRuntime(input: {
     directory: string; machineId: string; serverUrl: string; token: string;
-    api: Pick<ApiClient, 'createCodexSessionGrant'>; machineClient: Pick<ApiMachineClient, 'callSessionRpc' | 'isConnected'>;
+    api: Pick<ApiClient, 'createCodexSessionGrant'>; machineClient: Pick<ApiMachineClient, 'callSessionRpc' | 'isConnected'>
+        & Partial<Pick<ApiMachineClient, 'compareAndSetSessionMetadata'>>;
     findSession(id: string): TrackedSession | undefined;
-    fetchSnapshot(id: string, tracked: TrackedSession): Promise<{ metadata: Metadata; agentState: AgentState | null } | null>;
+    fetchSnapshot(id: string, tracked: TrackedSession): Promise<{ metadata: Metadata; agentState: AgentState | null; metadataVersion?: number } | null>;
     spawn(options: SpawnSessionOptions): Promise<SpawnSessionResult>;
     retainRecoveredSession(tracked: TrackedSession): void;
 }) {
@@ -38,7 +41,8 @@ export async function createDaemonDelegationRuntime(input: {
             recovered: tracked.startedBy === 'persisted' && tracked.pid === 0,
             retainedIdentity: metadata ? { machineId: metadata.machineId, path: metadata.path, flavor: metadata.flavor,
                 hostPid: metadata.hostPid, codexAccountProfileId: metadata.codexAccountProfileId, parentSessionId: metadata.parentSessionId,
-                delegatedTask: metadata.delegatedTask ? { ...metadata.delegatedTask } : undefined } : undefined };
+                delegatedTask: metadata.delegatedTask ? { ...metadata.delegatedTask } : undefined,
+                application: Boolean(metadata.application), sandbox: Boolean(metadata.sandbox?.enabled) } : undefined };
     }
     function ownedSession(id: string) {
         const tracked = sessionRecord(id);
@@ -180,6 +184,70 @@ export async function createDaemonDelegationRuntime(input: {
             if (child.recovered) await nativeContext(childId, child, await input.fetchSnapshot(childId, child));
             return input.machineClient.callSessionRpc<{ queuedCancelled?: boolean }>(childId, child.encryption, 'delegation-abort',
                 { localId: delegationLocalId(binding), ...(expectedTurnId ? { expectedTurnId } : {}) });
+        },
+        async retire(childId, rawBinding, expectedTurnId) {
+            const binding = DelegationMessageBindingSchema.parse(rawBinding);
+            const turnId = retirementTurnSchema.parse(expectedTurnId);
+            if (childId === binding.parentSessionId) throw new Error('A delegation parent cannot retire itself');
+            const child = sessionRecord(childId);
+            const retained = child.retainedIdentity;
+            const pid = child.recovered ? retained?.hostPid : child.pid;
+            const assertNotRoot = () => {
+                const parent = input.findSession(binding.parentSessionId);
+                const parentPid = parent?.startedBy === 'persisted' && parent.pid === 0
+                    ? parent.happySessionMetadataFromLocalWebhook?.hostPid : parent?.pid;
+                if (pid === process.pid || pid === parentPid) throw new Error('A root worker cannot be a delegation retirement target');
+            };
+            if (!Number.isSafeInteger(pid) || !pid || pid <= 0 || !retained || retained.hostPid !== pid
+                || retained.machineId !== input.machineId || retained.parentSessionId !== binding.parentSessionId
+                || retained.delegatedTask?.taskId !== binding.taskId || retained.delegatedTask.parentSessionId !== binding.parentSessionId
+                || retained.application || retained.sandbox) throw new Error('The retained delegated retirement identity is unavailable or changed');
+            assertNotRoot();
+            // Retirement permits archived metadata: an archive flag alone does
+            // not prove that this exact worker actually shut down.
+            const snapshot = await input.fetchSnapshot(childId, child);
+            const metadata = checkedSnapshot(child, snapshot, true);
+            if (metadata.hostPid !== pid || metadata.application || metadata.sandbox?.enabled
+                || metadata.parentSessionId !== binding.parentSessionId || metadata.delegatedTask?.taskId !== binding.taskId
+                || metadata.delegatedTask.parentSessionId !== binding.parentSessionId) throw new Error('The delegated retirement ownership changed');
+            const assertCurrent = () => {
+                const current = sessionRecord(childId);
+                const currentPid = current.recovered ? current.retainedIdentity?.hostPid : current.pid;
+                if (currentPid !== pid || JSON.stringify(current.retainedIdentity) !== JSON.stringify(retained)
+                    || current.encryption.encryptionVariant !== child.encryption.encryptionVariant
+                    || !Buffer.from(current.encryption.encryptionKey).equals(Buffer.from(child.encryption.encryptionKey))) {
+                    throw new Error('The delegated worker changed during retirement');
+                }
+                assertNotRoot();
+            };
+            assertCurrent();
+            try { process.kill(pid, 0); }
+            catch (error) {
+                assertCurrent();
+                // Only confirmed OS absence plus fresh, owned archived metadata
+                // is a completed cleanup. Permission errors remain uncertain.
+                if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+                    if (metadata.lifecycleState === 'archived') return { archived: true };
+                    if (!snapshot || !Number.isSafeInteger(snapshot.metadataVersion) || snapshot.metadataVersion! < 0
+                        || !input.machineClient.compareAndSetSessionMetadata) throw new Error('Cannot confirm the stopped delegated worker archive version');
+                    // The worker may have released its executor during an outage
+                    // before persisting archived metadata. Repair only this owned,
+                    // OS-confirmed dead identity with one versioned encrypted CAS.
+                    assertCurrent();
+                    await input.machineClient.compareAndSetSessionMetadata(childId, child.encryption, snapshot.metadataVersion!, {
+                        ...metadata, lifecycleState: 'archived', lifecycleStateSince: Date.now(),
+                        archivedBy: 'cli', archiveReason: 'Delegated task finished',
+                    });
+                    return { archived: true };
+                }
+                throw error;
+            }
+            if (!input.machineClient.isConnected()) throw new Error('Machine relay is disconnected');
+            assertCurrent();
+            retirementReplySchema.parse(await input.machineClient.callSessionRpc(childId, child.encryption, 'delegation-retire', {
+                hostPid: pid, localId: delegationLocalId(binding), ...(turnId ? { expectedTurnId: turnId } : {}),
+            }));
+            return undefined;
         },
         async isChildAlive(id) {
             try {
