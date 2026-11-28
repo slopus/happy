@@ -85,7 +85,7 @@ public final class AppCoordinator {
             guard let account = self?.context.account else { return }
             // The Happy account's filter showed a computer's V2: that
             // computer is home now, from the first screen.
-            await account.restore(openingAgentConnection: v2.takeFilterChoice(), preferred: v2.agentConnectionID)
+            await self?.context.restoreAccounts(openingAgentConnection: v2.takeFilterChoice(), preferred: v2.agentConnectionID)
             // Analytics waits for every signed-in account's opt-out, read off the main thread.
             Task { await Analytics.shared.accountsRestored() }
             self?.show(account.state)
@@ -182,7 +182,7 @@ public final class AppCoordinator {
 
     /// Foreground/background, for the server's push suppression.
     public func appStateChanged(active: Bool) {
-        Task { await context.account.agentConnections.setForeground(active) }
+        context.windowChanged(active: active)
         // Back from the background: what the store and RevenueCat say now (launch asks on its own).
         if active, backgrounded { Offers.shared.foreground() }
         backgrounded = !active

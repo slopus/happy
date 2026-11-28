@@ -10,6 +10,10 @@ import UIKit
 /// defaults suites, and account stores in Application Support.
 @MainActor
 enum CompositionRoot {
+    /// The one context, made by whichever comes first: the window's scene,
+    /// or Siri in an app launched with no window (`AgentIntents`).
+    static let context = makeContext()
+
     static func makeContext(bundle: Bundle = .main) -> AppContext {
         let variant = AppVariant.current(bundle: bundle)
         let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
