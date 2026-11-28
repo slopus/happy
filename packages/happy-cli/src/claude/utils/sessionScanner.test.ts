@@ -56,6 +56,26 @@ describe('sessionScanner', () => {
     }
   })
   
+  it('reads transcripts under the CLAUDE_CONFIG_DIR in its env', async () => {
+    // `--claude-env CLAUDE_CONFIG_DIR=...`: Claude writes there, not under this process's dir.
+    const otherConfigDir = join(testDir, 'other-claude')
+    const otherProjectDir = getProjectPath(testDir, { CLAUDE_CONFIG_DIR: otherConfigDir })
+    await mkdir(otherProjectDir, { recursive: true })
+    const sessionId = 'other-config-session'
+    await writeFile(join(otherProjectDir, `${sessionId}.jsonl`), JSON.stringify({
+      type: 'user', uuid: 'u-other', message: { content: 'hi' },
+    }) + '\n')
+
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      env: { ...process.env, CLAUDE_CONFIG_DIR: otherConfigDir },
+      onMessage: (msg) => collectedMessages.push(msg)
+    })
+    await scanner.onNewSession(sessionId)
+    await expect.poll(() => collectedMessages.map((m) => m.type === 'user' ? m.uuid : null)).toContain('u-other')
+  })
+
   it('should process initial session and resumed session correctly', async () => {
     // TEST SCENARIO:
     // Phase 1: User says "lol" → Assistant responds "lol" → Session closes

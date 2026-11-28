@@ -1,6 +1,9 @@
 package com.slopus.happy.ui.settings
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextEquals
@@ -16,7 +19,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.slopus.happy.model.Settings
 import com.slopus.happy.model.settings.PushToken
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
@@ -35,9 +37,6 @@ import com.slopus.happy.ui.connection.agentAppearanceSections
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.ui.theme.ThemePreference
-import com.slopus.happy.ui.voice.VoiceSettingsScreen
-import com.slopus.happy.ui.voice.VoiceUsageReading
-import com.slopus.happy.ui.voice.voicePageEntries
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -62,8 +61,9 @@ class SettingsSearchTest {
 
     private val done = mutableListOf<String>()
 
-    private fun showHappy() = rule.setHappyContent {
+    private fun showHappy(happyCloud: Boolean? = null) = rule.setHappyContent {
         SettingsScreen(
+            happyCloud = happyCloud,
             profile = SettingsFixtures.profile,
             about = AboutInfo("1.8.0 (412)"),
             accounts = SettingsFixtures.accounts,
@@ -83,6 +83,43 @@ class SettingsSearchTest {
     private fun resultTitles(): List<String> {
         val rows = rule.onAllNodesWithTag(ItemTags.TITLE, useUnmergedTree = true).fetchSemanticsNodes()
         return rows.map { it.config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString("") { t -> t.text } }
+    }
+
+    /**
+     * Happy Cloud's switch outside developer mode ([com.slopus.happy.ui.connection.rememberHappyCloudSwitch]
+     * gives null): no card, no footer, and search finds nothing.
+     */
+    @Test
+    fun happyCloudsSwitchIsAbsentOutsideDeveloperMode() {
+        showHappy(happyCloud = null)
+        rule.onAllNodesWithText("Happy Cloud", substring = true, useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(com.slopus.happy.ui.connection.HappyCloudSwitchTags.SWITCH, useUnmergedTree = true).assertCountEquals(0)
+        search("Happy Cloud")
+        assertTrue(resultTitles().none { "Cloud" in it })
+        rule.node(SettingsSearchTags.NOTHING_FOUND).assertExists()
+    }
+
+    /** In developer mode the switch is a card of its own, and search finds it. */
+    @Test
+    fun happyCloudsSwitchShowsInDeveloperMode() {
+        showHappy(happyCloud = false)
+        rule.onAllNodesWithTag(com.slopus.happy.ui.connection.HappyCloudSwitchTags.SWITCH, useUnmergedTree = true).assertCountEquals(1)
+        search("Happy Cloud")
+        assertTrue(resultTitles().toString(), "Happy Cloud" in resultTitles())
+    }
+
+    /** Developer mode's line under About, first, while it is on; the app's line either way. */
+    @Test
+    fun developerModesLineIsUnderAboutWhileItIsOn() {
+        var devMode by mutableStateOf(true)
+        rule.setHappyContent { AboutCard(AboutInfo("1.8.0 (412)", devMode = devMode), AboutActions()) }
+        val line = "Developer mode is on. Tap Version ten times to turn it off."
+        rule.onAllNodesWithText(line, substring = true).assertCountEquals(1)
+        rule.onAllNodesWithText("Happy Coder is a Codex", substring = true).assertCountEquals(1)
+        devMode = false
+        rule.waitForIdle()
+        rule.onAllNodesWithText(line, substring = true).assertCountEquals(0)
+        rule.onAllNodesWithText("Happy Coder is a Codex", substring = true).assertCountEquals(1)
     }
 
     @Test
@@ -227,12 +264,6 @@ class SettingsSearchTest {
 
     @Test
     fun backupEntriesNameItsRows() = assertPageShows({ backupPageEntries {} }, { BackupScreen("AAAAA-BBBBB", {}) })
-
-    @Test
-    fun voiceEntriesNameItsRows() = assertPageShows(
-        { voicePageEntries(Settings.Defaults, hasPro = false) {} },
-        { VoiceSettingsScreen(Settings.Defaults, {}, VoiceUsageReading.Unavailable, false, onSupport = {}, onLanguage = {}, onBack = {}) },
-    )
 
     @Test
     fun languageEntriesNameItsRows() {

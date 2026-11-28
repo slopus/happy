@@ -208,6 +208,18 @@ describe('desktop daemon readiness', () => {
   });
 });
 
+it.each([['logout'], ['login', '--force']])('auth %s preserves credentials and machine ID when stop fails', async (...args) => {
+  const { handleAuthCommand } = await import('./auth');
+  await writeJson(mocks.configuration.privateKeyFile, source);
+  await writeJson(mocks.configuration.settingsFile, { machineId: 'cli-machine' });
+  const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+  mocks.stopDaemon.mockRejectedValueOnce(new Error('Unconfirmed daemon exit'));
+  await expect(handleAuthCommand(args)).rejects.toThrow('Unconfirmed daemon exit');
+  expect(JSON.parse(await readFile(mocks.configuration.privateKeyFile, 'utf8'))).toEqual(source);
+  expect(JSON.parse(await readFile(mocks.configuration.settingsFile, 'utf8')).machineId).toBe('cli-machine');
+  expect(log.mock.calls.flat().join(' ')).not.toMatch(/✓|Successfully logged out|Stopped daemon/);
+});
+
 it('CLI logout removes only CLI authentication and machine ID, preserving Agent and history', async () => {
   const { handleAuthCommand } = await import('./auth');
   await writeJson(mocks.configuration.privateKeyFile, source);

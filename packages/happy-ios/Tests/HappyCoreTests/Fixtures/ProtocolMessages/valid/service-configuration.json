@@ -1,0 +1,29 @@
+{
+    "description": "A configuration transition.",
+    "message": {
+        "id": "msgconfiguration000000001",
+        "role": "service",
+        "createdAt": 1764100000021,
+        "content": [
+            {
+                "type": "configuration",
+                "before": {
+                    "providerId": "claude_work",
+                    "modelId": "claude-sonnet-4-5",
+                    "effort": "medium",
+                    "serviceTier": null,
+                    "permissionMode": "auto"
+                },
+                "after": {
+                    "providerId": "claude_work",
+                    "modelId": "claude-sonnet-4-5",
+                    "effort": "high",
+                    "serviceTier": null,
+                    "permissionMode": "auto"
+                },
+                "beforeMessageId": "msgusertext000000000000001"
+            }
+        ],
+        "metadata": {}
+    }
+}

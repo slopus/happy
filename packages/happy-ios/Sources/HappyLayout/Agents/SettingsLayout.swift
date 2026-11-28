@@ -91,6 +91,9 @@ public struct SettingsLayout: Equatable, Sendable {
         public static let toggle = CGSize(width: 63, height: 28)
         public static let separator: CGFloat = 1 / 3
         public static let bottom: CGFloat = 32
+        /// A field typed in (a page's text rows): kept this far clear of
+        /// the bar and the keyboard.
+        public static let fieldMargin: CGFloat = 24
         /// Searching with nothing found: the line, under the bar.
         public static let emptyTop: CGFloat = 32
         public static let emptyHeight: CGFloat = 24
@@ -263,6 +266,28 @@ public struct SettingsLayout: Equatable, Sendable {
         let top = -insets.top
         let bottom = max(top, contentHeight + insets.bottom - viewport)
         return min(bottom, max(top, offset))
+    }
+
+    /// What of a page `height` high the keyboard, its top at `keyboardTop`,
+    /// covers above the home indicator (`safeBottom`, which the page keeps
+    /// clear already): the inset that lets its last row scroll above the
+    /// keyboard. A keyboard down (nil) or floating clear of the foot covers
+    /// nothing.
+    public static func keyboardInset(keyboardTop: CGFloat?, height: CGFloat, safeBottom: CGFloat) -> CGFloat {
+        guard let keyboardTop else { return 0 }
+        return max(0, height - safeBottom - keyboardTop)
+    }
+
+    /// Where the page scrolls so `field` (in the page) shows whole between
+    /// `insets` (the bar above, the keyboard below), `Metrics.fieldMargin`
+    /// clear of each: the least move from `offset`, its top first when it
+    /// can't fit, as far as the page scrolls. Nil when it shows already.
+    public func fieldOffset(_ field: CGRect, offset: CGFloat, viewport: CGFloat, insets: LayoutInsets) -> CGFloat? {
+        let top = field.minY - Metrics.fieldMargin - insets.top
+        let bottom = field.maxY + Metrics.fieldMargin + insets.bottom - viewport
+        let wanted = offset > top ? top : offset < bottom ? min(top, bottom) : offset
+        let kept = keptOffset(wanted, viewport: viewport, insets: insets)
+        return kept == offset ? nil : kept
     }
 
     /// The width a card's footer is measured at.

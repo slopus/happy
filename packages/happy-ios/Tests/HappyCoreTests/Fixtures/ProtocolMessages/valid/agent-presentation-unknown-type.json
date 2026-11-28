@@ -1,0 +1,25 @@
+{
+    "description": "A tool presentation of a type this client does not know, as a newer server would send it. The message is valid: the client drops the presentation, shows the plain tool call, and logs it once.",
+    "message": {
+        "id": "msgunknownpresent0000001",
+        "role": "agent",
+        "createdAt": 1764100000000,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolunknownpresent000001",
+                "name": "hologram",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "hologram"
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

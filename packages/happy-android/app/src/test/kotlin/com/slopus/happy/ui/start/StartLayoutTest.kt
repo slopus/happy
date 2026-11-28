@@ -135,6 +135,8 @@ class StartLayoutTest {
         for (link in listOf("Ask on Discord", "DM @bra1n_dump on X", "DM @Ex3NDR on X", "Browse known issues", "Cancel")) {
             rule.onNodeWithText(link).assertExists()
         }
+        // Happy Cloud's switch is Settings' alone, never here.
+        rule.onNodeWithText("Happy Cloud", substring = true).assertDoesNotExist()
     }
 
     /** Use Happy Cloud: 12 under Start and as wide, 24 above the bottom; Start rises from its 48 to make room. */

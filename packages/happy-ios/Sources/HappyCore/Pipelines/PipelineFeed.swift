@@ -176,6 +176,11 @@ public actor PipelineFeed {
     }
 
     private func landPipeline(_ detail: Result<PipelineDetail?, Error>, versions: Result<[PipelineVersion], Error>?) {
+        // Uninstalled for the account: the screen leaves, with nothing said.
+        var refused = false
+        if case .failure(let error) = detail { refused = AccountFeatures.refused(error) }
+        if case .failure(let error)? = versions { refused = refused || AccountFeatures.refused(error) }
+        if refused { pipelineRead = Coalesced(); return }
         switch detail {
         case .success(let pipeline?):
             state.pipeline = pipeline
@@ -217,6 +222,7 @@ public actor PipelineFeed {
     }
 
     private func landRuns(_ result: Result<PipelineRunPage, Error>) {
+        if case .failure(let error) = result, AccountFeatures.refused(error) { runsRead = Coalesced(); return }
         switch result {
         case .success(let page):
             state.runs.entries = PipelineRunPage.merge(state.runs.entries, page: page.runs, complete: !pagedPastFirst)
@@ -253,6 +259,7 @@ public actor PipelineFeed {
 
     private func landMore(_ result: Result<PipelineRunPage, Error>) {
         state.runs.loadingMore = false
+        if case .failure(let error) = result, AccountFeatures.refused(error) { return }
         switch result {
         case .success(let page):
             let known = Set(state.runs.entries.map(\.id))
@@ -280,13 +287,15 @@ public actor PipelineFeed {
             let result = await Self.attempt { try await read(id, number) }
             if case .success(let version?) = result, let definition = version.definition {
                 self.landVersion(number, .loaded(definition))
+            } else if case .failure(let error) = result, AccountFeatures.refused(error) {
+                self.landVersion(number, nil)
             } else {
                 self.landVersion(number, .failed)
             }
         }
     }
 
-    private func landVersion(_ number: Int, _ definition: Definition) {
+    private func landVersion(_ number: Int, _ definition: Definition?) {
         state.definitions[number] = definition
         publish()
     }

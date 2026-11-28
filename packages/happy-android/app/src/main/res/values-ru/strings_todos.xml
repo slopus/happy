@@ -1,5 +1,4 @@
 <resources>
-    <string name="todo_new">Создать</string>
     <string name="todo_create_failed_title">Не создано</string>
     <string name="todo_create_failed">Не удалось создать. %1$s</string>
     <string name="todo_empty">Здесь пока ничего нет. Что нужно сделать?</string>
@@ -37,12 +36,14 @@
     <string name="todo_history_restored">Восстановлено</string>
     <string name="todo_history_moved">Перемещено</string>
     <string name="todo_history_changed_and">Изменено и %1$s</string>
-    <string name="todo_lists">Списки дел</string>
     <string name="todo_new_list">Новый список дел</string>
     <string name="todo_new_document">Новый документ</string>
     <string name="todo_no_lists">Списков дел пока нет. Нажмите +, чтобы создать список.</string>
     <string name="todo_loading_lists">Загрузка списков дел…</string>
     <string name="todo_unsupported">Этот Happy Agent не поддерживает списки дел.</string>
-    <string name="todo_nothing">Нет дел</string>
-    <plurals name="todo_outstanding"><item quantity="one">%1$d дело</item><item quantity="few">%1$d дела</item><item quantity="many">%1$d дел</item><item quantity="other">%1$d дела</item></plurals>
+    <string name="surface_lists_documents">Документы</string>
+    <string name="surface_lists_todos">Задачи</string>
+    <string name="document_lists_empty">Документов пока нет. Нажмите +, чтобы создать документ.</string>
+    <string name="document_lists_loading">Загрузка документов…</string>
+    <string name="document_lists_unsupported">Этот Happy Agent не поддерживает документы.</string>
 </resources>

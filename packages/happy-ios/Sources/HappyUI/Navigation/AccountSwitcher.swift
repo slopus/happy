@@ -43,6 +43,18 @@ final class AccountSwitcher: NSObject {
     /// The last change VoiceOver was told of, and the one on its way.
     private var announced: LinkState = .online
     private var announcement: DispatchWorkItem?
+    private lazy var menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in done(self?.menuElements() ?? []) }])
+
+    /// On a phone's home, where the drawer holds the switching: a tap
+    /// opens the drawer (`PhoneDrawer`) and the face stays. Nil: a tap
+    /// opens the menu.
+    var onTap: (() -> Void)? {
+        didSet {
+            button.showsMenuAsPrimaryAction = onTap == nil
+            button.menu = onTap == nil ? menu : nil
+            describe()
+        }
+    }
 
     init(context: AppContext, controller: UIViewController) {
         self.context = context
@@ -56,7 +68,8 @@ final class AccountSwitcher: NSObject {
         super.init()
         button.accessibilityIdentifier = "account-switcher"
         button.showsMenuAsPrimaryAction = true
-        button.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in done(self?.menuElements() ?? []) }])
+        button.menu = menu
+        button.addAction(UIAction { [weak self] _ in self?.onTap?() }, for: .primaryActionTriggered)
         observation = context.account.observeAccounts { [weak self] _ in self?.show() }
         show()
     }
@@ -64,6 +77,15 @@ final class AccountSwitcher: NSObject {
     /// The item the screen puts in its bar. One item throughout, so a
     /// screen places it once and it keeps itself up to date.
     var barItem: UIBarButtonItem { item }
+
+    /// The face itself, for a place outside a bar (the drawer's header).
+    var view: UIButton { button }
+
+    /// The widest the face may grow outside a bar.
+    var maximumWidth: CGFloat {
+        get { button.maximumWidth }
+        set { button.maximumWidth = newValue }
+    }
 
     private func name(_ account: AccountSummary) -> String {
         if account.isAgentConnection, let connection = context.account.agentConnections.accounts.first(where: { $0.id == account.id }) {
@@ -99,7 +121,7 @@ final class AccountSwitcher: NSObject {
     /// Steve".
     private func describe() {
         guard let active = current(in: context.account.accounts) else { return }
-        button.accessibilityLabel = Strings.AccountSwitcher.switcher
+        button.accessibilityLabel = onTap == nil ? Strings.AccountSwitcher.switcher : Strings.Drawer.open
         let status = Strings.HeaderStatus.title(link)
         button.accessibilityValue = [status, name(active)].compactMap { $0 }.joined(separator: ", ")
     }

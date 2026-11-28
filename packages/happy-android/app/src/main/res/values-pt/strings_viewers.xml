@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="viewers_title">Quem está aqui</string>
+    <string name="viewers_show">Ver quem está aqui</string>
+    <string name="viewers_here_now">aqui agora</string>
+    <string name="viewers_minutes_short">%1$d min</string>
+    <string name="viewers_editing">editando</string>
+    <string name="viewers_someone">Alguém</string>
+</resources>

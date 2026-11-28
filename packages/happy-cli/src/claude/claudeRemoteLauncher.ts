@@ -395,6 +395,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             slashCommands: metadata.slashCommands,
                             mcpServers: metadata.mcpServers,
                             skills: metadata.skills,
+                            // The model this turn runs: what the app's model chip shows while it has no pick.
+                            ...(metadata.model ? { currentModelCode: metadata.model } : {}),
                         }));
                     },
                     onUsageLimits: (patch) => {

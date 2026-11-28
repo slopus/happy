@@ -21,8 +21,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * The hosted call agent over the official SDK (iOS `ElevenLabsCallConnection`).
- * Apart from the relay's `ElevenLabsTransport` on purpose: the call's own
- * prompt goes as the agent's prompt override, with its one variable,
+ * The call's own prompt goes as the agent's prompt override, with its one variable,
  * `initialConversationContext`; no greeting or relay tools are sent. Tool
  * calls are answered one at a time, by their provider ID, and an ID seen
  * before is never run again. Everything the SDK reports comes back on
@@ -39,6 +38,7 @@ class ElevenLabsCallConnection private constructor(
 
     override suspend fun end() {
         ended = true
+        if (CallProbe.live === this) CallProbe.live = null
         tools.values.forEach { it.cancel() }
         tools.clear()
         withContext(NonCancellable) { session.endSession() }
@@ -172,6 +172,7 @@ class ElevenLabsCallConnection private constructor(
                 opened = session
                 return ElevenLabsCallConnection(session, scope, events).also { made ->
                     connection = made
+                    if (com.slopus.happy.BuildConfig.DEBUG) CallProbe.live = made
                     early.forEach { made.answer(it, events) }
                     early.clear()
                 }

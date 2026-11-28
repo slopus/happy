@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.auth.InvalidLinkException
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.components.PromptTags
 import com.slopus.happy.ui.setHappyContent
@@ -169,6 +170,27 @@ class ConnectFlowTest {
         rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
         rule.onNodeWithText("Failed to connect terminal").assertExists()
         assertEquals(0, successes)
+    }
+
+    /** A terminal code whose key isn't one says the link is invalid, not that connecting failed. */
+    @Test
+    fun aTerminalCodeWithoutAKeyIsAnInvalidLink() {
+        failWith = InvalidLinkException("Not a terminal link")
+        setTerminal()
+        rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
+        rule.onNodeWithText("Invalid authentication URL").assertExists()
+        rule.onNodeWithText("Failed to connect terminal").assertDoesNotExist()
+        assertEquals(0, successes)
+    }
+
+    /** Add says so too, for the code it would have made an account for. */
+    @Test
+    fun addSaysATerminalCodeWithoutAKeyIsAnInvalidLink() {
+        failWith = InvalidLinkException("Not a terminal link")
+        setStart()
+        rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
+        rule.onNodeWithText("Invalid authentication URL").assertExists()
+        rule.onNodeWithText("Failed to connect terminal").assertDoesNotExist()
     }
 
     @Test

@@ -1,5 +1,9 @@
 import Foundation
 import HappyWire
+import Tailcat
+#if canImport(Network)
+import Network
+#endif
 
 /// Something the core did that a part of the app outside it may want to
 /// hear of: today only product analytics, which lives in its own target.
@@ -110,7 +114,41 @@ public enum Problem: Sendable, Equatable {
             default: .unknown
             }
         case is POSIXError: self = .offline
-        default: self = .unknown
+        // A direct connection's: the tunnel to the computer, or the socket under it.
+        case let error as TailcatError:
+            self = switch error {
+            case .timedOut: .timeout
+            case .noRelay, .peerRejected: .unreachable
+            case .closed: .offline
+            default: .unknown
+            }
+        case let error as TransportError:
+            self = switch error {
+            case .timeout: .timeout
+            case .connectionFailed, .invalidEndpoint: .unreachable
+            case .closed: .offline
+            default: .unknown
+            }
+        case let error as TailcatTransportError:
+            self = switch error {
+            case .timedOut: .timeout
+            case .connectionRefused: .unreachable
+            case .closed, .connectionReset: .offline
+            default: .unknown
+            }
+        default:
+            #if canImport(Network)
+            if let error = error as? NWError {
+                self = switch error {
+                case .posix(.ETIMEDOUT): .timeout
+                case .posix(.ECONNREFUSED), .posix(.EHOSTUNREACH), .posix(.ENETUNREACH), .dns: .unreachable
+                case .posix: .offline
+                default: .network
+                }
+                return
+            }
+            #endif
+            self = .unknown
         }
     }
 }

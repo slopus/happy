@@ -6,8 +6,8 @@ import HappyWire
 /// Sections have no titles and nothing folds: each section is parted from
 /// the one before by a separator, and every nested row is shown.
 public enum SidebarRows {
-    /// Desktop's fixed Feed row under Artifacts, shown while the computer
-    /// keeps a feed for the person: how many entries they haven't seen.
+    /// Desktop's fixed Feed row (Activity), first of all, shown while the
+    /// computer keeps a feed for the person: how many entries they haven't seen.
     public struct FeedRow: Equatable, Sendable {
         public var unread: Int
         public init(unread: Int) { self.unread = unread }
@@ -15,8 +15,9 @@ public enum SidebarRows {
 
     /// `users`: the team members the tasks belong to, as last read, by ID.
     /// `feed`: the Feed's row, nil for none. `plugins`: a Happy Cloud
-    /// server's Plugins row under Artifacts. `pipelines`: its Pipelines row,
-    /// directly under Plugins, as desktop places it.
+    /// server's Plugins row under TODOs (Steve: desktop has it in Settings
+    /// alone, the phones and the iPad here too). `pipelines`: its Pipelines
+    /// row, directly under that.
     public static func make(_ desktop: DesktopSnapshot, settings: [String: JSONValue], users: [String: TeamUser] = [:], feed: FeedRow? = nil, plugins: Bool = false, pipelines: Bool = false) -> [Row] {
         var rows: [Row] = []
         var descendants = Set<String>()
@@ -53,41 +54,43 @@ public enum SidebarRows {
             row.canArchive = owner?.systemKey != "chief_of_staff" && owner?.canArchive == true
             row.activityTime = agent.activityAt.map(Rows.minute)
             row.muted = muted
+            if kind == "bot", let owner {
+                row.sharedBot = owner.botKind == .shared
+                row.editable = owner.editable == true
+            }
             rows.append(row)
             for child in children { agentRow(child, depth: depth + 1, muted: muted) }
         }
-        rows.append(Row(id: "direct:artifacts", nodeId: "direct:artifacts", kind: .space, label: "Artifacts", mark: .glyph("doc"), targetKind: "artifacts"))
-        if plugins {
-            rows.append(Row(id: "direct:plugins", nodeId: "direct:plugins", kind: .space, label: "Plugins", mark: .glyph("plugin"), targetKind: "plugins"))
+        func botRow(_ bot: DesktopSnapshot.Owner) {
+            guard let agent = bot.agent else { return }
+            let attention = settings["happy-desktop.bot.\(bot.id)"]
+            // A shared bot is a destination of its own, never hidden from the list.
+            guard bot.botKind == .shared || attention?["hidden"] != .bool(true) else { return }
+            agentRow(agent, depth: 0, label: bot.name, owner: bot, kind: "bot", muted: attention?["muted"] == .bool(true))
         }
-        if pipelines {
-            rows.append(Row(id: "direct:pipelines", nodeId: "direct:pipelines", kind: .space, label: "Pipelines", mark: .glyph("pipeline"), targetKind: "pipelines"))
-        }
+        // Desktop's first group: Activity, Artifacts, Documents, TODOs,
+        // Plugins, Pipelines, then the person's other Surfaces, and a Happy
+        // Cloud server's shared bot last (only owners are ever sent one).
         if let feed {
             // Bold while something is unread, with how many beside it.
             var row = Row(id: "direct:feed", nodeId: "direct:feed", kind: .space, label: "Activity", mark: .glyph("feed"), unread: feed.unread > 0, targetKind: "feed")
             row.count = feed.unread > 0 ? feed.unread : nil
             rows.append(row)
         }
-        rows.append(Row(id: "direct:todos", nodeId: "direct:todos", kind: .space, label: "Todos", mark: .glyph(Rows.surfaceGlyph("todo")), targetKind: "todos"))
-        let joined = (desktop.surfaces ?? []).compactMap { surface -> (DesktopSnapshot.Surface, String)? in
-            guard let member = surface.members.first(where: { $0.userId == desktop.profile?.userId }) else { return nil }
-            return (surface, member.orderKey)
-        }.sorted { ($0.1, $0.0.id) < ($1.1, $1.0.id) }
-        for (surface, _) in joined {
-            var row = Row(id: "surface:\(surface.id)", nodeId: "surface:\(surface.id)", kind: .space,
-                label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type, access: surface.access, policyVault: surface.policyVault)), agentId: surface.chatAgentId, targetKind: "surface")
-            row.targetId = surface.id
-            row.surfaceType = surface.type
-            rows.append(row)
+        rows.append(Row(id: "direct:artifacts", nodeId: "direct:artifacts", kind: .space, label: "Artifacts", mark: .glyph("doc"), targetKind: "artifacts"))
+        rows.append(Row(id: "direct:documents", nodeId: "direct:documents", kind: .space, label: "Documents", mark: .glyph(Rows.surfaceGlyph("document")), targetKind: "documents"))
+        rows.append(Row(id: "direct:todos", nodeId: "direct:todos", kind: .space, label: "TODOs", mark: .glyph(Rows.surfaceGlyph("todo")), targetKind: "todos"))
+        if plugins {
+            rows.append(Row(id: "direct:plugins", nodeId: "direct:plugins", kind: .space, label: "Plugins", mark: .glyph("plugin"), targetKind: "plugins"))
         }
+        if pipelines {
+            rows.append(Row(id: "direct:pipelines", nodeId: "direct:pipelines", kind: .space, label: "Pipelines", mark: .glyph("pipeline"), targetKind: "pipelines"))
+        }
+        // A document or todo list is listed under its row above, not here.
+        rows += joinedSurfaces(desktop).filter { !Rows.sectionedSurfaces.contains($0.surfaceType ?? "") }
+        for bot in bots where bot.botKind == .shared { botRow(bot) }
         separator("direct:bots")
-        for bot in bots {
-            guard let agent = bot.agent else { continue }
-            let attention = settings["happy-desktop.bot.\(bot.id)"]
-            guard attention?["hidden"] != .bool(true) else { continue }
-            agentRow(agent, depth: 0, label: bot.name, owner: bot, kind: "bot", muted: attention?["muted"] == .bool(true))
-        }
+        for bot in bots where bot.botKind != .shared { botRow(bot) }
         if desktop.tasks != nil {
             separator("direct:tasks")
             for task in tasks {
@@ -111,6 +114,28 @@ public enum SidebarRows {
             }
         }
         return rows
+    }
+
+    /// The documents and todo lists the person is in, as their rows would
+    /// be: home lists them under Documents and TODOs instead, and search
+    /// still finds them as the person's own.
+    public static func sectioned(_ desktop: DesktopSnapshot) -> [Row] {
+        joinedSurfaces(desktop).filter { Rows.sectionedSurfaces.contains($0.surfaceType ?? "") }
+    }
+
+    /// The Surfaces the person is in, in their own order.
+    private static func joinedSurfaces(_ desktop: DesktopSnapshot) -> [Row] {
+        let joined = (desktop.surfaces ?? []).compactMap { surface -> (DesktopSnapshot.Surface, String)? in
+            guard let member = surface.members.first(where: { $0.userId == desktop.profile?.userId }) else { return nil }
+            return (surface, member.orderKey)
+        }.sorted { ($0.1, $0.0.id) < ($1.1, $1.0.id) }
+        return joined.map { surface, _ in
+            var row = Row(id: "surface:\(surface.id)", nodeId: "surface:\(surface.id)", kind: .space,
+                label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type, access: surface.access, policyVault: surface.policyVault)), agentId: surface.chatAgentId, targetKind: "surface")
+            row.targetId = surface.id
+            row.surfaceType = surface.type
+            return row
+        }
     }
 
     /// What of an agent's row its agent draws (`make`): its status, its

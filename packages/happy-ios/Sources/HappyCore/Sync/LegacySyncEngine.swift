@@ -570,7 +570,10 @@ public actor LegacySyncEngine {
     /// Checks the account/session at acceptance, then commits without suspension.
     /// Unsupported permission modes throw before any file is copied or enqueued.
     /// Rejected attachments are dropped; a rejected batch without text is refused.
-    public func accept(_ message: OutgoingMessage, sessionId: String, filesDirectory: URL) async throws -> String {
+    /// `admitting`, when given, judges the session's row in the transaction
+    /// that keeps the send: a reason refuses it (`SessionRefusedSend`).
+    public func accept(_ message: OutgoingMessage, sessionId: String, filesDirectory: URL,
+                       admitting: (@Sendable (SessionRecord?) -> String?)? = nil) async throws -> String {
         ThreadRules.assertOffMain()
         guard !stopped, !Task.isCancelled else {
             throw SendingError.inactiveAccount
@@ -630,7 +633,7 @@ public actor LegacySyncEngine {
                 localId: localId, kind: .message, sessionId: sessionId, payload: payload,
                 createdAt: timestamp, dependsOn: dependency
             ))
-            try store.enqueueAcceptedSend(items, attachments: attachments)
+            try store.enqueueAcceptedSend(items, attachments: attachments, admitting: admitting)
         } catch {
             for file in copied {
                 try? FileManager.default.removeItem(at: file)

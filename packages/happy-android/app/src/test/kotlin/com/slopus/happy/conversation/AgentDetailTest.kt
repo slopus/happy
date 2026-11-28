@@ -135,7 +135,7 @@ class AgentDetailTest {
     /** History of [runs] runs of one message each, newest last, served [limit] at a time from the newest. */
     private class History(runs: Int) {
         val asked = ArrayList<String?>()
-        private val all = (1..runs).map { """{"id":"r$it","status":"completed","messages":[{"id":"m$it","role":"user","createdAt":$it,"content":[{"type":"text","text":"https://site$it.dev"},{"type":"image","mimeType":"image/png","data":"AAAA"}]}]}""" }
+        private val all = (1..runs).map { """{"id":"r$it","status":"completed","messages":[{"id":"m$it","role":"user","createdAt":$it,"content":[{"type":"text","text":"https://site$it.dev"},{"type":"image","mimeType":"image/png","data":"AAAA"}],"metadata":{},"status":"accepted","delivery":"queue","mode":{"providerId":"codex","modelId":"openai/gpt-5.6-sol","effort":"medium","serviceTier":null,"permissionMode":"auto"},"runId":null}]}""" }
         val api = object : ConversationApi({ _, path, _, _ ->
             val before = Regex("before=([^&]+)").find(path)?.groupValues?.get(1)
             val limit = Regex("limit=(\\d+)").find(path)!!.groupValues[1].toInt()

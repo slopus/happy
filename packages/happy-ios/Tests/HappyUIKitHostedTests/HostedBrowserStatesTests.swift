@@ -278,6 +278,7 @@ final class HostedBrowserStatesTests: XCTestCase {
         let web = try XCTUnwrap(browser.web)
         XCTAssertEqual(web.frame, browser.view.bounds, "The page runs under the header and the home indicator")
         XCTAssertEqual(web.scrollView.adjustedContentInset.top, browser.view.safeAreaInsets.top)
+        XCTAssertEqual(web.obscuredContentInsets, UIEdgeInsets(top: browser.view.safeAreaInsets.top, left: 0, bottom: 0, right: 0), "The page is told the header covers its top")
         XCTAssertEqual(web.isOpaque, false)
         XCTAssertEqual(browser.navigationItem.title, "Remote preview")
         XCTAssertEqual(browser.navigationItem.subtitle, "localhost")
@@ -285,6 +286,102 @@ final class HostedBrowserStatesTests: XCTestCase {
         XCTAssertNil(browser.view.subviews.first { $0 is UIToolbar }, "Navigation is in the header, not a bottom toolbar")
         XCTAssertEqual(browser.navigationItem.rightBarButtonItems?.count, 5)
         try await shots(window, "browser-page")
+    }
+
+    /// A page with a sticky bar at its top, scrolled past it.
+    private static func stickyPage(cover: Bool) -> String {
+        """
+        <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1\(cover ? ",viewport-fit=cover" : "")">
+        <title>Sticky</title></head><body style="margin:0;font:17px -apple-system;background:#fff">
+        <div id="safe" style="position:fixed;top:0;left:0;width:1px;height:1px;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)"></div>
+        <div style="height:120px">Intro</div>
+        <div style="position:sticky;top:0;height:40px;background:#00f;border-bottom:4px solid #ff0;color:#fff">Sticky header</div>
+        \((1...60).map { "<p style='height:30px;margin:0 12px'>Row \($0)</p>" }.joined())
+        </body></html>
+        """
+    }
+
+    /// Where the sticky bar's top is on screen, read off the page's own
+    /// pixels: its yellow bottom border sits 40 under it.
+    private func stickyTop(_ web: WKWebView) async throws -> CGFloat {
+        _ = try await web.evaluateJavaScript("window.scrollTo(0, 400)")
+        try await until("the page to scroll") { (try? await web.evaluateJavaScript("scrollY") as? Double) == 400 }
+        try await Task.sleep(for: .milliseconds(300))
+        let image = try await web.takeSnapshot(configuration: nil)
+        let cg = try XCTUnwrap(image.cgImage)
+        var pixels = [UInt8](repeating: 0, count: cg.width * cg.height * 4)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: cg.width, height: cg.height, bitsPerComponent: 8, bytesPerRow: cg.width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        let scale = CGFloat(cg.width) / image.size.width
+        let x = Int((image.size.width - 6) * scale)
+        let row = try XCTUnwrap((0..<cg.height).first { y in
+            let i = (y * cg.width + x) * 4
+            return pixels[i] > 215 && pixels[i + 1] > 215 && pixels[i + 2] < 40
+        }, "No sticky bar in the page's picture")
+        return CGFloat(row) / scale - 40
+    }
+
+    /// As in Safari, a page's sticky bar stops under the header, not
+    /// behind it, even on a page that asks for the whole screen
+    /// (`viewport-fit=cover`), which keeps the home indicator as its safe
+    /// area; inside another screen too. An app's page runs under nothing.
+    func testStickyBarsStopUnderTheHeader() async throws {
+        let daemon = BrowserStateDaemon()
+        await daemon.set("/", .init(body: Self.stickyPage(cover: false)))
+        await daemon.set("/cover", .init(body: Self.stickyPage(cover: true)))
+        for path in ["/", "/cover"] {
+            let (window, browser) = try await open(daemon, url: "http://localhost:5173\(path)")
+            defer { window.isHidden = true }
+            try await loaded(browser)
+            let web = try XCTUnwrap(browser.web)
+            let header = browser.view.safeAreaInsets.top
+            XCTAssertGreaterThan(header, 0)
+            XCTAssertEqual(web.obscuredContentInsets, UIEdgeInsets(top: header, left: 0, bottom: 0, right: 0))
+            let read = try await web.evaluateJavaScript("(s => [innerHeight, parseFloat(s.paddingTop), parseFloat(s.paddingBottom)])(getComputedStyle(document.getElementById('safe')))")
+            let viewport = try XCTUnwrap(read as? [Double])
+            XCTAssertEqual(CGFloat(viewport[0]), web.bounds.height - header, "The page's viewport starts under the header (\(path))")
+            if path == "/cover" {
+                XCTAssertEqual(viewport[1], 0, "Nothing above the page is left for it to clear")
+                XCTAssertEqual(CGFloat(viewport[2]), browser.view.safeAreaInsets.bottom, "The home indicator stays the page's to clear")
+            }
+            let top = try await stickyTop(web)
+            XCTAssertEqual(top, header, accuracy: 1, "The sticky bar stops under the header (\(path))")
+            if path == "/cover" { try await shots(window, "browser-sticky-cover") }
+        }
+
+        // In an artifact's screen, whose header it is.
+        let page = try await BrowserPage.workspace(client: AgentClient(transport: daemon, token: "native-secret"), url: XCTUnwrap(URL(string: "http://localhost:5173/cover")), workspaceID: "work1")
+        let screen = UIViewController()
+        screen.title = "Artifact"
+        let embedded = BrowserViewController(url: page.url, page: page)
+        screen.addChild(embedded)
+        embedded.view.frame = screen.view.bounds
+        embedded.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        screen.view.addSubview(embedded.view)
+        embedded.didMove(toParent: screen)
+        let navigation = UINavigationController(rootViewController: UIViewController())
+        AppCoordinator.applyAppearance(to: navigation.navigationBar)
+        navigation.pushViewController(screen, animated: false)
+        let window = hostedKeyWindow(in: try await hostedActiveScene(), root: navigation)
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        try await loaded(embedded)
+        let web = try XCTUnwrap(embedded.web)
+        XCTAssertEqual(screen.navigationItem.rightBarButtonItems?.count, 5, "The buttons are in the artifact's header")
+        XCTAssertGreaterThan(embedded.view.safeAreaInsets.top, 0)
+        XCTAssertEqual(web.obscuredContentInsets.top, embedded.view.safeAreaInsets.top)
+        let top = try await stickyTop(web)
+        XCTAssertEqual(top, embedded.view.safeAreaInsets.top, accuracy: 1, "The sticky bar stops under the artifact's header")
+
+        let appPage = try await BrowserPage.workspace(client: AgentClient(transport: daemon, token: "native-secret"), url: XCTUnwrap(URL(string: "http://localhost:5173/cover")), workspaceID: "work1")
+        let app = BrowserViewController(url: appPage.url, page: appPage, app: true)
+        let appWindow = hostedKeyWindow(in: try await hostedActiveScene(), root: app)
+        defer { appWindow.isHidden = true }
+        appWindow.layoutIfNeeded()
+        let appWeb = try await waitForWeb(app)
+        try await until("the app's page") { appWeb.isLoading == false && appWeb.url != nil }
+        XCTAssertEqual(appWeb.obscuredContentInsets, .zero, "An app's page runs under nothing")
+        XCTAssertEqual(appWeb.scrollView.contentInsetAdjustmentBehavior, .never)
     }
 
     func testButtonsFollowHistoryAndTheBackSwipeIsThePagesUntilTheFirstPage() async throws {

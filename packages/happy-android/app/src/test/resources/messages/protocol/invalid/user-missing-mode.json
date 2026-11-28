@@ -1,0 +1,16 @@
+{
+    "description": "A user message without its mode, delivery, status, or runId.",
+    "invalidAt": ["/mode", "/delivery", "/status"],
+    "message": {
+        "id": "msgusermissing0000000001",
+        "role": "user",
+        "createdAt": 1764100000000,
+        "content": [
+            {
+                "type": "text",
+                "text": "hi"
+            }
+        ],
+        "metadata": {}
+    }
+}

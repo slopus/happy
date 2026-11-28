@@ -24,11 +24,11 @@ class HappyCloudTest {
     }
 
     @Test
-    fun onlyDevAndPreviewBuildsOfferIt() {
-        assertTrue(HappyCloud.offeredIn("debug"))
-        assertTrue(HappyCloud.offeredIn("preview"))
-        assertFalse(HappyCloud.offeredIn("release"))
-        assertFalse(HappyCloud.offeredIn("bench"))
+    fun onlyDevAndPreviewBuildsOfferItByDefault() {
+        assertTrue(HappyCloud.offeredByDefault("debug"))
+        assertTrue(HappyCloud.offeredByDefault("preview"))
+        assertFalse(HappyCloud.offeredByDefault("release"))
+        assertFalse(HappyCloud.offeredByDefault("bench"))
     }
 
     @Test

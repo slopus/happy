@@ -9,7 +9,6 @@
     <string name="chat_created">Создана %1$s</string>
     <string name="chat_permissions_in_terminal">Разрешения показываются только в терминале. Сбросьте или отправьте сообщение, чтобы управлять из приложения.</string>
     <string name="chat_stop">Остановить</string>
-    <string name="chat_voice">Голос</string>
     <string name="chat_send">Отправить</string>
     <string name="chat_markdown_image">Изображение Markdown</string>
     <string name="chat_remove_image">Удалить %1$s</string>
@@ -34,5 +33,6 @@
     <string name="link_status_updating">синхронизация…</string>
     <string name="link_status_connecting">подключение…</string>
     <string name="link_status_waiting_for_network">ожидание сети…</string>
+    <string name="link_status_restarting">агент перезапускается…</string>
     <string name="message_select">Выбрать</string>
 </resources>

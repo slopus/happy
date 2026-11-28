@@ -1,30 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  The builds that offer Happy Cloud (connection/HappyCloud.kt: debug and
-  preview): its invite links open the app. https://INVITE/#<token>, and the
-  older https://WEB/join#<token>; each host's /.well-known/assetlinks.json
-  must list this build's package and signing certificate to verify.
-  The same in src/debug and src/preview; keep them alike.
--->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
-        <!-- Exported in the main manifest already; repeated so this overlay stands alone for lint. -->
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="https" android:host="${happyCloudInviteHost}" android:path="/" />
-            </intent-filter>
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="https" android:host="${happyCloudWebHost}" android:path="/join" />
-            </intent-filter>
-        </activity>
         <!-- The bundled Gen UI render documents, listed and drawn (ui/genui/GenUiFixturesActivity); its own launcher icon. -->
         <activity
             android:name=".ui.genui.GenUiFixturesActivity"
@@ -44,6 +20,11 @@
         <activity
             android:name=".ui.pipelines.PipelinesFixturesActivity"
             android:exported="true" />
+        <!-- The header's viewers over an in-memory computer (ui/viewers/ViewersFixturesActivity). -->
+        <activity
+            android:name=".ui.viewers.ViewersFixturesActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize" />
         <!-- The plugin pages over an in-memory Happy Cloud server (ui/plugins/PluginsFixturesActivity). -->
         <activity
             android:name=".ui.plugins.PluginsFixturesActivity"
@@ -54,6 +35,11 @@
             android:name=".ui.connection.CloudProvidersFixturesActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize" />
+        <!-- Settings › Inference (a Happy Agent's accounts) and its sign-in and token pages over the contract in memory (ui/connection/ProviderAccountsFixturesActivity). -->
+        <activity
+            android:name=".ui.connection.ProviderAccountsFixturesActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize" />
         <!-- Settings › Compute over a live plain-HTTP test API, token in the intent (ui/connection/ComputeLiveActivity). -->
         <activity
             android:name=".ui.connection.ComputeLiveActivity"
@@ -61,6 +47,11 @@
         <!-- A policy document's page over an in-memory server (ui/connection/PolicyDocumentFixturesActivity). -->
         <activity
             android:name=".ui.connection.PolicyDocumentFixturesActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- Happy Cloud's shared and personal bots: homes, a bot's page and its settings over an in-memory server (ui/bots/BotsFixturesActivity). -->
+        <activity
+            android:name=".ui.bots.BotsFixturesActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize" />
         <!-- A Happy Cloud server's onboarding flow over an in-memory server (ui/gates/CloudOnboardingFixturesActivity). -->

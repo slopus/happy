@@ -5,6 +5,7 @@
     <string name="connection_type">类型</string>
     <string name="connection_server">服务器</string>
     <string name="connection_network">网络可用</string>
+    <string name="connection_last_error">最近错误</string>
     <string name="connection_open_flows">应用打开的流</string>
     <string name="connection_tunnels">Tailcat 隧道</string>
     <string name="connection_tunnel">隧道 %1$d</string>

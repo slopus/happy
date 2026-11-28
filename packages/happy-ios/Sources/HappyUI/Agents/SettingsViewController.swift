@@ -29,9 +29,9 @@ import UIKit
 /// account's, in the same places: Account and Backup & Restore where the
 /// computer has Profile; Language, Voice and Agents beside Appearance;
 /// connecting a terminal before Support us. Those pages write to that
-/// account's synced settings, so they are on its page alone. Voice is
-/// a Happy account's only: the assistant runs on its server's credentials
-/// and its sessions, and a computer has neither.
+/// account's synced settings, so they are on its page alone. Voice is on
+/// both: its time is this device's (`CallAllowance`), whichever profile
+/// spends it.
 final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISearchResultsUpdating, UISearchControllerDelegate {
     /// Pushes settings over `controller`, on `computer`'s page (the active
     /// profile's when nil), showing the row `reveal` names if there is one.
@@ -104,6 +104,12 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private var prioritizing: Bool?
     private var connectionSettingsWatch: Task<Void, Never>?
     private var projectsHidden = false
+    /// Whether the shown computer serves provider sign-in; read from its
+    /// health each time it is shown.
+    private var providerSignIn = false
+    /// Whether the shown computer serves plugins: its home has their row.
+    private var pluginsServed = false
+    private var providerSignInRead: Task<Void, Never>?
     /// What the shown computer's new sessions start on, and its models
     /// followed while its page shows, for New Sessions.
     private var modelPreferences = ModelPreferences()
@@ -376,6 +382,9 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         watchProfile()
         connectionSettingsWatch?.cancel(); connectionSettingsWatch = nil
         projectsHidden = false
+        pluginsServed = false
+        providerSignIn = false
+        providerSignInRead?.cancel(); providerSignInRead = nil
         modelPreferences = ModelPreferences()
         modelsWatch?.invalidate()
         modelsWatch = nil
@@ -404,14 +413,23 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 guard !Task.isCancelled, let self else { return }
                 let hidden = DesktopSettingKeys.projectsHidden(snapshot.settings)
                 let preferences = ModelPreferences(snapshot.settings)
-                guard hidden != projectsHidden || preferences != modelPreferences else { continue }
+                let plugins = snapshot.allRows.contains { $0.targetKind == "plugins" }
+                guard hidden != projectsHidden || preferences != modelPreferences || plugins != pluginsServed else { continue }
                 projectsHidden = hidden
                 modelPreferences = preferences
+                pluginsServed = plugins
                 rebuild()
             }
         }
         modelsWatch = session.models.watch { [weak self] in self?.rebuild() }
         session.models.load()
+        if !session.isCloud {
+            providerSignInRead = Task { [weak self, client = session.client] in
+                guard (try? await client.servesProviderSignIn()) == true, !Task.isCancelled, let self else { return }
+                providerSignIn = true
+                rebuild()
+            }
+        }
         prioritizingWatch = session.watch { [weak self] snapshot in
             guard let self, prioritizing != snapshot.prioritizing else { return }
             prioritizing = snapshot.prioritizing
@@ -515,6 +533,13 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     self?.navigationController?.pushViewController(UsageViewController(session: session), animated: true)
                 })]
             } ?? []
+            // Plugins ends the group, as desktop's Settings has it, where the
+            // server serves them.
+            let pluginRows: [SettingsRow] = pluginsServed ? Session.session(for: id, context: context).map { session in
+                [Row(Index.plugins, action: { [weak self] in
+                    self?.navigationController?.pushViewController(PluginsViewController(session: session), animated: true)
+                })]
+            } ?? [] : []
             // Desktop's sidebar, group for group: its unheaded first group
             // (General, here Appearance; Account, here Profile; Voice; and
             // the phone's Data and Storage), then Agents (what new sessions
@@ -529,11 +554,12 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
                 [supportRow()],
-                ([Row(Index.agents, action: { [weak self] in self?.open(.agents) })] + providersRows(id) + computeRows + usageRows).withHeader(Strings.SettingsGroups.agents),
+                ([Row(Index.agents, action: { [weak self] in self?.open(.agents) })] + providersRows(id) + providerAccountRows(id) + computeRows + usageRows + pluginRows).withHeader(Strings.SettingsGroups.agents),
             ]
             return ([
                 accountRows(),
             ] + serverRows + groups + [
+                happyCloudRow(),
                 [Row(Index.privacySettings, action: { [weak self] in self?.open(.privacy) })],
                 aboutRows(),
             ] + removal).filter { !$0.isEmpty }
@@ -547,6 +573,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             [
                 Row(Index.appearance, action: { [weak self] in self?.push(.settingsAppearance, for: id) }),
                 Row(Index.language, action: { [weak self] in self?.open(.language) }),
+                Row(Index.agentVoice, value: voiceValue(), action: { [weak self] in self?.open(.agentVoice) }),
                 Row(Index.agents, action: { [weak self] in self?.push(.settingsAgents, for: id) }),
                 Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
             ],
@@ -555,10 +582,11 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 Row(Index.enterTerminal, accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: false) }),
             ],
             [Row(Index.supportUs, action: { [weak self] in self?.open(.supportUs) })],
+            happyCloudRow(),
             [Row(Index.privacySettings, action: { [weak self] in self?.open(.privacy) })],
             aboutRows(),
             [Row(id: "sign-out", title: Strings.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: false) })],
-        ]
+        ].filter { !$0.isEmpty }
     }
 
     /// Support Happy, under Profile: the boba, still, that Happy is open
@@ -596,7 +624,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     /// account's own pages, once that account is the active one.
     private func has(_ page: Page, _ profile: Profile) -> Bool {
         switch page {
-        case .appearance, .agents, .agentVoice: profile.isAgentConnection
+        case .appearance, .agents: profile.isAgentConnection
+        case .agentVoice: profile.isAgentConnection || activeSession != nil
         case .privacy: true
         // An agent connection's is Support Happy, the boba row.
         case .supportUs: !profile.isAgentConnection
@@ -764,6 +793,21 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         Task { try? await engine.updateModelPreferences(change) }
     }
 
+    /// This phone's Happy Cloud switch, whatever is signed in, a card of
+    /// its own above Privacy: whether the app offers Happy Cloud's ways in.
+    /// In developer mode only (Kirill); none otherwise, so neither the
+    /// page nor its search shows it. Developer mode only shows it: the
+    /// value is the switch's either way.
+    private func happyCloudRow() -> [SettingsRow] {
+        guard context.account.localSettings.devModeEnabled else { return [] }
+        let entry = SettingsIndex.happyCloud
+        return [SettingsRow(id: entry.id, title: entry.title, icon: (entry.glyph, entry.tile), accessory: .toggle,
+                           isOn: HappyCloud.isOffered(in: context.variant), toggled: { [weak self] on in
+            HappyCloud.setOffered(on)
+            self?.rebuild()
+        }, footer: Strings.HappyCloud.switchFooter)]
+    }
+
     /// This phone's own analytics switch, whatever is signed in, on the
     /// Privacy page: a phone with only agent connections has no account
     /// setting to turn off. Off deletes what was waiting to be sent.
@@ -817,11 +861,23 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         return [providers] + documents
     }
 
+    /// A computer's own Codex, Claude and Grok accounts, where its health
+    /// says it signs them in (`capabilities.providerSignIn`); never on Happy
+    /// Cloud, whose Inference has its own.
+    private func providerAccountRows(_ id: String) -> [SettingsRow] {
+        guard providerSignIn, let session = Session.session(for: id, context: context), !session.isCloud else { return [] }
+        return [SettingsRow(SettingsIndex.providerAccounts, action: { [weak self] in
+            self?.navigationController?.pushViewController(ProviderAccountsViewController(session: session), animated: true)
+        })]
+    }
+
     /// The relay app's words, about keys kept on this phone, aren't true
     /// of a Happy Cloud server, whose agents and data are on the server.
+    /// In developer mode, first: that it is on and how to turn it off.
     private var aboutFooter: String {
         let cloud = shown.flatMap { Session.session(for: $0.id, context: context) }?.isCloud == true
-        return cloud ? Strings.HappyCloud.aboutFooter : Strings.Settings.aboutFooter
+        let about = cloud ? Strings.HappyCloud.aboutFooter : Strings.Settings.aboutFooter
+        return context.account.localSettings.devModeEnabled ? Strings.developerModeFooter + "\n\n" + about : about
     }
 
     /// What search looks through: the page's rows and the profiles.

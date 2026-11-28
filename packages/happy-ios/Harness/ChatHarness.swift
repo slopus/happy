@@ -79,6 +79,9 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var cluster: ClusterHarness?
     private var cloud: CloudHarness?
     private var people: PeopleHarness?
+    private var viewers: ViewersHarness?
+    private var mentions: MentionsHarness?
+    private var providerSignIn: ProviderSignInHarness?
     private var realFeed: RealFeedHarness?
     private var realVault: RealVaultHarness?
     private var agentTools: AgentToolsHarness?
@@ -196,6 +199,18 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "people" {
             people = PeopleHarness(window: window, arguments: arguments)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "viewers" {
+            viewers = ViewersHarness(window: window, arguments: arguments)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "mentions" {
+            mentions = MentionsHarness(window: window, arguments: arguments)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "providerSignIn" {
+            providerSignIn = ProviderSignInHarness(window: window, arguments: arguments)
             return
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "appMode" {

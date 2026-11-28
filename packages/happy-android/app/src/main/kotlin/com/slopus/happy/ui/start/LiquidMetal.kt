@@ -48,30 +48,29 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.slopus.happy.R
-import com.slopus.happy.ui.components.rememberReduceMotion
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 object LiquidMetalTags {
     const val SHADER = "liquidMetal.shader"
@@ -79,7 +78,8 @@ object LiquidMetalTags {
 }
 
 /**
- * The Happy Cloud mark (a cloud with the Happy H cut out of it) in Paper's
+ * The Happy Cloud mark (a cloud with the Happy H cut out of it, the H solid
+ * black under the metal, as on desktop) in Paper's
  * Liquid Metal: chrome stripes that flow over it, bending at its edges. It
  * fills [modifier]'s square (a wider or taller box centres it) and draws
  * nothing around it, so it sits on any background; happy-ios's
@@ -87,29 +87,43 @@ object LiquidMetalTags {
  *
  * It moves at Paper's default speed, a frame on every one of the display's
  * (120 a second on the Fold), while the screen is resumed and not [paused],
- * and holds still while covered, in the background, or with animations
- * removed (Paper's frame 0 then). Only its own box is drawn and the mask's
- * edge field comes baked (`cloud_liquid_metal.png`, decoded once off the main
- * thread), so a frame is one texture read and the stripes' arithmetic per
- * pixel, three times over for the stripes' fwidth. Until the
- * field is decoded and the program compiled (once for the app, also off
- * the main thread, [LiquidMetalProgram]), and before Android 13, which has
- * no runtime shader, the cloud stands still in [fallbackColor].
+ * and holds still while covered or in the background, and on Paper's frame
+ * 0 where [rememberShadersMove] says (animations removed, Battery Saver, a
+ * low-RAM or hot phone). Only its own box is drawn and the mask's edge
+ * field comes baked (`cloud_liquid_metal.png`), so a frame is one texture
+ * read and the stripes' arithmetic per pixel, three times over for the
+ * stripes' fwidth. The app compiles the program and decodes the field off
+ * the main thread before the first screen ([StartWarmup]); a mark composed
+ * before that does both where it is, so its first frame is late rather
+ * than drawn without its metal. Before Android 13, which has no runtime
+ * shader, the same frame 0 is drawn once by OpenGL ES ([ShaderStills]);
+ * only where neither can draw is the cloud flat, in [fallbackColor].
  */
 @Composable
 fun LiquidMetalMark(modifier: Modifier = Modifier, paused: Boolean = false, fallbackColor: Color = Color.Gray) {
-    val shader = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) rememberLiquidMetalShader() else null
-    val field = rememberLiquidMetalField()
-    if (shader != null && field != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        ShaderLiquidMetal(shader, field, paused, modifier)
-    } else {
-        Image(
-            painter = painterResource(R.drawable.cloud_mark),
-            contentDescription = null,
-            colorFilter = ColorFilter.tint(fallbackColor),
-            modifier = modifier.testTag(LiquidMetalTags.FALLBACK),
-        )
+    val resources = LocalContext.current.resources
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val shader = remember { LiquidMetalProgram.get() }
+        val field = remember(resources) { LiquidMetalField.load(resources) }
+        if (shader != null && field != null) return ShaderLiquidMetal(shader, field, paused, modifier)
     }
+    val flat = painterResource(R.drawable.cloud_mark)
+    Box(
+        modifier.testTag(LiquidMetalTags.FALLBACK).drawWithCache {
+            val still = ShaderStills.cloud(IntSize(size.width.roundToInt(), size.height.roundToInt()), resources)?.asImageBitmap()
+            onDrawBehind {
+                if (still != null) {
+                    drawImage(still)
+                } else {
+                    // The flat cloud, contained and centred as the shader's square is.
+                    val side = minOf(size.width, size.height)
+                    translate((size.width - side) / 2, (size.height - side) / 2) {
+                        with(flat) { draw(Size(side, side), colorFilter = ColorFilter.tint(fallbackColor)) }
+                    }
+                }
+            }
+        },
+    )
 }
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -117,10 +131,10 @@ fun LiquidMetalMark(modifier: Modifier = Modifier, paused: Boolean = false, fall
 private fun ShaderLiquidMetal(shader: RuntimeShader, field: BitmapShader, paused: Boolean, modifier: Modifier) {
     // Nanoseconds moved, summed whole so the clock's rate holds however long it runs.
     val elapsed = remember { mutableLongStateOf(0L) }
-    val reduceMotion = rememberReduceMotion()
+    val moves = rememberShadersMove()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle, reduceMotion, paused) {
-        if (reduceMotion) {
+    LaunchedEffect(lifecycle, moves, paused) {
+        if (!moves) {
             elapsed.longValue = 0L
             return@LaunchedEffect
         }
@@ -144,16 +158,6 @@ private fun ShaderLiquidMetal(shader: RuntimeShader, field: BitmapShader, paused
             drawRect(ShaderBrush(shader))
         },
     )
-}
-
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
-@Composable
-private fun rememberLiquidMetalShader(): RuntimeShader? {
-    var shader by remember { mutableStateOf(LiquidMetalProgram.now) }
-    LaunchedEffect(Unit) {
-        if (shader == null) shader = withContext(Dispatchers.Default) { LiquidMetalProgram.get() }
-    }
-    return shader
 }
 
 /**
@@ -183,17 +187,6 @@ internal object LiquidMetalProgram {
         }
         return now
     }
-}
-
-/** The cloud's field, decoded off the main thread the first time any mark asks; null until then. */
-@Composable
-private fun rememberLiquidMetalField(): BitmapShader? {
-    val resources = LocalContext.current.resources
-    var field by remember { mutableStateOf(LiquidMetalField.cached) }
-    LaunchedEffect(Unit) {
-        if (field == null) field = withContext(Dispatchers.Default) { LiquidMetalField.load(resources) }
-    }
-    return field
 }
 
 internal object LiquidMetalField {
@@ -299,6 +292,26 @@ float getColorChanges(float c1, float c2, float stripe_p, float3 w, float blur, 
 
 // v_imageUV for a square image, fit contain, scale 1: the shorter side's
 // square, centred, y down.
+// The H cut-out in the mark's unit square, y down: cloud.svg's 378.18-621.83
+// square with 15.23 outer corners, less its 81.22-wide notches top and bottom
+// (desktop's liquidMetalShader.ts).
+const float2 H_CENTER = float2(.5);
+const float2 H_HALF = float2(.121825);
+const float H_RADIUS = .01523;
+// Each notch runs from .04061 off the centre outward, past the square's edge.
+const float2 H_NOTCH_HALF = float2(.04061, .08);
+const float H_NOTCH_CENTER = .12061;
+// Two texels of the field, so the metal's soft inner edge always lies over black.
+const float H_GROW = 2. / FIELD;
+
+float hDistance(float2 p) {
+  float2 q = abs(p - H_CENTER) - H_HALF + H_RADIUS;
+  float square = length(max(q, 0.)) + min(max(q.x, q.y), 0.) - H_RADIUS;
+  float2 n = abs(float2(p.x - H_CENTER.x, abs(p.y - H_CENTER.y) - H_NOTCH_CENTER)) - H_NOTCH_HALF;
+  float notch = length(max(n, 0.)) + min(max(n.x, n.y), 0.);
+  return max(square, -notch);
+}
+
 float2 imageUv(float2 fragCoord) {
   return (fragCoord - .5 * u_resolution) / min(u_resolution.x, u_resolution.y) + .5;
 }
@@ -374,7 +387,11 @@ half4 main(float2 fragCoord) {
   float2 uv = imageUv(fragCoord);
   // getImgFrame(v_imageUV, 0.) and the mask: nothing outside the mark.
   float opacity = u_image.eval(clamp(uv, 0., 1.) * FIELD).g;
-  if (uv.x < 0. || uv.x > 1. || uv.y < 0. || uv.y > 1. || opacity <= 0.) return half4(0.);
+  if (uv.x < 0. || uv.x > 1. || uv.y < 0. || uv.y > 1.) return half4(0.);
+  // The black H under the metal: coverage and no colour, from the distance
+  // in pixels (a unit-square distance times the square's side).
+  float hole = clamp(.5 - (hDistance(uv) - H_GROW) * min(u_resolution.x, u_resolution.y), 0., 1.);
+  if (opacity <= 0.) return half4(0., 0., 0., half(hole));
 
   const float firstFrameOffset = 2.8;
   float t = .3 * (u_time + firstFrameOffset);
@@ -415,6 +432,6 @@ half4 main(float2 fragCoord) {
 
   float3 color = float3(r, g, b) * opacity;
   color += opacity / 256. * (fract(sin(dot(.014 * fragCoord, float2(12.9898, 78.233))) * 43758.5453123) - .5);
-  return half4(half3(color), half(opacity));
+  return half4(half3(color), half(opacity + hole * (1. - opacity)));
 }
 """

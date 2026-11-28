@@ -1,0 +1,21 @@
+{
+    "description": "A compaction that has started.",
+    "message": {
+        "id": "msgcompactrunning00000001",
+        "role": "service",
+        "createdAt": 1764100000018,
+        "content": [
+            {
+                "type": "compaction",
+                "trigger": "automatic",
+                "status": "running",
+                "tokensBefore": 180000,
+                "tokensAfter": null,
+                "failureReason": null,
+                "startedAt": 1764100000000,
+                "completedAt": null
+            }
+        ],
+        "metadata": {}
+    }
+}

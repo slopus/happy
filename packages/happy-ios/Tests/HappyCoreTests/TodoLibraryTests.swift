@@ -371,4 +371,23 @@ final class TodoLibraryTests: XCTestCase {
         let counts = await account.library.outstanding([surfaceId])
         XCTAssertEqual(counts, [surfaceId: 2])
     }
+
+    /// The TODOs list counts every list, as desktop's: one never opened
+    /// here is read from the computer, headings left out; with the
+    /// computer away it shows none.
+    func testAListNeverOpenedIsCountedFromTheComputer() async throws {
+        let server = FakeTodoServer(surfaceId: surfaceId)
+        await server.seed("t000000000000000000000a1", "Milk")
+        await server.seed("t000000000000000000000a2", "# Saturday")
+        await server.seed("t000000000000000000000a3", "Bread")
+        await server.seed("t000000000000000000000a4", "Eggs", status: .completed)
+        let account = await launch(server, storage: MemoryIntentStorage(), keep: MemoryTodoKeep())
+        let kept = await account.library.outstanding([surfaceId])
+        XCTAssertEqual(kept, [:])
+        let read = await account.library.outstandingRead([surfaceId])
+        XCTAssertEqual(read, [surfaceId: 2])
+        await server.setAway(true)
+        let away = await account.library.outstandingRead([surfaceId])
+        XCTAssertEqual(away, [:])
+    }
 }

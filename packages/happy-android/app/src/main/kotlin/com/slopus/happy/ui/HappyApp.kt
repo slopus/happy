@@ -1,7 +1,9 @@
 package com.slopus.happy.ui
 
+import androidx.annotation.StringRes
 import com.slopus.happy.analytics.AnalyticsReasons
 import com.slopus.happy.connection.PairingStart
+import com.slopus.happy.analytics.SignInError
 import com.slopus.happy.analytics.SignInMethod
 import com.slopus.happy.ui.todos.todoRoutes
 
@@ -9,7 +11,6 @@ import com.slopus.happy.ui.connection.openAgentSettingsRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import com.slopus.happy.ui.voice.LocalVoiceController
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -68,6 +69,8 @@ import com.slopus.happy.ui.connection.rememberCloudConnect
 import com.slopus.happy.ui.connect.rememberAddFlow
 import com.slopus.happy.ui.start.rememberCustomServerLabel
 import com.slopus.happy.ui.tablet.TabletShell
+import com.slopus.happy.ui.tablet.MainPanel
+import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.ui.tablet.MainPanelKey
 import com.slopus.happy.ui.tablet.MainPanelOpener
 import com.slopus.happy.ui.tablet.MainPanelPlaceholder
@@ -127,7 +130,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
     val animatedAvatars by graph.liveAvatars.enabled.collectAsStateWithLifecycle()
 
     // Avatar.tsx reads the avatar settings everywhere: the chat header and Settings as well as Home.
-    LocalizedContent(language.locale) { HappyTheme(preference = theme) { ProvideAvatarSettings(settings) { CompositionLocalProvider(LocalVoiceController provides graph.voice, LocalAnimatedAvatars provides animatedAvatars) {
+    LocalizedContent(language.locale) { HappyTheme(preference = theme) { ProvideAvatarSettings(settings) { CompositionLocalProvider(LocalAnimatedAvatars provides animatedAvatars) {
         val dark = HappyTheme.colors.dark
         // In the frame that composes it, before that frame is drawn: the window's colour is the theme's from the first frame.
         SideEffect { onDarkThemeChange(dark) }
@@ -187,6 +190,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                 onSettingsRow = { row -> go.open(null) { nav.openAgentSettingsRow(account.id, row) } },
                                 onOpenArtifacts = { go.open(MainPanelKey.ARTIFACTS) { nav.navigate(AgentArtifactsRoute(account.id)) } },
                                 onOpenSurface = { go.open(MainPanelKey.surface(it.id)) { nav.openSurface(graph, account.id, it.id) } },
+                                onOpenDocuments = { go.open(MainPanelKey.DOCUMENTS) { nav.navigate(com.slopus.happy.ui.todos.DocumentListsRoute(account.id)) } },
                                 onOpenTodos = { go.open(MainPanelKey.TODOS) { nav.navigate(com.slopus.happy.ui.todos.TodoListsRoute(account.id)) } },
                                 onOpenPlugins = { go.open(MainPanelKey.PLUGINS) { nav.navigate(com.slopus.happy.ui.plugins.PluginsRoute(account.id)) } },
                                 onOpenPipelines = { go.open(MainPanelKey.PIPELINES) { nav.navigate(com.slopus.happy.ui.pipelines.PipelinesRoute(account.id)) } },
@@ -211,13 +215,20 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                     }
                 }
                 // The tablet shell (home in a sidebar beside the stack) or, on a phone, just the stack.
-                TabletShell(graph, nav, hasHome = open != OpenAccount.None, sidebar = home) {
+                // An agent connection's drawer on a phone: Home, its places and Settings, each the stack's new root.
+                val drawer: (@Composable (MainPanel, () -> Unit) -> Unit)? = agent?.let { id ->
+                    { panel, close ->
+                        com.slopus.happy.ui.connection.AgentDrawerHost(graph, id, nav, panel, close, route = { row -> agentPlaceRoute(id, row) }, onSettings = { nav.navigate(SettingsRoute()) })
+                    }
+                }
+                TabletShell(graph, nav, hasHome = open != OpenAccount.None, sidebar = home, drawer = drawer) {
                     // Inside the shell: on the split, what the call opens is the main panel's new root.
-                    CallScreenEffect(graph.calls, nav, agent)
+                    CallScreenEffect(graph.calls, nav, open)
                     // An account picked that can't be unlocked: its page, not a switch.
                     LaunchedEffect(graph, nav) { graph.unlockRequests.collect { nav.navigate(UnlockAccountRoute(it)) } }
                     com.slopus.happy.ui.gates.CloudOnboardingEffect(graph, nav, agent)
                     SessionEndedEffect(graph, nav, agent)
+                    com.slopus.happy.ui.pipelines.PipelinesOffEffect(graph, nav, agent)
                     val start: Any = if (open == OpenAccount.None) StartRoute else HomeRoute
                     val motion = rememberNavMotion()
                     RetainedNavHost(nav, start, motion, modifier = Modifier.backdrop(nav)) {
@@ -266,6 +277,17 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
         } }
         }
     } } } }
+}
+
+/** Where one of an agent connection's home places opens, as home's own rows open it; a Surface opens through `openSurface`. */
+private fun agentPlaceRoute(connectionId: String, row: AgentFeedRow): Any? = when (row) {
+    is AgentFeedRow.Feed -> AgentFeedRoute(connectionId)
+    AgentFeedRow.Artifacts -> AgentArtifactsRoute(connectionId)
+    AgentFeedRow.Plugins -> com.slopus.happy.ui.plugins.PluginsRoute(connectionId)
+    AgentFeedRow.Pipelines -> com.slopus.happy.ui.pipelines.PipelinesRoute(connectionId)
+    AgentFeedRow.Documents -> com.slopus.happy.ui.todos.DocumentListsRoute(connectionId)
+    AgentFeedRow.Todos -> com.slopus.happy.ui.todos.TodoListsRoute(connectionId)
+    else -> null
 }
 
 /** Settings on top of home and nothing else in the stack: a switch made there keeps both. */
@@ -336,6 +358,22 @@ private fun Server(graph: AppGraph, nav: NavHostController) {
     )
 }
 
+/**
+ * What a failed secret-key restore says, by the step that failed
+ * ([AnalyticsReasons.relaySignIn]). Only a key that isn't one, or one the
+ * server refused, says to check the key: happy-app said so for every
+ * failure, which sent people retyping a right key while offline or while
+ * the server failed.
+ */
+@StringRes
+internal fun restoreFailureMessage(error: SignInError): Int = when (error) {
+    SignInError.InvalidToken, SignInError.Rejected -> R.string.connect_invalid_secret_key
+    SignInError.Unreachable -> R.string.errors_network_error
+    SignInError.ServerError, SignInError.RateLimited, SignInError.InvalidResponse -> R.string.errors_server_error
+    SignInError.StorageFailed -> R.string.errors_token_storage_failed
+    else -> R.string.errors_unknown_error
+}
+
 @Composable
 private fun RestoreManual(graph: AppGraph, nav: NavHostController) {
     val scope = rememberCoroutineScope()
@@ -345,7 +383,7 @@ private fun RestoreManual(graph: AppGraph, nav: NavHostController) {
     val error = stringResource(R.string.common_error)
     val ok = stringResource(R.string.common_ok)
     val enterKey = stringResource(R.string.connect_enter_secret_key)
-    val invalidKey = stringResource(R.string.connect_invalid_secret_key)
+    val messages = SignInError.entries.associateWith { stringResource(restoreFailureMessage(it)) }
 
     RestoreManualScreen(
         secretKey = secretKey,
@@ -361,9 +399,8 @@ private fun RestoreManual(graph: AppGraph, nav: NavHostController) {
                         AnalyticsReasons.signingIn(SignInMethod.RelayRestore) { graph.auth.restore(secretKey) }
                     } catch (e: CancellationException) {
                         throw e
-                    } catch (_: Exception) {
-                        // Like happy-app: a bad key and a failed exchange read the same.
-                        alert = Alert(error, invalidKey, listOf(AlertButton(ok)))
+                    } catch (e: Exception) {
+                        alert = Alert(error, messages.getValue(AnalyticsReasons.relaySignIn(e)), listOf(AlertButton(ok)))
                     } finally {
                         restoring = false
                     }

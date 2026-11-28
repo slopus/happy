@@ -362,9 +362,9 @@ fun RemoveCard(agent: Boolean, name: String?, onRemove: () -> Unit) {
     if (confirming) RemoveConfirm(agent, name, onConfirm = onRemove, onDismiss = { confirming = false })
 }
 
-/** What About shows: the build. */
+/** What About shows: the build, and whether developer mode is on (its line under the card). */
 @Immutable
-data class AboutInfo(val versionName: String, val versionSubtitle: String? = null, val isPro: Boolean = false)
+data class AboutInfo(val versionName: String, val versionSubtitle: String? = null, val isPro: Boolean = false, val devMode: Boolean = false)
 
 /** What About and Support us do. */
 @Immutable
@@ -411,7 +411,8 @@ fun supportSection(about: AboutInfo, actions: AboutActions) = SettingsSection(
 /**
  * About (iOS's `aboutRows`, SettingsView.tsx's About without its title):
  * What's New, GitHub with "slopus/happy", Report an Issue, Privacy Policy,
- * Terms of Service and Version, the app's line under the card. No EULA:
+ * Terms of Service and Version, the app's line under the card (after
+ * developer mode's, while it is on). No EULA:
  * happy-app shows Apple's on iOS only. The four rows that open a page
  * offer the link menu on a long press, as links in text do.
  */
@@ -464,7 +465,11 @@ fun aboutSection(about: AboutInfo, actions: AboutActions) = SettingsSection(
             onClick = actions.onVersion,
         ),
     ),
-    footer = stringResource(R.string.settings_about_footer),
+    // In developer mode, first under the card: that it is on and how to turn it off.
+    footer = listOfNotNull(
+        if (about.devMode) stringResource(R.string.settings_developer_mode_footer) else null,
+        stringResource(R.string.settings_about_footer),
+    ).joinToString("\n\n"),
 )
 
 @Composable

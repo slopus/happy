@@ -1,0 +1,30 @@
+{
+    "description": "An artifact presentation.",
+    "message": {
+        "id": "msgartifact00000000000001a",
+        "role": "agent",
+        "createdAt": 1764100000012,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolartifact00000000000001",
+                "name": "create_artifact",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "artifact",
+                    "artifactId": "artifact000000000000000001",
+                    "version": 2,
+                    "artifactType": "markdown",
+                    "title": "Review notes",
+                    "shows": "latest"
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

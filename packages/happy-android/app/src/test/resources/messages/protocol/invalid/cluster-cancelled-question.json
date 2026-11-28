@@ -1,0 +1,65 @@
+{
+    "description": "Happy Cloud's card for a question the person answered in chat instead of on the card (hc-agent history.rs resume_question_after_human_message): answers null. This is the message behind \"Cannot read properties of null (reading 'reviewer')\". Its empty header alone would not fail it.",
+    "invalidAt": ["/content/1/presentation/answers"],
+    "message": {
+        "id": "msgclustercancelled000001",
+        "role": "agent",
+        "createdAt": 1764100000000,
+        "content": [
+            {
+                "type": "text",
+                "text": "I need a reviewer first."
+            },
+            {
+                "type": "tool_call",
+                "id": "toolclustercancelled00001",
+                "name": "request_user_input",
+                "status": "completed",
+                "arguments": {
+                    "questions": [
+                        {
+                            "id": "reviewer",
+                            "header": "",
+                            "question": "Who should review this change?",
+                            "multiSelect": false,
+                            "options": [
+                                {
+                                    "label": "Steve",
+                                    "description": ""
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "result": {
+                    "requestId": "questionreviewer000000001",
+                    "status": "canceled",
+                    "reason": "The user replied in chat. Continue with their message; no structured answers were submitted."
+                },
+                "presentation": {
+                    "type": "user_input",
+                    "questions": [
+                        {
+                            "id": "reviewer",
+                            "header": "",
+                            "question": "Who should review this change?",
+                            "multiSelect": false,
+                            "options": [
+                                {
+                                    "label": "Steve",
+                                    "description": ""
+                                }
+                            ]
+                        }
+                    ],
+                    "status": "canceled",
+                    "answers": null
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

@@ -24,6 +24,13 @@ final class AccountSwitcherLayoutTests: XCTestCase {
         XCTAssertEqual(layout.chevron.maxX, room - 10)
     }
 
+    /// Filter, voice and settings: the third button takes 64, so the bar
+    /// never folds them into a ⋯ menu beside a status.
+    func testAThirdTrailingButtonTakesItsWholeSpace() {
+        XCTAssertEqual(AccountSwitcherLayout.availableWidth(barWidth: 402, safeArea: .zero, trailingItems: 2), 266)
+        XCTAssertEqual(AccountSwitcherLayout.availableWidth(barWidth: 402, safeArea: .zero, trailingItems: 3), 202)
+    }
+
     func testFloatingSearchHasRoomForTheWholeLastRowAndGlass() {
         let layout = HomeBottomBarLayout(height: 874, safeBottom: 83, control: CGRect(x: 20, y: 800, width: 300, height: 38))
         XCTAssertEqual(layout.bottomInset, 86)

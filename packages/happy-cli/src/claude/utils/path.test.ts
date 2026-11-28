@@ -24,6 +24,12 @@ describe('getProjectPath', () => {
         expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-steve-projects-my-app'));
     });
 
+    it('reads CLAUDE_CONFIG_DIR from the env Claude is given', () => {
+        process.env.CLAUDE_CONFIG_DIR = '/test/home/.claude';
+        const result = getProjectPath('/Users/steve/projects/my-app', { ...process.env, CLAUDE_CONFIG_DIR: '/other/claude' });
+        expect(result).toBe(join('/other/claude', 'projects', '-Users-steve-projects-my-app'));
+    });
+
     it('should replace dots with hyphens in the project path', () => {
         process.env.CLAUDE_CONFIG_DIR = '/test/home/.claude';
         const workingDir = '/Users/steve/projects/app.test.js';

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="viewers_title">Kto tu jest</string>
+    <string name="viewers_show">Pokaż, kto tu jest</string>
+    <string name="viewers_here_now">teraz tutaj</string>
+    <string name="viewers_minutes_short">%1$d min</string>
+    <string name="viewers_editing">edytuje</string>
+    <string name="viewers_someone">Ktoś</string>
+</resources>

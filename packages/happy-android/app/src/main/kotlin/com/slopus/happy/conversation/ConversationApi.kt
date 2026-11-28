@@ -189,7 +189,7 @@ open class ConversationApi(
         }
         // Pictures make it a file's size: a file's client and deadline.
         val category = if (images.isEmpty()) RequestCategory.Query else RequestCategory.File
-        return Message.parse(call("POST", "/v0/agents/${escape(agentId)}/send", body, category)["message"])
+        return call("POST", "/v0/agents/${escape(agentId)}/send", body, category)["message"]?.let { Message.decode(it, id) }
     }
 
     /**
@@ -318,9 +318,9 @@ open class ConversationApi(
     }
 
     /** A failed turn run again: the failure's message, now carrying its resolution. */
-    open suspend fun retry(agentId: String, messageId: String): Message? = Message.parse(
-        call("POST", "/v0/agents/${escape(agentId)}/messages/${escape(messageId)}/retry", buildJsonObject { put("mutationId", clientId()) })["message"],
-    )
+    open suspend fun retry(agentId: String, messageId: String): Message? =
+        call("POST", "/v0/agents/${escape(agentId)}/messages/${escape(messageId)}/retry", buildJsonObject { put("mutationId", clientId()) })["message"]
+            ?.let { Message.decode(it, messageId) }
 
     /** Saves the draft (text with the mode it goes with); the answer is what is kept, maybe a newer one. */
     open suspend fun saveDraft(agentId: String, text: String, mode: Mode, updatedAt: Long): Draft? {

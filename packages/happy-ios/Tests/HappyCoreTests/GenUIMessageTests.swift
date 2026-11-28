@@ -8,7 +8,7 @@ final class GenUIMessageTests: XCTestCase {
         let url = try XCTUnwrap(Bundle.module.url(forResource: "01-stats.render", withExtension: "json", subdirectory: "Fixtures/GenUI"))
         let json = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
         let presentation = AgentWire.Presentation(type: "gen_ui", document: json)
-        let message = AgentWire.Message(id: "m", role: "agent", createdAt: 0, content: [.toolCall(id: "call", name: "gen_ui", status: "completed", presentation: presentation)])
+        let message = AgentWire.Message(id: "m", role: "agent", createdAt: 0, content: [.toolCall(id: "call", name: "gen_ui", status: "completed", presentation: presentation)], metadata: .init())
         let restored = try JSONDecoder().decode(AgentWire.Message.self, from: JSONEncoder().encode(message))
         guard case .toolCall(_, _, _, let read, _, _, _, _) = restored.content[0] else { return XCTFail("lost tool call") }
         XCTAssertEqual(read?.document, json)

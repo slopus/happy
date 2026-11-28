@@ -43,6 +43,8 @@ export async function claudeLocal(opts: {
     onThinkingChange?: (thinking: boolean) => void,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
+    /** `happy --model`: Happy consumes the flag, so it is passed on here. */
+    model?: string,
     allowedTools?: string[],
     /** Path to temporary settings file with SessionStart hook (optional - for session tracking) */
     hookSettingsPath?: string,
@@ -50,7 +52,7 @@ export async function claudeLocal(opts: {
 }) {
 
     // Ensure project directory exists
-    const projectDir = getProjectPath(opts.path);
+    const projectDir = getProjectPath(opts.path, { ...process.env, ...opts.claudeEnvVars });
     mkdirSync(projectDir, { recursive: true });
 
     // Check if claudeArgs contains --continue or --resume (user passed these flags)
@@ -239,6 +241,10 @@ export async function claudeLocal(opts: {
 
             if (opts.allowedTools && opts.allowedTools.length > 0) {
                 args.push('--allowedTools', opts.allowedTools.join(','));
+            }
+
+            if (opts.model && !opts.claudeArgs?.includes('--model')) {
+                args.push('--model', opts.model);
             }
 
             // Add custom Claude arguments

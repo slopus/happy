@@ -46,7 +46,7 @@ export async function claudeRemote(opts: {
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
     onSessionReset?: () => void,
-    onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[] }) => void,
+    onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[]; model?: string }) => void,
     /** Per-turn plan rate-limit delta; the launcher merges it into agent state. */
     onUsageLimits?: (patch: UsageLimitsPatch) => void
 }) {
@@ -297,6 +297,7 @@ export async function claudeRemote(opts: {
                         slashCommands: systemInit.slash_commands,
                         mcpServers: systemInit.mcp_servers?.map(s => ({ name: s.name, status: s.status })),
                         skills: systemInit.skills,
+                        model: systemInit.model,
                     });
                 }
 

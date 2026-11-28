@@ -30,8 +30,8 @@ private actor DemoComputer: AgentTransport {
     """#
 
     private static func message(_ id: String, _ role: String, _ at: Double, _ text: String) -> JSONValue {
-        .object(["id": .string(id), "role": .string(role), "createdAt": .number(at), "metadata": .object([:]),
-                 "content": .array([.object(["type": .string("text"), "text": .string(text)])])])
+        MessageSchema.withUserFields(.object(["id": .string(id), "role": .string(role), "createdAt": .number(at.rounded()), "metadata": .object([:]),
+                                              "content": .array([.object(["type": .string("text"), "text": .string(text)])])]))
     }
 
     /// With `rounds`, that many more questions and answers after the

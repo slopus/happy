@@ -1,0 +1,22 @@
+{
+    "description": "An agent reply with reasoning and text.",
+    "message": {
+        "id": "msgagenttext00000000000001",
+        "role": "agent",
+        "createdAt": 1764100000002,
+        "content": [
+            {
+                "type": "reasoning",
+                "text": "The answers record can be null."
+            },
+            {
+                "type": "text",
+                "text": "Found it: the card has no answers."
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

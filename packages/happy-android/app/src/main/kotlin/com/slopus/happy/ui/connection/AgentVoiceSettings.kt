@@ -94,7 +94,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 
-/** An agent connection's Voice page (iOS's `AgentVoiceViewController`); [reveal] as on settings. */
+/** The Voice page (iOS's `AgentVoiceViewController`), an agent connection's or a Happy CLI account's: [connectionId] is whose Settings opened it; [reveal] as on settings. */
 @Serializable data class AgentVoiceRoute(val connectionId: String, val reveal: String? = null)
 
 object AgentVoiceTags {

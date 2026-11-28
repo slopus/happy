@@ -3,15 +3,18 @@ import XCTest
 import HappyWire
 @testable import HappyCore
 
-/// A presentation is optional display data: an unreadable or unsupported
-/// one must never discard its tool call or the surrounding conversation.
+/// A presentation is optional display data: an unsupported one must never
+/// discard its tool call or the surrounding conversation. One that breaks
+/// the schema (not an object, a `type` that is no string) fails its
+/// message, which is a placeholder in its place (`MessageSchemaTests`).
 final class ToolHistoryToleranceTests: XCTestCase {
     private static let arguments: JSONValue = .object(["depth": .number(2)])
     private static let result: JSONValue = .object(["output": .string("Saved.")])
     private static let cases: [(name: String, presentation: JSONValue, decodedType: String?)] = [
         ("show_ui", .object(["type": .string("ui"), "ui": .object(["id": .string("u"), "components": .array([])])]), "ui"),
         ("suggest_replies", .object(["type": .string("quick_replies"), "options": .array([.string("Yes")])]), "quick_replies"),
-        ("future_tool", .object(["type": .string("hologram"), "contents": .array([])]), "hologram"),
+        // A newer server's presentation is none here: a plain tool call.
+        ("future_tool", .object(["type": .string("hologram"), "contents": .array([])]), nil),
         ("show_ui", .object(["type": .string("ui"), "items": .string("malformed")]), nil),
         ("suggest_replies", .object(["type": .number(7)]), nil),
         ("future_tool", .string("malformed"), nil),
@@ -26,9 +29,12 @@ final class ToolHistoryToleranceTests: XCTestCase {
         }
     }
 
+    /// The calls whose presentations the schema lets through.
+    private static let shown = 4
+
     private static var message: JSONValue {
-        .object(["id": .string("m"), "role": .string("agent"), "createdAt": .number(1), "content": .array(
-            [.object(["type": .string("text"), "text": .string("Before.")])] + calls +
+        .object(["id": .string("m"), "role": .string("agent"), "createdAt": .number(1), "metadata": .object([:]), "content": .array(
+            [.object(["type": .string("text"), "text": .string("Before.")])] + calls.prefix(shown) +
             [.object(["type": .string("text"), "text": .string("After.")])]
         )])
     }
@@ -71,15 +77,15 @@ final class ToolHistoryToleranceTests: XCTestCase {
             if case .tool(let tool) = item.role { return tool }
             return nil
         }
-        XCTAssertEqual(tools.map(\.callId), Self.calls.indices.map { "c\($0)" })
-        XCTAssertEqual(tools.map(\.name), Self.cases.map(\.name))
+        XCTAssertEqual(tools.map(\.callId), (0..<Self.shown).map { "c\($0)" })
+        XCTAssertEqual(tools.map(\.name), Self.cases.prefix(Self.shown).map(\.name))
         XCTAssertTrue(tools.allSatisfy { $0.arguments == Self.arguments && $0.result == Self.result })
         XCTAssertEqual(snapshot.items.filter { $0.role == .agent }.map(\.text), ["Before.", "After."])
         XCTAssertEqual(snapshot.items.filter { $0.role == .agent }.flatMap(\.pieces), [.text("Before."), .text("After.")])
     }
 
     func testRemovedBlocksAndReplyMetadataDoNotBreakOrdinaryMessagesOrQueuedText() throws {
-        let message = try JSONDecoder().decode(AgentWire.Message.self, from: Data(#"{"id":"u","role":"user","createdAt":1,"content":[{"type":"text","text":"Yes"},{"type":"ui","ui":{}},{"type":"action"},{"type":"quick_replies","options":["Yes"]}],"quickReply":{"messageId":"m","index":0}}"#.utf8))
+        let message = try JSONDecoder().decode(AgentWire.Message.self, from: Data(#"{"id":"u","role":"user","createdAt":1,"metadata":{},"status":"accepted","delivery":"queue","runId":"r","mode":{"providerId":"p","modelId":"m","effort":"low","serviceTier":null,"permissionMode":"auto"},"content":[{"type":"text","text":"Yes"},{"type":"ui","ui":{}},{"type":"action"},{"type":"quick_replies","options":["Yes"]}],"quickReply":{"messageId":"m","index":0}}"#.utf8))
         XCTAssertEqual(message.content, [.text("Yes"), .unknown("ui"), .unknown("action"), .unknown("quick_replies")])
         let queued = try JSONDecoder().decode(QueuedMessage.self, from: Data(#"{"id":"u","agentID":"a","text":"Yes","pictures":[],"quickReply":{"messageId":"m","index":0}}"#.utf8))
         XCTAssertEqual(queued.text, "Yes")

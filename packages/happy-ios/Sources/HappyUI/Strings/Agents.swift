@@ -44,6 +44,8 @@ extension Strings {
     public static let leaveSurface = "Leave"
     public static let archiveTask = "Archive task"
     public static let archiveBot = "Archive bot"
+    /// A task's or bot's swipe action, as iOS names it.
+    public static let archive = "Archive"
     /// What a Happy Cloud server refused because of the person's role
     /// (`403 forbidden`), or a bot it won't let go (`botRefusal`), in our
     /// words, never the server's; nil for any other error.
@@ -147,6 +149,21 @@ extension Strings {
     public static let handled = "Handled"
     public static func switchAndContinue(_ target: String) -> String { "Switch to \(target) and continue" }
     public static func switched(_ target: String) -> String { "Switched to \(target)" }
+    /// A message that doesn't match the protocol schema, in its place.
+    public static let messageFailedToDisplay = "Hey, this message failed to display."
+    public static let reportBug = "Report bug"
+    /// Its bug report on GitHub, filled in: which agent and message, when
+    /// their IDs are plain, and where and how it failed, never what it said.
+    public static func messageFailedReport(agentId: String?, messageId: String?, problem: String) -> (title: String, body: String) {
+        let body = """
+        A message in a conversation failed to display on iOS.
+
+        - Agent: \(agentId ?? "unknown")
+        - Message: \(messageId ?? "unknown")
+        - Problem: \(problem)
+        """
+        return ("iOS: a message failed to display", body)
+    }
     /// Under a long message cut to its first lines, and opened (desktop's).
     public static let showFull = "Show full"
     public static let showLess = "Show less"

@@ -162,6 +162,7 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
     }
     page<AgentDataStorageRoute> { entry -> AgentDataStorage(graph, nav, entry.toRoute<AgentDataStorageRoute>().connectionId) }
     page<AgentUsageRoute> { entry -> AgentUsagePage(graph, nav, entry.toRoute<AgentUsageRoute>().connectionId) }
+    providerAccountRoutes(graph, nav)
     page<AgentSharingRoute> { entry ->
         val route = entry.toRoute<AgentSharingRoute>()
         AgentNotificationsPage(graph, nav, route.connectionId, route.reveal)

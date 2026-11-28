@@ -415,11 +415,49 @@ data class Message(
     /** An error service message's typed failure, kept as sent. */
     val failure: JsonObject? = null,
     val error: JsonObject? = null,
+    /**
+     * Why the computer's copy isn't a protocol message ([MessageCheck]), when
+     * it isn't: it is drawn as one placeholder row, and nothing else of it is kept.
+     */
+    val undisplayable: String? = null,
+    /**
+     * [id] is this phone's own, given a placeholder the computer sent with no
+     * ID (`<runId>:<index>`): a row's identity, never asked of the computer.
+     */
+    val localId: Boolean = false,
 ) {
     val text: String get() = content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
 
+    /** The ID the computer knows this message by; null for one it sent without. */
+    val serverId: String? get() = id.takeUnless { localId }
+
 
     companion object {
+        /**
+         * A message as a computer sent it, checked against the protocol first:
+         * one that fails keeps only where it stands (its ID, else [fallbackId],
+         * role, time, status and run) and why ([undisplayable]), so the
+         * messages around it read on.
+         */
+        fun decode(value: JsonElement?, fallbackId: String): Message {
+            val problem = MessageCheck.problem(value)
+                ?: parse(value)?.let { return it.copy(undisplayable = null) }
+                ?: "message: unreadable"
+            val o = value.obj
+            val id = o?.get("id").str
+            return Message(
+                id = id ?: fallbackId,
+                localId = id == null,
+                role = o?.get("role").str ?: "agent",
+                createdAt = o?.get("createdAt").long ?: 0,
+                content = emptyList(),
+                status = o?.get("status").str,
+                runId = o?.get("runId").str,
+                undisplayable = problem,
+            )
+        }
+
+        /** A message as this phone kept it, or one already checked: read as far as it goes. */
         fun parse(value: JsonElement?): Message? {
             val o = value.obj ?: return null
             return Message(
@@ -435,6 +473,8 @@ data class Message(
                 userId = o["metadata"].obj?.get("userId").str,
                 failure = o["failure"].obj,
                 error = o["error"].obj,
+                undisplayable = o["undisplayable"].str,
+                localId = o["localId"].bool == true,
             )
         }
     }
@@ -457,13 +497,16 @@ data class Run(
     val standalone: Boolean = false,
 ) {
     companion object {
-        fun parse(value: JsonElement?): Run? {
+        /** [checked]: from a computer, each message checked on its own ([Message.decode]); else as this phone kept it. */
+        fun parse(value: JsonElement?, checked: Boolean = true): Run? {
             val o = value.obj ?: return null
+            val id = o["id"].str ?: return null
+            val messages = o["messages"].arr.orEmpty()
             return Run(
-                id = o["id"].str ?: return null,
+                id = id,
                 status = o["status"].str ?: "completed",
                 startedAt = o["startedAt"].long,
-                messages = o["messages"].arr.orEmpty().mapNotNull(Message::parse),
+                messages = if (checked) messages.mapIndexed { index, message -> Message.decode(message, "$id:$index") } else messages.mapNotNull(Message::parse),
                 endedAt = o["endedAt"].long,
                 reason = o["reason"].str,
                 standalone = standalone(o),
@@ -480,7 +523,7 @@ data class MessagesPage(val runs: List<Run>, val hasMore: Boolean, val cursor: S
     companion object {
         fun parse(value: JsonElement?): MessagesPage? {
             val o = value.obj ?: return null
-            return MessagesPage(o["runs"].arr?.mapNotNull(Run::parse) ?: return null, o["hasMore"].bool ?: false, o["cursor"].str)
+            return MessagesPage(o["runs"].arr?.mapNotNull { Run.parse(it) } ?: return null, o["hasMore"].bool ?: false, o["cursor"].str)
         }
     }
 }
@@ -586,7 +629,7 @@ data class Bootstrap(
                 agent = AgentInfo.parse(o["agent"]) ?: return null,
                 mode = Mode.parse(o["mode"]),
                 draft = Draft.parse(o["draft"]),
-                pending = o["pending"].arr.orEmpty().mapNotNull(Message::parse),
+                pending = o["pending"].arr.orEmpty().mapIndexed { index, message -> Message.decode(message, "pending:$index") },
                 cursor = o["cursor"].str,
                 slashCommands = SlashCommand.parseAll(o["slashCommands"]),
                 context = ContextMeasurement.parse(o["context"]),

@@ -1,0 +1,38 @@
+{
+    "description": "Tool calls whose `arguments` and `result` are JSON other than an object: a string, an array, a number, null. Valid: a client reads them as opaque JSON.",
+    "message": {
+        "id": "msgtooldatanotobject00001",
+        "role": "agent",
+        "createdAt": 1764100000027,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "tooldatanotobject00000001",
+                "name": "exec_command",
+                "status": "completed",
+                "arguments": "ls -la",
+                "result": ["a.txt", "b.txt"]
+            },
+            {
+                "type": "tool_call",
+                "id": "tooldatanotobject00000002",
+                "name": "count",
+                "status": "completed",
+                "arguments": [1, 2],
+                "result": 3
+            },
+            {
+                "type": "tool_call",
+                "id": "tooldatanotobject00000003",
+                "name": "noop",
+                "status": "failed",
+                "arguments": null,
+                "result": null
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

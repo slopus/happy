@@ -98,9 +98,20 @@ split contract (v1, frozen 2026-11-15).
   list of accounts and servers, under Add) and in Settings
   (`AccountAdding.connectToCloud`). Not in any ⋯: the first screen has
   none, and the next screens' and the scanner's ⋯ hold the self-hosted
-  ways in only. Development and preview builds only
-  (`HappyCloud.isOffered`, from `AppVariant`): production shows none of
-  these entries and `connectToCloud` does nothing there.
+  ways in only. Only while Settings' Happy Cloud switch is on
+  (`HappyCloud.isOffered`, Kirill): this phone's own, never synced. Its
+  value is an override over the build's default (`isOfferedByDefault`: on
+  in development and preview, off in production), kept in UserDefaults
+  `happy-cloud` only once the switch is turned, so a phone that never turns
+  it follows each build's default. While off, none of these entries show,
+  no invite link opens, and `connectToCloud` does nothing. The switch is a
+  card above Privacy in Settings, in developer mode only (ten taps on
+  Version), and nowhere else: outside developer mode no card, footer or
+  search result (home's search included), never on Start or in onboarding.
+  Entering or leaving developer mode changes nothing but whether it shows.
+  While developer mode is on, About's footer opens with a line saying so
+  and that ten more taps on Version turn it off
+  (`Strings.developerModeFooter`).
 - **Screens.** Desktop's steps and words (happy-desktop
   `CloudConnectScreen.tsx`), every one a full-screen page on the first
   screen's grain gradient, under the standard bar with Back: Welcome, Sign
@@ -617,7 +628,9 @@ ported from happy-agent-client's `happyLinks.ts`.
 - **File links** (`happy://agents/<id>/files/<path>#L<n>`) are read when
   tapped (`AgentClient.linkedFile`: the agent's workspace, then
   `GET /v0/workspaces/:id/file`), then shown read-only by
-  `WorkspaceFileViewController` at the line. A 403 says politely that the
+  `WorkspaceFileViewController` at the line; a picture is fitted to the
+  screen and zooms, and a recording plays in the system's player
+  (`FileViewer.mediaKind`). A 403 says politely that the
   person has no access. A file that isn't there, or a server without
   workspace files yet (404, 501), turns the link into its label as words
   for as long as the conversation is open.

@@ -9,7 +9,6 @@
     <string name="chat_created">建立於 %1$s</string>
     <string name="chat_permissions_in_terminal">權限僅在終端機中顯示。重設或傳送訊息即可在 App 中控制。</string>
     <string name="chat_stop">停止</string>
-    <string name="chat_voice">語音</string>
     <string name="chat_send">傳送</string>
     <string name="chat_markdown_image">Markdown 圖片</string>
     <string name="chat_remove_image">移除 %1$s</string>
@@ -34,5 +33,6 @@
     <string name="link_status_updating">同步中…</string>
     <string name="link_status_connecting">連線中…</string>
     <string name="link_status_waiting_for_network">等待網路…</string>
+    <string name="link_status_restarting">Agent 重新啟動中…</string>
     <string name="message_select">選取</string>
 </resources>

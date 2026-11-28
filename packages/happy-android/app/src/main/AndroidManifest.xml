@@ -86,6 +86,28 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
+        <!-- Happy Cloud's invite links, https://INVITE/#<token> and the older https://WEB/join#<token>:
+             off until Settings' Happy Cloud switch is on (config/HappyCloudSetting.kt), so they open the
+             browser instead. Each host's /.well-known/assetlinks.json must list the build's package and
+             signing certificate to verify. -->
+        <activity-alias
+            android:name=".HappyCloudLinks"
+            android:enabled="false"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="https" android:host="${happyCloudInviteHost}" android:path="/" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="https" android:host="${happyCloudWebHost}" android:path="/join" />
+            </intent-filter>
+        </activity-alias>
         <!-- Our QR scanner (ui/connect/QrScanner.kt): a full-screen camera, started for a result. -->
         <activity
             android:name=".ui.connect.QrScannerActivity"

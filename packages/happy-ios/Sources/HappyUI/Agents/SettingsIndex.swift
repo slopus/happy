@@ -29,11 +29,18 @@ enum SettingsIndex {
     static var language: Entry { Entry(id: "language", title: Strings.SettingsLanguage.title, glyph: "language-outline", tile: .green) }
     static var agents: Entry { Entry(id: "agents", title: Strings.Settings.agents, glyph: "options-outline", tile: .teal) }
     static var providers: Entry { Entry(id: "providers", title: Strings.Providers.title, glyph: "key-outline", tile: .indigo) }
+    /// A computer's Codex, Claude and Grok accounts and their sign-in,
+    /// where its health serves it.
+    static var providerAccounts: Entry { Entry(id: "provider-accounts", title: Strings.ProviderAccounts.title, glyph: "key-outline", tile: .orange) }
     /// A Happy Cloud server's two documents every agent follows.
     static var instructions: Entry { Entry(id: "instructions", title: Strings.PolicyDocuments.title(.instructions), glyph: "document-text-outline", tile: .gray) }
     static var securityPolicy: Entry { Entry(id: "security-policy", title: Strings.PolicyDocuments.title(.security), glyph: "shield-checkmark-outline", tile: .green) }
     /// What each provider account has spent: a year of daily tokens, plans and models.
     static var usage: Entry { Entry(id: "usage", title: Strings.Usage.title, glyph: "flash-outline", tile: .teal) }
+    /// Last in the Agents group, as desktop's Settings has it, where the
+    /// server serves plugins. Not in `computer`, which home's search reads:
+    /// home's own Plugins row is found there already.
+    static var plugins: Entry { Entry(id: "plugins", title: Strings.Plugins.title, glyph: "plugin", tile: .orange) }
     /// On Agents, this phone's own: whether home's microphone opens the task it starts.
     static var dictationOpensTask: Entry { Entry(id: "dictation-opens-task", title: Strings.Record.opensTask, glyph: "mic-outline", tile: .blue) }
     /// On Agents, this phone's own: whether dictation listens in two languages.
@@ -45,6 +52,11 @@ enum SettingsIndex {
     static var agentVoice: Entry { Entry(id: "agent-voice", title: Strings.AgentVoice.title, glyph: "mic-outline", tile: .orange) }
     static var supportUs: Entry { Entry(id: "support-us", title: Strings.SupportUs.title, glyph: "heart-outline", tile: .red) }
     static var dataStorage: Entry { Entry(id: "data-storage", title: Strings.DataStorage.title, glyph: "server-outline", tile: .green) }
+    /// This phone's Happy Cloud switch, a card of its own above Privacy in
+    /// developer mode only (`HappyCloud.isOffered`). Not in the lists
+    /// below, which home's search reads: only Settings' own search, in
+    /// developer mode, finds it.
+    static var happyCloud: Entry { Entry(id: "happy-cloud", title: HappyCloud.name, glyph: "cloud-outline", tile: .indigo) }
     /// Privacy, a page of its own: this phone's Analytics switch.
     static var privacySettings: Entry { Entry(id: "privacy-settings", title: Strings.SettingsAccount.privacy, glyph: "lock-closed-outline", tile: .blue) }
     /// This phone's own Analytics switch, on every kind of account's Privacy page.
@@ -78,7 +90,7 @@ enum SettingsIndex {
     /// their order: the same places as a computer's, with the account's own
     /// pages beside them. Sign out is left out, as Disconnect is.
     static var happyAccount: [Entry] {
-        [account, backupRestore, appearance, language, agents, dataStorage, connection, scanTerminal, enterTerminal, supportUs, privacySettings, analytics] + aboutRows
+        [account, backupRestore, appearance, language, agentVoice, agents, dataStorage, connection, scanTerminal, enterTerminal, supportUs, privacySettings, analytics] + aboutRows
     }
 
     /// The About page's rows.

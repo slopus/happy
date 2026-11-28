@@ -181,6 +181,20 @@ object AgentDefaults {
         )
     }
 
+    /** A Claude Code session: flavor `claude`, or none from a CLI that predates it. */
+    fun isClaude(flavor: String?): Boolean = flavor == null || flavor == "claude"
+
+    /**
+     * The model a Claude session with no pick of its own shows and sends
+     * with every message and resume: the user's default; else the model its
+     * CLI reports running (`currentModelCode`), a no-op for the running
+     * process; else the code default.
+     */
+    fun unpickedClaudeModel(overrides: AgentDefaultOverrides?, flavor: String?, cliVersion: String?, reported: String?): String =
+        override(overrides, flavor).modelMode
+            ?: reported?.takeIf { it.isNotBlank() }
+            ?: resolve(overrides, flavor, cliVersion).modelMode
+
     /** hasAgentDefaultOverride. */
     fun hasOverride(overrides: AgentDefaultOverrides?, flavor: String?, field: AgentDefaultField): Boolean =
         override(overrides, flavor)[field] != null

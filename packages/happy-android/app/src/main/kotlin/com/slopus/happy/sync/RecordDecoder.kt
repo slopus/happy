@@ -5,6 +5,7 @@ import com.slopus.happy.crypto.PayloadCipher
 import com.slopus.happy.data.MachineRecord
 import com.slopus.happy.data.MessageRecord
 import com.slopus.happy.data.SessionRecord
+import com.slopus.happy.data.StoredJson
 import com.slopus.happy.model.SessionAvatarDescriptor
 import com.slopus.happy.model.parseSessionAvatarRevision
 
@@ -48,7 +49,7 @@ class RecordDecoder(val encryption: AccountEncryption) {
             activeAt = session.activeAt,
             metadataJson = metadata.toString(),
             metadataVersion = session.metadataVersion,
-            agentStateJson = agentState?.toString(),
+            agentStateJson = agentState?.let(StoredJson::encodeAgentState),
             agentStateVersion = session.agentStateVersion,
             wrappedDataKey = wrapped,
             projectId = session.projectId,
@@ -77,7 +78,10 @@ class RecordDecoder(val encryption: AccountEncryption) {
         )
     }
 
-    /** A message is stored even if it does not open (content null), so the seq run stays whole. */
+    /**
+     * A message is stored even if it does not open, or is too big to keep
+     * ([StoredJson]): content null, so the seq run stays whole.
+     */
     fun message(sessionId: String, message: ApiMessage, cipher: PayloadCipher) = MessageRecord(
         sessionId = sessionId,
         seq = message.seq,
@@ -86,7 +90,7 @@ class RecordDecoder(val encryption: AccountEncryption) {
         contentJson = message.content
             .takeIf { it.t == "encrypted" }
             ?.let { cipher.decryptFromBase64(it.c) }
-            ?.toString(),
+            ?.let(StoredJson::encode),
         createdAt = message.createdAt,
         updatedAt = message.updatedAt,
     )

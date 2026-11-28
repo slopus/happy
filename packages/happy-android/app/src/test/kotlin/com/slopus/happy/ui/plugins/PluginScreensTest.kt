@@ -1,6 +1,9 @@
 package com.slopus.happy.ui.plugins
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.performTextInput
@@ -22,6 +25,7 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -199,5 +203,63 @@ class PluginScreensTest {
         rule.onNodeWithText("Install").assertIsDisplayed()
         rule.node(PluginActionTags.INSTALL).performClick()
         assertEquals(1, installs)
+    }
+
+    private val pipelines = Plugin(
+        "pipelines", "pipelines", "Pipelines", "Typed graphs of steps.", "1.0.0", null, listOf(PluginTool("run_pipeline", "Starts a run.")),
+        authRequired = false, authMethods = emptyList(), installability = Installability.Installable, multiInstance = false, feature = true,
+    )
+    private val pipelinesInstalled = PluginInstallation("pipelines", "pipelines", "Pipelines", 1, null, InstallationStatus.Active, null, null, true, feature = true)
+
+    /** A feature plugin is every member's own: Install for someone who can't manage plugins, then what uninstalling does. */
+    @Test
+    fun aMemberInstallsAFeaturePlugin() {
+        var installs = 0
+        val snapshot = PluginsSnapshot(listOf(pipelines), emptyList(), canManage = false)
+        rule.setHappyContent {
+            PluginScreen(PluginsState.Loaded(snapshot), "pipelines", onBack = {}, onRetry = {}, actions = { p, s -> PluginInstallActions(p, s, PluginActs()) { installs++ } })
+        }
+        rule.node(PluginActionTags.INSTALL).assertIsDisplayed().performClick()
+        assertEquals(1, installs)
+        rule.node(PluginActionTags.FEATURE_NOTE).assertIsDisplayed()
+        rule.onNodeWithText("keeps all its data", substring = true).assertIsDisplayed()
+        assertEquals("no word about roles", 0, rule.onAllNodesWithText("Only people whose role can manage plugins can install and set them up.").fetchSemanticsNodes().size)
+        val install = rule.node(PluginActionTags.INSTALL).bounds
+        assertDp("the note 8 under the button", install.bottom + 8.dp, rule.node(PluginActionTags.FEATURE_NOTE).bounds.top)
+    }
+
+    /** Installed, it offers Uninstall alone: nothing to install again, set up, connect or name. */
+    @Test
+    fun anInstalledFeaturePluginOffersUninstall() {
+        var uninstalls = 0
+        val snapshot = PluginsSnapshot(listOf(pipelines), listOf(pipelinesInstalled), canManage = false)
+        rule.setHappyContent {
+            PluginScreen(PluginsState.Loaded(snapshot), "pipelines", onBack = {}, onRetry = {}, actions = { p, s -> PluginInstallActions(p, s, PluginActs(), onUninstall = { uninstalls++ }) {} })
+        }
+        rule.onAllNodesWithTag(PluginActionTags.INSTALL, useUnmergedTree = true).assertCountEquals(0)
+        rule.onNodeWithText("Install again").assertDoesNotExist()
+        rule.node(PluginActionTags.UNINSTALL).assertIsDisplayed().performClick()
+        assertEquals(1, uninstalls)
+        rule.onNodeWithText("Ready").assertIsDisplayed()
+    }
+
+    /** With only feature plugins left to install, a member reads no note about roles under the list. */
+    @Test
+    fun theListSaysNothingOfRolesForFeaturePlugins() {
+        rule.setHappyContent { PluginsScreen(PluginsState.Loaded(PluginsSnapshot(listOf(pipelines), emptyList(), canManage = false)), onOpen = {}, onRetry = {}, onBack = {}) }
+        rule.node(PluginsTags.available("pipelines")).assertIsDisplayed()
+        assertEquals(0, rule.onAllNodesWithText("Only people whose role can manage plugins can install and set them up.").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun theRoleNoteStaysWithTheIntegrations() {
+        val linear = plugin("linear", "Linear", "Issues and projects.")
+        rule.setHappyContent { PluginsScreen(PluginsState.Loaded(PluginsSnapshot(listOf(linear, pipelines), emptyList(), canManage = false)), onOpen = {}, onRetry = {}, onBack = {}) }
+        val note = rule.onNodeWithText("Only people whose role can manage plugins can install and set them up.").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val features = rule.onNodeWithText("FEATURES").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        // Under Available, Linear's group; Pipelines is in Features, below it.
+        assertTrue(rule.node(PluginsTags.available("linear")).fetchSemanticsNode().boundsInRoot.bottom < note.top)
+        assertTrue(note.bottom < features.top)
+        assertTrue(features.bottom < rule.node(PluginsTags.available("pipelines")).fetchSemanticsNode().boundsInRoot.top)
     }
 }

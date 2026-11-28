@@ -26,8 +26,6 @@
     <string name="settings_appearance_file_diffs_sidebar_description">Show git changes next to the chat on desktop</string>
     <!-- ChatList.tsx's scroll-to-bottom button, unnamed there -->
     <string name="chat_scroll_to_bottom">Scroll to bottom</string>
-    <!-- Accessibility label for the unlabeled close-circle in settings/voice/language.tsx. -->
-    <string name="voice_clear_search">Clear search</string>
 
     <!-- Scans that can't be approved where they were made (ui/connect/ConnectFlows.kt).
          happy-app ignores these silently; the native apps say why. -->
@@ -50,9 +48,4 @@
 
     <!-- State pictures (ui/components/StateAnimation.kt). -->
     <string name="state_animation_replay">Play again</string>
-
-    <!-- microphonePermissions.ts (English inline there). -->
-    <string name="voice_microphone_title">Microphone Access Required</string>
-    <string name="voice_microphone_ask">Happy needs access to your microphone for voice chat. Please grant permission when prompted.</string>
-    <string name="voice_microphone_settings">Happy needs access to your microphone for voice chat. Please enable microphone access in your device settings.</string>
 </resources>

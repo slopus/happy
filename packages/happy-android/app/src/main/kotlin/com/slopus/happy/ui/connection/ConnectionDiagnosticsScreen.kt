@@ -25,6 +25,8 @@ data class ConnectionPageState(
     val server: String? = null,
     val daemonVersion: String? = null,
     val transports: List<TransportDiagnostics>? = null,
+    /** The last answer the agent couldn't act on ([com.slopus.happy.agent.AgentClient.lastServerError]). */
+    val lastError: String? = null,
 )
 
 internal fun diagnosticServer(url: String?): String? = url?.toHttpUrlOrNull()?.let {
@@ -45,6 +47,7 @@ fun connectionDiagnosticsText(state: ConnectionPageState, appVersion: String): S
     line("Computer", state.computer)
     line("Server", state.server)
     line("Happy Agent version", state.daemonVersion)
+    line("Last error", state.lastError)
     state.transports?.let { transports ->
         line("Open app flows", transports.sumOf { it.openFlows })
         val tunnels = transports.flatMap { it.tunnels }
@@ -76,6 +79,7 @@ fun ConnectionDiagnosticsScreen(state: ConnectionPageState, appVersion: String, 
             state.server?.let { Item(stringResource(R.string.connection_server), subtitle = it, subtitleLines = 0) }
             state.daemonVersion?.let { Item(stringResource(R.string.common_version), detail = it) }
             Item(stringResource(R.string.connection_network), detail = stringResource(if (state.networkAvailable) R.string.common_yes else R.string.common_no), titleLines = 0)
+            state.lastError?.let { Item(stringResource(R.string.connection_last_error), subtitle = it, subtitleLines = 0, titleLines = 0) }
         }
         state.transports?.let { transports ->
             val tunnels = transports.flatMap { it.tunnels }

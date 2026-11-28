@@ -1,5 +1,4 @@
 <resources>
-    <string name="todo_new">新規</string>
     <string name="todo_create_failed_title">作成できませんでした</string>
     <string name="todo_create_failed">作成できませんでした。%1$s</string>
     <string name="todo_empty">まだ何もありません。何をする必要がありますか？</string>
@@ -37,12 +36,14 @@
     <string name="todo_history_restored">復元しました</string>
     <string name="todo_history_moved">移動しました</string>
     <string name="todo_history_changed_and">変更して%1$s</string>
-    <string name="todo_lists">ToDo リスト</string>
     <string name="todo_new_list">新しい ToDo リスト</string>
     <string name="todo_new_document">新しいドキュメント</string>
     <string name="todo_no_lists">ToDo リストはまだありません。+ をタップして作成してください。</string>
     <string name="todo_loading_lists">ToDo リストを読み込み中…</string>
     <string name="todo_unsupported">この Happy Agent は ToDo リストに対応していません。</string>
-    <string name="todo_nothing">やることはありません</string>
-    <plurals name="todo_outstanding"><item quantity="other">未完了 %1$d 件</item></plurals>
+    <string name="surface_lists_documents">ドキュメント</string>
+    <string name="surface_lists_todos">ToDo</string>
+    <string name="document_lists_empty">ドキュメントはまだありません。+ をタップして作成してください。</string>
+    <string name="document_lists_loading">ドキュメントを読み込み中…</string>
+    <string name="document_lists_unsupported">この Happy Agent はドキュメントに対応していません。</string>
 </resources>

@@ -46,6 +46,11 @@ import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.connection.ServerSignInFlow
 import com.slopus.happy.connection.ServerSignInState
 import com.slopus.happy.ui.HomeRoute
+import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.settings.SettingsEntry
+import com.slopus.happy.ui.settings.SettingsSection
+import com.slopus.happy.ui.settings.SettingsTile
+import com.slopus.happy.ui.settings.SettingsTiles
 import com.slopus.happy.ui.page
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -77,10 +82,50 @@ import kotlinx.serialization.Serializable
 
 /**
  * Happy Cloud's way in, provided at the app's root: the first screen's Use
- * Happy Cloud and the account menu's "Connect to Happy Cloud"; null where
- * the build has no Happy Cloud, and both are left out.
+ * Happy Cloud and the account menu's "Connect to Happy Cloud"; null while
+ * Settings' Happy Cloud switch is off ([com.slopus.happy.config.HappyCloudSetting])
+ * or the build has no Happy Cloud, and both are left out, as its invite links are.
  */
 val LocalCloudConnect: ProvidableCompositionLocal<(() -> Unit)?> = compositionLocalOf { null }
+
+object HappyCloudSwitchTags {
+    const val ROW = "settings.happyCloud"
+    const val SWITCH = "settings.happyCloud.switch"
+}
+
+/**
+ * Settings' Happy Cloud switch, a card of its own above Privacy on both
+ * kinds of account's Settings ([com.slopus.happy.config.HappyCloudSetting]),
+ * its one place, and only in developer mode (ten taps on Version, Kirill);
+ * null otherwise and where the build has no Happy Cloud: no card, no
+ * footer, nothing for search to find. Developer mode only shows it: the
+ * value is the switch's either way.
+ */
+@Composable
+fun rememberHappyCloudSwitch(graph: AppGraph): Boolean? {
+    val on by graph.happyCloud.enabled.collectAsStateWithLifecycle()
+    val local by graph.localSettings.values.collectAsStateWithLifecycle()
+    return on.takeIf { graph.cloudAccount != null && local.devModeEnabled }
+}
+
+/** [rememberHappyCloudSwitch]'s card: the switch and what it offers. */
+@Composable
+fun happyCloudSection(on: Boolean?, onToggle: (Boolean) -> Unit) = SettingsSection(
+    listOfNotNull(
+        on?.let {
+            SettingsEntry(
+                id = HappyCloudSwitchTags.ROW,
+                title = stringResource(R.string.cloud_title),
+                icon = { SettingsTile(Ionicon.CloudOutline, SettingsTiles.indigo) },
+                toggle = it,
+                onToggle = onToggle,
+                toggleTag = HappyCloudSwitchTags.SWITCH,
+                chevron = false,
+            )
+        },
+    ),
+    footer = on?.let { stringResource(R.string.cloud_switch_footer) },
+)
 
 /**
  * Connecting to Happy Cloud: full screen, on the first screen's gradient.
@@ -89,7 +134,8 @@ val LocalCloudConnect: ProvidableCompositionLocal<(() -> Unit)?> = compositionLo
  */
 @Composable
 fun rememberCloudConnect(graph: AppGraph, nav: NavHostController): (() -> Unit)? {
-    val account = graph.cloudAccount ?: return null
+    val offered by graph.happyCloud.enabled.collectAsStateWithLifecycle()
+    val account = graph.cloudAccount?.takeIf { offered } ?: return null
     return remember(account, nav) {
         {
             // A session that is over signs out here: the + opens on the sign-in, not a picker that would refuse.

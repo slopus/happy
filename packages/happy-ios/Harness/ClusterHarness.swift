@@ -47,6 +47,37 @@ actor ClusterServer: AgentTransport {
      "taskMemberships":[{"taskId":"t1"}],"surfaces":[]}
     """#
 
+    /// Bots as a server with bot kinds sends them (`-botkinds`): to an
+    /// owner the shared Chief of Staff and two personal bots, one they may
+    /// edit; to a member (`-member`) the personal ones alone, neither editable.
+    /// It keeps a Feed too, so home's first group is drawn whole.
+    var botsBootstrap: String {
+        let chief = #"{"id":"cos","name":"Chief of Staff","systemKey":"chief_of_staff","isAdmin":true,"kind":"shared","editable":false,"status":"active","agent":{"id":"cos-agent","workspaceId":"cos-w","status":"idle"}}"#
+        let helper = #"{"id":"helper","name":"\#(helperName)","isAdmin":false,"kind":"personal","editable":\#(manager),"revision":\#(helperVersion),"status":"active","avatar":null,"agent":{"id":"helper-\#(manager ? "steve" : "olga")","workspaceId":"helper-w","status":"idle"}}"#
+        let notes = #"{"id":"notes","name":"Meeting notes","isAdmin":false,"kind":"personal","editable":false,"revision":1,"status":"active","agent":{"id":"notes-\#(manager ? "steve" : "olga")","workspaceId":"notes-w","status":"idle"}}"#
+        let bots = (manager ? [chief, helper, notes] : [helper, notes]).joined(separator: ",")
+        return #"""
+        {"cursor":"cursor-1","profile":{"userId":"steve","name":"Steve","photo":null},"userSettings":[],
+         "projects":[],"workspaces":[],"bots":[\#(bots)],
+         "tasks":[{"id":"t1","name":"Plan the launch","ownerUserId":"steve","status":"active","agent":{"id":"t1-agent","workspaceId":"w1","status":"idle"}}],
+         "taskMemberships":[{"taskId":"t1"}],"surfaces":[],"feedUnread":2,
+         "health":{"ready":true,"capabilities":{"vaults":true,"feed":true,"plugins":\#(servesPlugins),"pipelines":\#(servesPipelines)}}}
+        """#
+    }
+
+    private var helperName = "Release helper"
+    private var helperInstructions = "Prepare each Friday's release: collect what merged this week, draft the notes, and ask before tagging.\n\nKeep the notes short and in plain words."
+    private var helperVersion = 1
+
+    private var helperJSON: String {
+        let bot: JSONValue = .object([
+            "id": .string("helper"), "name": .string(helperName), "isAdmin": .bool(false), "kind": .string("personal"),
+            "editable": .bool(manager), "instructions": manager ? .string(helperInstructions) : .null, "revision": .number(Double(helperVersion)),
+            "version": .string("hv\(helperVersion)"), "status": .string("active"), "avatar": .null,
+        ])
+        return String(decoding: try! JSONEncoder().encode(JSONValue.object(["bot": bot])), as: UTF8.self)
+    }
+
     static let catalog = #"""
     {"plugins":[
       {"id":"github","name":"GitHub","description":"Repositories, issues and pull requests, for agents to read and act on.","version":"1.0.0",
@@ -119,6 +150,8 @@ actor ClusterServer: AgentTransport {
     let production: Bool
     /// How invites go (`-invites`): by email; `noemail`, links only; `none`, no route.
     let invites: String?
+    /// The bots carry `kind` and `editable` (`-botkinds`).
+    let botKinds: Bool
     private var instructions = "# Acme\n\nWe build developer tools. Write tests with every change, and keep pull requests small.\n\n## Style\n\n- Swift: UIKit, no storyboards.\n- Prefer plain words in docs.\n"
     private var security = "Never send secrets to a model. Ask before running anything that touches production.\n"
 
@@ -157,8 +190,9 @@ actor ClusterServer: AgentTransport {
     }
 
     init(manager: Bool = true, installed: Bool = true, nameless: Bool = false, gates: String? = nil, servesPlugins: Bool = true, servesPipelines: Bool = true, livePipelines: Bool = false,
-         refusesAbort: Bool = false, policyVault: Bool = false, production: Bool = false, invites: String? = nil) {
+         refusesAbort: Bool = false, policyVault: Bool = false, production: Bool = false, invites: String? = nil, botKinds: Bool = false) {
         self.manager = manager
+        self.botKinds = botKinds
         self.servesPipelines = servesPipelines
         self.livePipelines = livePipelines
         pipelines.refusesAbort = refusesAbort
@@ -216,9 +250,19 @@ actor ClusterServer: AgentTransport {
         }
         if let answer = ClusterChat.answer(method, path) { return ok(answer) }
         switch (method, path) {
-        case ("GET", "/v0/bootstrap/desktop"): return ok(Self.bootstrap)
+        case ("GET", "/v0/bootstrap/desktop"): return ok(botKinds ? botsBootstrap : Self.bootstrap)
+        case ("GET", "/v0/bots/helper") where botKinds: return ok(helperJSON)
+        case ("GET", let path) where botKinds && path.hasPrefix("/v0/feed?"): return ok(#"{"items":[],"unread":2,"hasMore":false}"#)
+        case ("GET", "/v0/feed/clusters") where botKinds: return ok(#"{"clusters":[]}"#)
+        case ("PATCH", "/v0/bots/helper") where botKinds:
+            guard manager else { return refuse(403, "forbidden", "This needs the bots.manage permission.") }
+            guard headers["If-Match"] == "hv\(helperVersion)" else { return refuse(409, "version_conflict", "The bot has changed.") }
+            helperName = sent?["name"]?.stringValue ?? helperName
+            helperInstructions = sent?["instructions"]?.stringValue ?? helperInstructions
+            helperVersion += 1
+            return ok(helperJSON)
         case ("GET", "/v0/health"):
-            let served = ["\"vaults\":true"] + (servesPlugins ? ["\"plugins\":true"] : []) + (servesPipelines ? ["\"pipelines\":true"] : [])
+            let served = ["\"vaults\":true"] + (botKinds ? ["\"feed\":true"] : []) + (servesPlugins ? ["\"plugins\":true"] : []) + (servesPipelines ? ["\"pipelines\":true"] : [])
             return ok(#"{"ready":true,"capabilities":{\#(served.joined(separator: ","))}}"#)
         case ("GET", "/v0/onboarding") where nameless:
             return ok(#"{"completed":false,"steps":{"profile":{"done":true},"chiefOfStaff":{"done":false}},"member":{"completed":false,"steps":{"profile":{"done":\#(profileName != nil)}}}}"#)
@@ -418,7 +462,9 @@ actor ClusterServer: AgentTransport {
 /// an existing tenant
 /// whose Policy vault is still flagged (`-policyvault`), or as deployed
 /// before the documents moved to settings (`-production`);
-/// `-open instructions|security|settings`; notifications `-push granted|denied`
+/// `-open instructions|security|settings`; bots with kinds (`-botkinds`):
+/// a bot's profile `-open bot:<id>`, its settings with `-edit`, typed into
+/// with `-append <text>` and saved with `-save`; new work `-open newwork`; notifications `-push granted|denied`
 /// (asked while unset), from a build the relay refuses (`-otherbuild`).
 @MainActor
 final class ClusterHarness {
@@ -433,7 +479,7 @@ final class ClusterHarness {
                                    gates: arguments.firstIndex(of: "-gates").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil },
                                    servesPlugins: !arguments.contains("-noplugins"), servesPipelines: !arguments.contains("-nopipelines"),
                                    livePipelines: arguments.contains("-livepipelines"), refusesAbort: arguments.contains("-abortrefused"), policyVault: arguments.contains("-policyvault"),
-                                   production: arguments.contains("-production"), invites: value("-invites", in: arguments))
+                                   production: arguments.contains("-production"), invites: value("-invites", in: arguments), botKinds: arguments.contains("-botkinds"))
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/cluster",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -548,6 +594,27 @@ final class ClusterHarness {
                     if arguments.contains("-aborted") { await run.feed.abort() }
                     if let row = value("-select", in: arguments) { run.list.onSelect?(row) }
                 }
+            case let open? where open.hasPrefix("bot:"):
+                // A bot's profile (`bot:helper`), and its settings with `-edit`.
+                let id = String(open.dropFirst("bot:".count))
+                guard let row = session.home.allRows.first(where: { $0.targetKind == "bot" && $0.targetId == id }), let agentId = row.agentId else { break }
+                navigation.pushViewController(ChatViewController(session: session, agentId: agentId, title: row.label, spaceId: nil, intro: nil), animated: false)
+                navigation.pushViewController(SessionDetailViewController(session: session, agentId: agentId, title: row.label, spaceId: nil), animated: false)
+                if arguments.contains("-edit") {
+                    try? await Task.sleep(for: .seconds(1))
+                    let page = BotSettingsViewController(session: session, botId: id, mark: row.mark)
+                    navigation.pushViewController(page, animated: false)
+                    if let text = value("-append", in: arguments) {
+                        try? await Task.sleep(for: .seconds(1))
+                        page.instructionsView.becomeFirstResponder()
+                        page.instructionsView.text += text
+                        page.textViewDidChange(page.instructionsView)
+                        if arguments.contains("-save") { await page.save() }
+                    }
+                }
+            case "newwork":
+                // New work on a server whose bots its admin bot makes: a task, no Task | Bot.
+                navigation.pushViewController(NewWork.chat(session, task: NewTask(client: session.client)), animated: false)
             case "instructions", "security":
                 let page = PolicyDocumentViewController(document: open == "security" ? .security : .instructions, session: session)
                 navigation.pushViewController(page, animated: false)

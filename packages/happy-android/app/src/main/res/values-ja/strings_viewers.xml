@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="viewers_title">ここにいる人</string>
+    <string name="viewers_show">ここにいる人を表示</string>
+    <string name="viewers_here_now">いまここに</string>
+    <string name="viewers_minutes_short">%1$d分</string>
+    <string name="viewers_editing">編集中</string>
+    <string name="viewers_someone">だれか</string>
+</resources>

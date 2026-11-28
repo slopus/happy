@@ -17,7 +17,6 @@
     <string name="settings_appearance_file_diffs_sidebar">檔案差異側邊欄</string>
     <string name="settings_appearance_file_diffs_sidebar_description">在桌面版於聊天旁顯示 git 變更</string>
     <string name="chat_scroll_to_bottom">捲動到底部</string>
-    <string name="voice_clear_search">清除搜尋</string>
     <string name="scan_unavailable">此裝置無法使用 QR 碼掃描器。請改為貼上連結。</string>
     <string name="scan_not_happy_code">這不是 Happy 的 QR 碼。</string>
     <string name="scan_terminal_code_elsewhere">此代碼用於連線終端機。請在「設定 › 掃描 QR Code 進行驗證」中掃描。</string>
@@ -31,7 +30,4 @@
     <string name="state_animation_replay">再次播放</string>
     <string name="scan_no_camera">此裝置沒有相機。請貼上連結。</string>
     <string name="scan_camera_failed">無法啟動相機。請重試或貼上連結。</string>
-    <string name="voice_microphone_title">需要麥克風權限</string>
-    <string name="voice_microphone_ask">Happy 需要存取麥克風才能進行語音聊天。出現提示時請允許。</string>
-    <string name="voice_microphone_settings">Happy 需要存取麥克風才能進行語音聊天。請在裝置設定中開啟麥克風權限。</string>
 </resources>

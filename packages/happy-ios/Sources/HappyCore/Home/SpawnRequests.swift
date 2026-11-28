@@ -15,6 +15,9 @@ public final class SpawnRequests {
     /// The queued starts from chat are independent of the shared Home draft.
     public enum Role: Hashable, Sendable {
         case pendingChats
+        /// One voice call's start, by a key of its own: its
+        /// own slot, still reached by the account's releases and close.
+        case voiceStart(String)
     }
 
     /// What the person asked for, as `buildSpawnRequestSignature` spells it.

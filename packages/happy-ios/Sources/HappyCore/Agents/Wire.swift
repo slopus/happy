@@ -127,6 +127,9 @@ extension AgentWire {
             public var plugins: Bool?
             /// The pipeline routes (`/v0/pipelines`, `/v0/pipeline-runs`); missing is none.
             public var pipelines: Bool?
+            /// Feature plugins, `GET /v0/features` and `features.updated`;
+            /// missing is every feature available.
+            public var features: Bool?
             /// Saves Gen UI secret actions' forms
             /// (`POST /v0/artifacts/:id/versions/:n/actions`); missing is none.
             public var artifactSecretActions: Bool?
@@ -255,6 +258,18 @@ extension AgentWire {
         public var avatar: Avatar?
         public var version: String?
         public var agent: Agent?
+        /// A Happy Cloud bot's: `shared` or `personal` (`BotKind`), nil
+        /// from a daemon. Independent of `isAdmin`: any kind may be admin.
+        public var kind: String?
+        public var isAdmin: Bool?
+        /// The reader may change its name, picture and instructions.
+        public var editable: Bool?
+        /// A personal bot's own instructions, sent only to those who may edit them.
+        public var instructions: String?
+        /// A personal bot's deployed definition, counting from 1.
+        public var revision: Int?
+
+        enum CodingKeys: String, CodingKey { case id, name, systemKey, status, avatar, version, agent, kind, isAdmin, editable, instructions, revision }
     }
 
     public struct Task: Equatable, Sendable, Codable {
@@ -538,7 +553,12 @@ extension AgentWire {
             case "tool_call":
                 let name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
                 let asks = name == Question.toolName
-                let presentation = try? container.decodeIfPresent(Presentation.self, forKey: .presentation)
+                var presentation = try? container.decodeIfPresent(Presentation.self, forKey: .presentation)
+                // A newer server's presentation is none here: a plain tool call.
+                if let type = presentation?.type, !MessageSchema.knownPresentations.contains(type) {
+                    MessageSchema.report(unknownPresentation: type)
+                    presentation = nil
+                }
                 let keepsRaw = ToolRaw.keeps(name: name, presentation: presentation?.type)
                 let result = asks ? try? container.nestedContainer(keyedBy: ResultKeys.self, forKey: .result) : nil
                 let rawArguments = asks || keepsRaw
@@ -695,7 +715,11 @@ extension AgentWire {
         /// failure (`failure`), kept as sent; `Failure` reads them.
         public var error: JSONValue?
         public var failure: JSONValue?
-        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil, error: JSONValue? = nil, failure: JSONValue? = nil) {
+        /// Why a message that doesn't match the protocol schema
+        /// (`MessageSchema`) can't be shown; it then has no content and is
+        /// one placeholder row. The payload itself is never kept.
+        public var unreadable: String?
+        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil, error: JSONValue? = nil, failure: JSONValue? = nil, unreadable: String? = nil) {
             self.id = id
             self.role = role
             self.createdAt = createdAt
@@ -705,6 +729,75 @@ extension AgentWire {
             self.metadata = metadata
             self.error = error
             self.failure = failure
+            self.unreadable = unreadable
+        }
+
+        enum CodingKeys: String, CodingKey { case id, role, createdAt, content, status, runId, metadata, error, failure, unreadable }
+
+        /// What decodes messages the phone kept itself (`userInfo`): read as
+        /// they were written, a placeholder staying one, never checked
+        /// again. What it keeps leaves out fields the schema asks of a
+        /// message from the server (a person's `mode`, `delivery`).
+        public static let stored = CodingUserInfoKey(rawValue: "app.happy.message.stored")!
+
+        /// The ID of a placeholder for a message that came without one of
+        /// its own, until where it came is known (`localId(_:at:)`). Never
+        /// sent back to the server, as a cursor or in a path.
+        static let localPrefix = "local:unreadable"
+
+        /// Whether `id` is one this app made for a placeholder.
+        public static func isLocal(_ id: String) -> Bool { id.hasPrefix(localPrefix) }
+
+        /// `messages` with each placeholder that had no ID of its own named
+        /// by where it came: `place` (a run, the pending list, an event's
+        /// cursor) and its index there, so two never share one.
+        static func localIds(_ messages: [Message], at place: String) -> [Message] {
+            messages.enumerated().map { index, message in
+                guard message.id == localPrefix else { return message }
+                var named = message
+                named.id = "\(localPrefix):\(place):\(index)"
+                MessageSchema.report(messageId: named.id, summary: named.unreadable ?? "", detail: "no id")
+                return named
+            }
+        }
+
+        /// Never throws: a message from the server that fails the schema, or
+        /// can't be read, is a placeholder in its place, so a page or an
+        /// event never loses the messages beside it. One the phone kept
+        /// (`stored`) is read as it was written.
+        public init(from decoder: Decoder) throws {
+            let stored = decoder.userInfo[Self.stored] as? Bool == true
+            do {
+                if !stored { try MessageSchema.check(decoder) }
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                id = try container.decode(String.self, forKey: .id)
+                role = try container.decode(String.self, forKey: .role)
+                createdAt = try container.decode(Double.self, forKey: .createdAt)
+                unreadable = stored ? try container.decodeIfPresent(String.self, forKey: .unreadable) : nil
+                content = try container.decode([Block].self, forKey: .content)
+                status = try container.decodeIfPresent(String.self, forKey: .status)
+                runId = try container.decodeIfPresent(String.self, forKey: .runId)
+                metadata = try container.decodeIfPresent(MessageMetadata.self, forKey: .metadata)
+                error = try container.decodeIfPresent(JSONValue.self, forKey: .error)
+                failure = try container.decodeIfPresent(JSONValue.self, forKey: .failure)
+            } catch {
+                let container = try? decoder.container(keyedBy: CodingKeys.self)
+                // Named where it came from (`localIds`) when it has no ID of its own.
+                id = ((try? container?.decodeIfPresent(String.self, forKey: .id)) ?? nil) ?? Self.localPrefix
+                let role = ((try? container?.decodeIfPresent(String.self, forKey: .role)) ?? nil) ?? "agent"
+                self.role = MessageSchema.roles.contains(role) ? role : "agent"
+                createdAt = ((try? container?.decodeIfPresent(Double.self, forKey: .createdAt)) ?? nil) ?? 0
+                content = []
+                status = nil
+                runId = nil
+                metadata = nil
+                self.error = nil
+                failure = nil
+                let summary = MessageSchema.summary(error, under: decoder.codingPath.count)
+                unreadable = summary
+                // A placeholder without an ID is logged where it is named.
+                if id != Self.localPrefix { MessageSchema.report(messageId: id, summary: summary, detail: MessageSchema.detail(error, under: decoder.codingPath.count)) }
+            }
         }
     }
 
@@ -778,6 +871,20 @@ extension AgentWire {
 
         public init(id: String, status: String, startedAt: Double? = nil, endedAt: Double? = nil, reason: String? = nil, kind: String? = nil, messages: [Message]? = nil) {
             self.id = id; self.status = status; self.startedAt = startedAt; self.endedAt = endedAt; self.reason = reason; self.kind = kind; self.messages = messages
+        }
+
+        enum CodingKeys: String, CodingKey { case id, status, startedAt, endedAt, reason, kind, messages }
+
+        /// A placeholder without an ID is named by this run and its place in it.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            status = try container.decode(String.self, forKey: .status)
+            startedAt = try container.decodeIfPresent(Double.self, forKey: .startedAt)
+            endedAt = try container.decodeIfPresent(Double.self, forKey: .endedAt)
+            reason = try container.decodeIfPresent(String.self, forKey: .reason)
+            kind = try container.decodeIfPresent(String.self, forKey: .kind)
+            messages = try container.decodeIfPresent([Message].self, forKey: .messages).map { Message.localIds($0, at: "run:\(id)") }
         }
     }
 
@@ -956,12 +1063,15 @@ extension AgentWire {
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             agent = try container.decode(Agent.self, forKey: .agent)
-            mode = try container.decodeIfPresent(Mode.self, forKey: .mode)
-            draft = try container.decodeIfPresent(Draft.self, forKey: .draft)
-            pending = try container.decodeIfPresent([Message].self, forKey: .pending)
-            cursor = try container.decodeIfPresent(String.self, forKey: .cursor)
-            subagents = try container.decodeIfPresent([Agent].self, forKey: .subagents)
-            context = try container.decodeIfPresent(ContextUsage.self, forKey: .context)
+            // Only the agent is needed to open its conversation: a part
+            // this build can't read is none, as Android's `Bootstrap.parse`
+            // has it, never a read that fails on every try.
+            mode = (try? container.decodeIfPresent(Mode.self, forKey: .mode)) ?? nil
+            draft = (try? container.decodeIfPresent(Draft.self, forKey: .draft)) ?? nil
+            pending = ((try? container.decodeIfPresent([Message].self, forKey: .pending)) ?? nil).map { Message.localIds($0, at: "pending") }
+            cursor = (try? container.decodeIfPresent(String.self, forKey: .cursor)) ?? nil
+            subagents = ((try? container.decodeIfPresent([Lossy<Agent>].self, forKey: .subagents)) ?? nil).map { $0.compactMap(\.value) }
+            context = (try? container.decodeIfPresent(ContextUsage.self, forKey: .context)) ?? nil
             // One command that can't be read never costs the conversation.
             slashCommands = SlashCommand.catalog(try container.decodeIfPresent(JSONValue.self, forKey: .slashCommands))
         }

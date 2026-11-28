@@ -19,7 +19,6 @@
     <string name="settings_appearance_file_diffs_sidebar">Barra lateral de cambios de archivos</string>
     <string name="settings_appearance_file_diffs_sidebar_description">Mostrar los cambios de git junto al chat en el escritorio</string>
     <string name="chat_scroll_to_bottom">Desplazarse al final</string>
-    <string name="voice_clear_search">Borrar búsqueda</string>
     <string name="scan_unavailable">El escáner de QR no está disponible en este dispositivo. Pega el enlace en su lugar.</string>
     <string name="scan_not_happy_code">Este código QR no es de Happy.</string>
     <string name="scan_terminal_code_elsewhere">Este código conecta una terminal. Escanéalo desde Configuración › Escanea el código QR para autenticarte.</string>
@@ -33,7 +32,4 @@
     <string name="state_animation_replay">Reproducir de nuevo</string>
     <string name="scan_no_camera">Este dispositivo no tiene cámara. Pega el enlace.</string>
     <string name="scan_camera_failed">No se pudo iniciar la cámara. Vuelve a intentarlo o pega el enlace.</string>
-    <string name="voice_microphone_title">Se necesita acceso al micrófono</string>
-    <string name="voice_microphone_ask">Happy necesita acceso al micrófono para el chat de voz. Concede el permiso cuando se te pida.</string>
-    <string name="voice_microphone_settings">Happy necesita acceso al micrófono para el chat de voz. Activa el acceso al micrófono en los ajustes del dispositivo.</string>
 </resources>

@@ -20,7 +20,7 @@ private actor RecordingComputer: AgentTransport {
     static func text(_ text: String) -> JSONValue { .object(["type": .string("text"), "text": .string(text)]) }
 
     static func message(_ id: String, role: String, _ content: [JSONValue]) -> JSONValue {
-        .object(["id": .string(id), "role": .string(role), "createdAt": .number(1_761_990_000_000), "metadata": .object([:]), "content": .array(content)])
+        MessageSchema.withUserFields(.object(["id": .string(id), "role": .string(role), "createdAt": .number(1_761_990_000_000), "metadata": .object([:]), "content": .array(content)]))
     }
 
     static let runs: [JSONValue] = (0..<12).map { index in

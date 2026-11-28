@@ -4,20 +4,51 @@ import { Session } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { launchFailureMessage } from "./utils/launchFailureMessage";
+import { RawJSONLines } from "./types";
+
+/**
+ * The model a main-thread assistant turn of this launch ran on, from the local transcript.
+ * Entries written before [since] are replayed history (`--continue`, a reconnect): they
+ * still reach the chat, but name the model an earlier run used.
+ */
+function localTurnModel(message: RawJSONLines, since: number): string | undefined {
+    if (message.type !== 'assistant' || message.isSidechain === true) return undefined;
+    const timestamp = (message as { timestamp?: unknown }).timestamp;
+    if (typeof timestamp !== 'string' || !(Date.parse(timestamp) >= since)) return undefined;
+    const model = message.message?.model;
+    return model && model !== '<synthetic>' ? model : undefined;
+}
+
+/** Whether a turn's model is the one already published; transcripts drop a `[1m]` suffix. */
+function isPublishedModel(published: string | undefined, model: string): boolean {
+    return published !== undefined && published.replace(/\[1m\]$/i, '') === model;
+}
 
 export type LauncherResult = { type: 'switch' } | { type: 'exit', code: number };
 
 export async function claudeLocalLauncher(session: Session): Promise<LauncherResult> {
 
     let scannerMessageChain = Promise.resolve();
+    let lastTurnModel: string | undefined;
+    const launchedAt = Date.now();
 
     // Create scanner
     const scanner = await createSessionScanner({
         sessionId: session.sessionId,
         workingDirectory: session.path,
+        env: { ...process.env, ...session.claudeEnvVars },
         onMessage: (message) => { 
             // Block SDK summary messages - we generate our own
             if (message.type !== 'summary') {
+                // The terminal can switch models (/model): publish what local turns run,
+                // so an unpicked app composer shows and sends that model, not a stale one.
+                const model = localTurnModel(message, launchedAt);
+                if (model && model !== lastTurnModel) {
+                    lastTurnModel = model;
+                    session.client.updateMetadata((metadata) => isPublishedModel(metadata.currentModelCode, model)
+                        ? metadata
+                        : { ...metadata, currentModelCode: model });
+                }
                 scannerMessageChain = scannerMessageChain.then(async () => {
                     try {
                         await session.client.sendClaudeSessionMessageFromLocalTranscript(message);
@@ -118,6 +149,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                     abort: processAbortController.signal,
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
+                    model: session.model,
                     mcpServers: session.mcpServers,
                     allowedTools: session.allowedTools,
                     hookSettingsPath: session.hookSettingsPath,

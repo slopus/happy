@@ -5,6 +5,7 @@ import com.slopus.happy.agent.AgentEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -108,11 +109,18 @@ class PipelinesSource(
 /** What a read answered (null itself, for a `404`); see [attempt]. */
 internal class Read<T>(val value: T)
 
-/** [read]'s answer, null when it failed; cancellation goes through. */
+/**
+ * [read]'s answer, null when it failed; cancellation goes through. The
+ * Pipelines plugin uninstalled for the account ([PipelinesTurnedOff]) is no
+ * failure: the page this reads for is leaving, so the read never answers and
+ * what shows stays.
+ */
 internal suspend fun <T> attempt(read: suspend () -> T): Read<T>? = try {
     Read(read())
 } catch (e: CancellationException) {
     throw e
+} catch (_: PipelinesTurnedOff) {
+    awaitCancellation()
 } catch (_: Exception) {
     null
 }

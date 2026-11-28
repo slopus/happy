@@ -32,6 +32,32 @@ final class SettingsLayoutTests: XCTestCase {
     /// switching between them changes nothing above the cards' rows:
     /// the picture centred under the bar, the name and line under it.
     /// Searching, the picture goes with the name.
+    /// A form's field being typed in (a Gen UI secret's) rises clear of
+    /// the keyboard, and of the bar, by the least move the page allows.
+    func testAFieldBeingTypedInRisesClearOfTheKeyboard() {
+        // A 336 keyboard over a 874 page covers 302 above the home indicator's 34.
+        XCTAssertEqual(SettingsLayout.keyboardInset(keyboardTop: 538, height: 874, safeBottom: 34), 302)
+        XCTAssertEqual(SettingsLayout.keyboardInset(keyboardTop: nil, height: 874, safeBottom: 34), 0)
+        XCTAssertEqual(SettingsLayout.keyboardInset(keyboardTop: 860, height: 874, safeBottom: 34), 0)
+
+        let row = SettingsLayout.RowSpec(hasIcon: true, valueWidth: nil, accessory: .chevron)
+        let layout = SettingsLayout(width: 402, nameHeight: 34, subtitleHeight: 21, cards: Array(repeating: Array(repeating: row, count: 4), count: 6))
+        // The bar above, the keyboard's 302 and the indicator's 34 below: 390 shows.
+        let insets = LayoutInsets(top: 114, left: 0, bottom: 336, right: 0)
+        let field = CGRect(x: 32, y: 960, width: 300, height: 22)
+        // Under the keyboard: its foot comes 24 over it (982 + 24 + 336 - 874).
+        XCTAssertEqual(layout.fieldOffset(field, offset: -114, viewport: 874, insets: insets), 468)
+        // Showing already: nothing moves.
+        XCTAssertNil(layout.fieldOffset(field, offset: 600, viewport: 874, insets: insets))
+        // Under the bar: its top comes 24 under it (960 - 24 - 114).
+        XCTAssertEqual(layout.fieldOffset(field, offset: 900, viewport: 874, insets: insets), 822)
+        // The page's top can't come lower than under the bar.
+        XCTAssertEqual(layout.fieldOffset(CGRect(x: 32, y: 20, width: 300, height: 22), offset: 300, viewport: 874, insets: insets), -114)
+        XCTAssertNil(layout.fieldOffset(CGRect(x: 32, y: 20, width: 300, height: 22), offset: -114, viewport: 874, insets: insets))
+        // Taller than what shows: its top.
+        XCTAssertEqual(layout.fieldOffset(CGRect(x: 32, y: 960, width: 300, height: 500), offset: -114, viewport: 874, insets: insets), 822)
+    }
+
     func testThePictureHeadsEitherKindOfPage() {
         typealias L = SettingsLayout
         let row = [L.RowSpec(hasIcon: true, accessory: .chevron)]

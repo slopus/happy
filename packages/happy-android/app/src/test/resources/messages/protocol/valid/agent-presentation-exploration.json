@@ -1,0 +1,41 @@
+{
+    "description": "An exploration presentation: a listing, a read, and a search.",
+    "message": {
+        "id": "msgexploration000000000001",
+        "role": "agent",
+        "createdAt": 1764100000004,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolexploration00000000001",
+                "name": "explore",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "exploration",
+                    "operations": [
+                        {
+                            "kind": "list",
+                            "target": "src"
+                        },
+                        {
+                            "kind": "read",
+                            "name": "projection.ts"
+                        },
+                        {
+                            "kind": "search",
+                            "command": "rg reviewer",
+                            "query": "reviewer",
+                            "path": "src"
+                        }
+                    ]
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

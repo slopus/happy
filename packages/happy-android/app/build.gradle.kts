@@ -69,8 +69,8 @@ val happyCloudWeb = providers.environmentVariable("HAPPY_CLOUD_WEB").orNull?.tak
     ?: providers.gradleProperty("happy.cloudWeb").orNull?.takeIf { it.isNotBlank() }
     ?: "happybases.com"
 
-// Happy Cloud's invite links (https://INVITE/#<token>), which open the app in
-// the builds that offer Happy Cloud (src/debug and src/preview's intent filter).
+// Happy Cloud's invite links (https://INVITE/#<token>), which open the app
+// while Settings' Happy Cloud switch is on (the main manifest's HappyCloudLinks).
 // HAPPY_CLOUD_INVITE or -Phappy.cloudInvite points a build at another host.
 val happyCloudInvite = providers.environmentVariable("HAPPY_CLOUD_INVITE").orNull?.takeIf { it.isNotBlank() }
     ?: providers.gradleProperty("happy.cloudInvite").orNull?.takeIf { it.isNotBlank() }
@@ -109,7 +109,7 @@ val postHogKey = providers.environmentVariable("EXPO_PUBLIC_POSTHOG_API_KEY").or
 // release time by scripts/native-version.cjs (see AGENTS.md, "Versions and
 // signing"). Store builds must provide a versionCode above the last published
 // build; local builds default to 1.
-val defaultVersionName = "2026.11.1"
+val defaultVersionName = "2026.11.2"
 val versionNameValue = providers.environmentVariable("HAPPY_VERSION_NAME").orNull
     ?: providers.gradleProperty("happy.versionName").orNull
     ?: defaultVersionName
@@ -167,9 +167,6 @@ android {
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", groovy.json.JsonOutput.toJson(happyCloudGoogleClientId))
         buildConfigField("String", "REVENUE_CAT_GOOGLE_KEY", groovy.json.JsonOutput.toJson(revenueCatGoogleKey))
         buildConfigField("String", "POSTHOG_KEY", groovy.json.JsonOutput.toJson(postHogKey))
-        // Existing relay voice agent, retained for compatibility with installed clients.
-        val voiceAgentId = "agent_6701k211syvvegba4kt7m68nxjmw"
-        buildConfigField("String", "ELEVENLABS_AGENT_ID", "\"$voiceAgentId\"")
         buildConfigField("String", "CALL_AGENT_ID", callAgentId?.let { groovy.json.JsonOutput.toJson(it.trim()) } ?: "null")
         buildConfigField("String", "BUILD_COMMIT_SHA", buildCommitSha?.let { "\"$it\"" } ?: "null")
         buildConfigField("String", "BUILD_COMMIT_TIMESTAMP", buildCommitTimestamp?.let { "\"$it\"" } ?: "null")
@@ -435,8 +432,10 @@ abstract class VerifyReleaseKeeps : DefaultTask() {
 
         val xml = manifest.get().asFile.readText()
         val kept = seedLines.filter { ':' !in it }.toSet()
+        // An activity-alias names no class of its own: its targetActivity is the activity.
+        val aliases = Regex("""<activity-alias\s[^>]*?android:name="([^"]+)"""").findAll(xml).map { it.groupValues[1] }.toSet()
         Regex("""android:name="(com\.slopus\.happy\.[\w.]+)"""").findAll(xml).map { it.groupValues[1] }.toSet()
-            .filter { it !in kept }
+            .filter { it !in kept && it !in aliases }
             .forEach { problems += "manifest component $it is not kept by R8" }
         // The element: its opening tag alone when self-closed, else up to its closing tag.
         fun component(tag: String, name: String): String? {

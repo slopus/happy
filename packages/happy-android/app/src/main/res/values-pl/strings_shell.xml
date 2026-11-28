@@ -21,4 +21,5 @@
     <string name="account_kind_restore_another_footer">Zaloguj się na inne konto Happy CLI za pomocą jego klucza tajnego lub telefonu, na którym jest zalogowane. To konto tu zostanie.</string>
     <string name="tablet_hide_sidebar">Ukryj pasek boczny</string>
     <string name="tablet_show_sidebar">Pokaż pasek boczny</string>
+    <string name="drawer_open">Otwórz menu</string>
 </resources>

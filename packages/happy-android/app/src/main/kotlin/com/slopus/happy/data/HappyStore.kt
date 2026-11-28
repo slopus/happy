@@ -821,9 +821,19 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
             )
         }
 
-        private const val SESSION_COLUMNS = "id, seq, created_at, updated_at, active, active_at, metadata, metadata_version, " +
-            "agent_state, agent_state_version, data_key, project_id, last_message_sent_at, avatar, avatar_revision, avatar_update_seq"
-        private const val MESSAGE_COLUMNS = "session_id, seq, id, local_id, content, created_at, updated_at"
+        /**
+         * A JSON column, or null when it is longer than [StoredJson.MAX_READ_BYTES]:
+         * a row past the cursor window cannot be read at all, and one near it
+         * is memory the chat can't spare. Only rows from before StoredJson
+         * capped what is written are that long; the next write of the record
+         * replaces them.
+         */
+        private fun bounded(column: String) =
+            "CASE WHEN length(CAST($column AS BLOB)) <= ${StoredJson.MAX_READ_BYTES} THEN $column END AS $column"
+
+        private val SESSION_COLUMNS = "id, seq, created_at, updated_at, active, active_at, ${bounded("metadata")}, metadata_version, " +
+            "${bounded("agent_state")}, agent_state_version, data_key, project_id, last_message_sent_at, avatar, avatar_revision, avatar_update_seq"
+        private val MESSAGE_COLUMNS = "session_id, seq, id, local_id, ${bounded("content")}, created_at, updated_at"
         private const val MACHINE_COLUMNS = "id, seq, created_at, updated_at, active, active_at, metadata, metadata_version, " +
             "daemon_state, daemon_state_version, data_key"
         private const val OUTBOX_COLUMNS = "local_id, session_id, kind, record, content, created_at, state, attempts, error, " +

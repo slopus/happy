@@ -205,7 +205,11 @@ final class ModelModeOptionsTests: XCTestCase {
         // A flavorless session is a Claude session.
         XCTAssertEqual(Options.includeConfiguredModel(flavor: nil, models: models, configured: "claude-sonnet-5"), withSaved)
         XCTAssertEqual(Options.includeConfiguredModel(flavor: "claude", models: models, configured: "claude-opus-5-5"), models)
-        XCTAssertEqual(Options.includeConfiguredModel(flavor: "claude", models: models, configured: "default"), models)
+        // Claude's own `default` alias gets a row too.
+        XCTAssertEqual(
+            Options.includeConfiguredModel(flavor: "claude", models: models, configured: "default"),
+            models + [ModeOption(key: "default", name: "Default", description: "Claude's default")]
+        )
     }
 
     func testARetiredClaudeKeyResolvesOntoItsRow() {

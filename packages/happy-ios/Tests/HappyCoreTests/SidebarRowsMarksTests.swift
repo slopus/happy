@@ -58,14 +58,13 @@ final class SidebarRowsMarksTests: XCTestCase {
         XCTAssertEqual(rows["feature"]?.mark, Row.Mark.none)
     }
 
-    /// A computer with a feed lists it after Artifacts, its unread count
-    /// beside it; one without lists none.
+    /// A computer with a feed lists it first, above Artifacts, as desktop
+    /// does, its unread count beside it; one without lists none.
     func testTheFeedRowCountsWhatIsUnread() throws {
         let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: Data(Self.fixture.utf8))
         XCTAssertFalse(SidebarRows.make(desktop, settings: [:]).contains { $0.targetKind == "feed" })
         let labels = SidebarRows.make(desktop, settings: [:], feed: .init(unread: 3)).map(\.label)
-        let artifacts = try XCTUnwrap(labels.firstIndex(of: "Artifacts"))
-        XCTAssertEqual(labels[artifacts + 1], "Activity")
+        XCTAssertEqual(Array(labels.prefix(2)), ["Activity", "Artifacts"])
         let row = try XCTUnwrap(SidebarRows.make(desktop, settings: [:], feed: .init(unread: 3)).first { $0.targetKind == "feed" })
         XCTAssertEqual(row.id, "direct:feed")
         XCTAssertEqual(row.mark, .glyph("feed"))

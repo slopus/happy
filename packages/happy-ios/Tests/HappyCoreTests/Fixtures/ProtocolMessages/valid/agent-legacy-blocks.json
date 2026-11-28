@@ -1,0 +1,28 @@
+{
+    "description": "Retired ui, action, and quick_replies blocks, kept as opaque history.",
+    "message": {
+        "id": "msglegacyblocks00000000001",
+        "role": "agent",
+        "createdAt": 1764100000016,
+        "content": [
+            {
+                "type": "ui",
+                "ui": {
+                    "root": "x"
+                }
+            },
+            {
+                "type": "action",
+                "action": "approve"
+            },
+            {
+                "type": "quick_replies",
+                "options": ["Yes", "No"]
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

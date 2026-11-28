@@ -245,7 +245,8 @@ public enum TurnFold {
         let kept = group.indices.filter { index in
             if index == anchor { return true }
             switch group[index].role {
-            case .turnEnd, .user, .collaborator, .own, .failure, .trace: return true
+            // A placeholder stays where it is: the message it stands for may not be a step.
+            case .turnEnd, .user, .collaborator, .own, .failure, .trace, .unreadable: return true
             case .tool(let tool): return tool.isResult
             case .question(let ask): return ask.phase != .answered
             case .agent, .section: return false

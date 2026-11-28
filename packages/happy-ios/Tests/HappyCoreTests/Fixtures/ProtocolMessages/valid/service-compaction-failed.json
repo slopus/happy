@@ -1,0 +1,21 @@
+{
+    "description": "A compaction that failed.",
+    "message": {
+        "id": "msgcompactfailed000000001",
+        "role": "service",
+        "createdAt": 1764100000020,
+        "content": [
+            {
+                "type": "compaction",
+                "trigger": "automatic",
+                "status": "failed",
+                "tokensBefore": null,
+                "tokensAfter": null,
+                "failureReason": "The provider refused.",
+                "startedAt": 1764100000000,
+                "completedAt": 1764100001000
+            }
+        ],
+        "metadata": {}
+    }
+}

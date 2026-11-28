@@ -1,0 +1,16 @@
+{
+    "description": "A role this protocol does not have.",
+    "invalidAt": ["/role"],
+    "message": {
+        "id": "msgunknownrole0000000001",
+        "role": "robot",
+        "createdAt": 1764100000000,
+        "content": [
+            {
+                "type": "text",
+                "text": "beep"
+            }
+        ],
+        "metadata": {}
+    }
+}

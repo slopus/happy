@@ -11,16 +11,27 @@ extension Strings {
         static let loading = "Loading plugins…"
         static let loadFailed = "Couldn’t load the plugins."
         static let tryAgain = "Try Again"
-        static let nothingInstalled = "Nothing installed yet"
-        static let nothingInstalledHint = "Install a plugin below to give agents its tools."
+        static let nothingInstalled = "No integrations installed yet"
+        static let nothingInstalledHint = "Install an integration below to give agents its tools."
         static let noneOffered = "This server offers no plugins yet."
-        static let membersCantInstall = "Only people who manage plugins can install them."
+        static let membersCantInstall = "Only people who manage plugins can install integrations."
         /// A server from before installations were open to every member.
-        static let membersCantSeeInstalled = "Only people who manage plugins can install them and see what is installed."
+        static let membersCantSeeInstalled = "Only people who manage plugins can install integrations and see which are installed."
         static let membersCantSetUp = "Only people who manage plugins can install and set them up."
         static let notOffered = "This server doesn’t offer this plugin."
         static let noLongerOffered = "This server no longer offers this plugin."
         static let installedValue = "Installed"
+        static let notInstalledValue = "Not installed"
+        /// Happy's own features, on the Plugins page.
+        static let features = "Features"
+        static let featuresHint = "Each one is yours: installing or uninstalling it changes it for you in every team you’re in, and for no one else."
+        static let uninstall = "Uninstall"
+        static func uninstallTitle(_ name: String) -> String { "Uninstall \(name)?" }
+        static func uninstallKeeps(_ name: String) -> String {
+            "\(name) will be hidden for you in every team you’re in. Nothing is deleted: your team keeps everything made with it, and installing it again brings it all back."
+        }
+        static func installBrings(_ name: String) -> String { "Installing \(name) brings it back for you in every team you’re in, with everything as it was." }
+        static let uninstallFailed = "Couldn’t uninstall the plugin"
         static let status = "Status"
         static func version(_ version: String) -> String { "Version \(version)" }
 

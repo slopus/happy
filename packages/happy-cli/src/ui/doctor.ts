@@ -80,15 +80,15 @@ export async function runDoctorDaemon(): Promise<void> {
             console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
             console.log(`  Version: ${state.startedWithCliVersion}`);
         } else if (state && !isRunning) {
-            console.log(chalk.yellow('⚠️  Daemon state exists but process not running (stale)'));
+            console.log(chalk.yellow('⚠️  State exists, but daemon readiness could not be confirmed'));
         } else {
             console.log(chalk.red('❌ Daemon is not running'));
         }
 
         if (state) {
             console.log(chalk.bold('\n📄 Daemon State:'));
-            console.log(chalk.blue(`Location: ${configuration.daemonStateFile}`));
-            console.log(chalk.gray(JSON.stringify(state, null, 2)));
+            console.log(chalk.blue(`Location: ${state.controlToken ? configuration.daemonStateFile : configuration.legacyDaemonStateFile}`));
+            console.log(chalk.gray(JSON.stringify({ ...state, controlToken: undefined }, null, 2)));
         }
     } catch (error) {
         console.log(chalk.red('❌ Error checking daemon status'));
@@ -264,15 +264,15 @@ export async function runDoctorCommand(): Promise<void> {
             console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
             console.log(`  Version: ${state.startedWithCliVersion}`);
         } else if (state && !isRunning) {
-            console.log(chalk.yellow('⚠️  Daemon state exists but process not running (stale)'));
+            console.log(chalk.yellow('⚠️  State exists, but daemon readiness could not be confirmed'));
         } else {
             console.log(chalk.red('❌ Daemon is not running'));
         }
 
         if (state) {
             console.log(chalk.bold('\n📄 Daemon State:'));
-            console.log(chalk.blue(`Location: ${configuration.daemonStateFile}`));
-            console.log(chalk.gray(JSON.stringify(state, null, 2)));
+            console.log(chalk.blue(`Location: ${state.controlToken ? configuration.daemonStateFile : configuration.legacyDaemonStateFile}`));
+            console.log(chalk.gray(JSON.stringify({ ...state, controlToken: undefined }, null, 2)));
         }
     } catch (error) {
         console.log(chalk.red('❌ Error checking daemon status'));

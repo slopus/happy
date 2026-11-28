@@ -17,6 +17,9 @@ class SettingsPageViewController: UIViewController {
     private var settingsLayout = SettingsLayout(width: 0, nameHeight: 0, subtitleHeight: 0, cards: [], searching: true)
     /// The row home's search found, scrolled to and flashed once shown.
     var reveal: String?
+    /// The keyboard's top in the view, as its last notification said; nil
+    /// while it is down.
+    private var keyboardTop: CGFloat?
 
     /// What the page shows, card by card: for the tests.
     var shownRowIDs: [[String]] { rows.map { $0.map(\.id) } }
@@ -41,7 +44,49 @@ class SettingsPageViewController: UIViewController {
         navigationItem.largeTitleDisplayMode = .never
         scroll.alwaysBounceVertical = true
         view.addSubview(scroll)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(typingBegan(_:)), name: UITextField.textDidBeginEditingNotification, object: nil)
         reload()
+    }
+
+    /// A page with fields (the Gen UI secret forms) scrolls over the
+    /// keyboard: its rows end above it, and the field being typed in rises
+    /// clear of it with the keyboard's own animation.
+    @objc private func keyboardWillChange(_ note: Notification) {
+        guard isViewLoaded, let window = view.window,
+              let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
+        let local = view.convert(end, from: window.screen.coordinateSpace)
+        // Undocked (an iPad's floating or split keyboard) it covers nothing.
+        let docked = local.maxY >= view.bounds.maxY - 1
+        let top: CGFloat? = !docked || local.isEmpty || local.minY >= view.bounds.maxY - view.safeAreaInsets.bottom - 0.5 ? nil : local.minY
+        guard top != keyboardTop else { return }
+        keyboardTop = top
+        let duration = (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
+        let curve = (note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
+        guard duration > 0 else {
+            view.setNeedsLayout()
+            view.layoutIfNeeded()
+            return revealTyping(animated: false)
+        }
+        UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState, .allowUserInteraction]) {
+            self.view.setNeedsLayout()
+            self.view.layoutIfNeeded()
+            self.revealTyping(animated: false)
+        }
+    }
+
+    /// Next from one field to another under the keyboard: that one rises too.
+    @objc private func typingBegan(_ note: Notification) {
+        guard (note.object as? UIView)?.superview === scroll else { return }
+        revealTyping(animated: true)
+    }
+
+    /// Scrolls the field being typed in, if this page has one, clear of
+    /// the bar and the keyboard.
+    private func revealTyping(animated: Bool) {
+        guard let field = scroll.subviews.first(where: { $0.isFirstResponder }),
+              let y = settingsLayout.fieldOffset(field.frame, offset: scroll.contentOffset.y, viewport: scroll.bounds.height, insets: LayoutInsets(scroll.adjustedContentInset)) else { return }
+        scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: y), animated: animated)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -100,6 +145,11 @@ class SettingsPageViewController: UIViewController {
         footers.show(rows.map { $0.last?.footer }, layout: layout.cards)
         headers.show(rows.map { $0.first?.header }, layout: layout.cards)
         scroll.contentSize = CGSize(width: width, height: layout.contentHeight)
+        let bottom = SettingsLayout.keyboardInset(keyboardTop: keyboardTop, height: view.bounds.height, safeBottom: view.safeAreaInsets.bottom)
+        if scroll.contentInset.bottom != bottom {
+            scroll.contentInset.bottom = bottom
+            scroll.verticalScrollIndicatorInsets.bottom = bottom
+        }
     }
 }
 #endif

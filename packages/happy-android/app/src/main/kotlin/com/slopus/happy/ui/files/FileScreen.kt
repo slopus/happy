@@ -10,7 +10,26 @@ import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.Segment
 import com.slopus.happy.ui.components.SegmentedTabs
+import android.media.MediaDataSource
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import com.slopus.happy.conversation.ViewerItem
+import com.slopus.happy.ui.conversation.PageZoom
 import com.slopus.happy.ui.conversation.PictureViewer
+import com.slopus.happy.ui.conversation.PictureViewerSpec
+import com.slopus.happy.ui.conversation.VideoPage
+import com.slopus.happy.ui.conversation.ViewerSource
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.slopus.happy.text.wordsResource
@@ -92,11 +111,12 @@ object FileTags {
     const val RENDERED_TAB = "file.renderedTab"
     const val RENDERED = "file.rendered"
     const val PICTURE = "file.picture"
+    const val VIDEO = "file.video"
     const val SAVE = "file.save"
     const val RETRY = "file.retry"
 }
 
-/** What file.tsx loaded: still loading, failed, binary, a picture, or the text and its uncommitted diff. */
+/** What file.tsx loaded: still loading, failed, binary, a picture, a recording, or the text and its uncommitted diff. */
 sealed interface FileLoad {
     data object Loading : FileLoad
     data class Failed(val message: Words) : FileLoad
@@ -106,20 +126,28 @@ sealed interface FileLoad {
 
     /** A picture's bytes and its size in pixels (desktop's FilePreview shows it rather than calling it binary). */
     class Picture(val bytes: ByteArray, val width: Int, val height: Int) : FileLoad
+
+    /** A recording's bytes, played by the platform's player (desktop's FilePreview `video` kind). */
+    class Video(val bytes: ByteArray) : FileLoad
 }
 
 /** desktop FilePreview's `markdown` kind: these render as a document, with the source a tab away. */
 fun isMarkdownPath(path: String): Boolean = path.substringAfterLast('.', "").lowercase() in setOf("md", "markdown", "mdx")
 
-/** desktop FilePreview's raster `image` kinds Android decodes itself; SVG stays text. */
-fun isPicturePath(path: String): Boolean = path.substringAfterLast('.', "").lowercase() in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "avif")
+/** desktop FilePreview's raster `image` kinds Android decodes itself; SVG stays text, TIFF binary. */
+fun isPicturePath(path: String): Boolean = path.substringAfterLast('.', "").lowercase() in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "heic", "heif", "avif")
+
+/** desktop FilePreview's `video` kinds. */
+fun isVideoPath(path: String): Boolean = path.substringAfterLast('.', "").lowercase() in setOf("mp4", "m4v", "mov", "mkv", "webm")
 
 /**
  * [bytes] as the viewer shows them: a picture when its name says so and
- * they decode, binary when they hold a NUL or more than a tenth control
+ * they decode, a recording when its name says so (the player says if it
+ * can't play it), binary when they hold a NUL or more than a tenth control
  * characters (file.tsx), text otherwise. Off the main thread.
  */
 fun fileLoadOf(path: String, bytes: ByteArray): FileLoad {
+    if (isVideoPath(path)) return if (bytes.isNotEmpty()) FileLoad.Video(bytes) else FileLoad.Binary
     if (isPicturePath(path)) {
         val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
         android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -171,16 +199,18 @@ private val binaryExtensions = setOf(
 fun isBinaryPath(path: String): Boolean = '.' in path && path.substringAfterLast('.').lowercase() in binaryExtensions
 
 /**
- * file.tsx's load: binary extensions stop at once; otherwise the file's
+ * file.tsx's load: binary extensions stop at once, except pictures and
+ * recordings, which are read and shown ([fileLoadOf]); otherwise the file's
  * uncommitted diff (`git diff`, when it is inside the session root) and its
  * contents. Contents with a NUL byte, or more than a tenth control
  * characters, are binary.
  */
 suspend fun SessionFileOps.loadFile(sessionId: String, filePath: String, sessionPath: String?, gitDiffPath: String?): FileLoad {
-    if (isBinaryPath(filePath)) return FileLoad.Binary
+    val media = isPicturePath(filePath) || isVideoPath(filePath)
+    if (isBinaryPath(filePath) && !media) return FileLoad.Binary
     return try {
         var diff: String? = null
-        if (sessionPath != null && gitDiffPath != null && gitDiffPath != ".") {
+        if (!media && sessionPath != null && gitDiffPath != null && gitDiffPath != ".") {
             val response = runCatching { bash(sessionId, "git diff --no-ext-diff -- \"$gitDiffPath\"", sessionPath, 5_000) }.getOrNull()
             if (response != null && response.success && response.stdout.isNotBlank()) diff = response.stdout
         }
@@ -192,6 +222,7 @@ suspend fun SessionFileOps.loadFile(sessionId: String, filePath: String, session
         } catch (_: IllegalArgumentException) {
             return FileLoad.Binary
         }
+        if (media) return withContext(Dispatchers.Default) { fileLoadOf(filePath, bytes) }
         val text = String(bytes, Charsets.UTF_8)
         val controls = text.count { it.code < 32 && it != '\t' && it != '\n' && it != '\r' }
         val binary = bytes.any { it == 0.toByte() } || (text.isNotEmpty() && controls.toDouble() / text.length > 0.1)
@@ -305,6 +336,7 @@ fun FileScreen(
             FileLoad.Binary -> Centered(stringResource(R.string.files_binary_file), colors.textSecondary, stringResource(R.string.files_cannot_display_binary), fileName)
             is FileLoad.Loaded -> LoadedFile(load, filePath, line, column)
             is FileLoad.Picture -> PictureFile(load, filePath)
+            is FileLoad.Video -> VideoFile(load, filePath)
         }
     }
 }
@@ -458,45 +490,120 @@ private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, colu
     }
 }
 
+/** A picture's or recording's path bar: the bar the text has, without a line. */
+@Composable
+private fun MediaPathBar(filePath: String) {
+    val colors = HappyTheme.colors
+    Row(
+        Modifier.fillMaxWidth().background(colors.glass.backgroundStrong).hairlineBelow(glassBorder(colors.dark)).testTag(FileTags.PATH_BAR).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FileIcon(filePath.substringAfterLast('/').ifEmpty { filePath }, 20.dp)
+        Text(filePath, style = happyTextStyle(fontSize = 14, family = AppMono), color = colors.textSecondary, modifier = Modifier.padding(start = 8.dp).weight(1f))
+    }
+}
+
 /**
  * A picture file: the path bar, then the picture at its own size, fitted
- * to the width and never enlarged, centred; a tap opens it in the viewer
- * (pinch, pan, drag away), as a picture in the conversation opens.
+ * inside the rest of the screen and never enlarged, centred (desktop's
+ * ImageViewer "fit": all of it, at most life size). Pinched to 1–5 times
+ * and dragged while larger than its box, double-tapped in and out, as the
+ * viewer's page zooms; a tap opens it in the viewer (pinch, pan, drag
+ * away), as a picture in the conversation opens.
  */
 @Composable
 private fun PictureFile(load: FileLoad.Picture, filePath: String) {
-    val colors = HappyTheme.colors
     val fileName = filePath.substringAfterLast('/').ifEmpty { filePath }
     var viewing by remember { mutableStateOf(false) }
     val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val zoom = remember(load) { PageZoom() }
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().background(colors.glass.backgroundStrong).hairlineBelow(glassBorder(colors.dark)).testTag(FileTags.PATH_BAR).padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FileIcon(fileName, 20.dp)
-            Text(filePath, style = happyTextStyle(fontSize = 14, family = AppMono), color = colors.textSecondary, modifier = Modifier.padding(start = 8.dp).weight(1f))
-        }
+        MediaPathBar(filePath)
         Box(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).contentMaxWidth(LocalWindowLayout.current).padding(16.dp),
-            contentAlignment = Alignment.TopCenter,
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clipToBounds()
+                .onSizeChanged {
+                    zoom.page = it
+                    zoom.middle = Offset(it.width / 2f, it.height / 2f)
+                }
+                .pointerInput(zoom) {
+                    detectTapGestures(onTap = { viewing = true }, onDoubleTap = { point -> scope.launch { zoom.toggle(point) } })
+                }
+                .pointerInput(zoom) {
+                    detectTransformGestures { _, pan, change, _ ->
+                        zoom.scale = (zoom.scale * change).coerceIn(1f, PictureViewerSpec.MAX_ZOOM)
+                        zoom.offset = if (zoom.zoomed) zoom.clamp(zoom.offset + pan, zoom.scale) else Offset.Zero
+                    }
+                }
+                .contentMaxWidth(LocalWindowLayout.current)
+                .padding(16.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            val natural = with(density) { load.width.toDp() }
             RemoteImage(
                 model = load.bytes,
                 contentDescription = fileName,
                 contentScale = ContentScale.Fit,
                 cacheKey = "file:$filePath:${load.bytes.size}",
                 modifier = Modifier
-                    .widthIn(max = natural)
-                    .fillMaxWidth()
+                    .widthIn(max = with(density) { load.width.toDp() })
+                    .heightIn(max = with(density) { load.height.toDp() })
                     .aspectRatio(load.width.toFloat() / load.height)
+                    .onSizeChanged { zoom.picture = it.toSize() }
+                    .graphicsLayer {
+                        scaleX = zoom.scale
+                        scaleY = zoom.scale
+                        translationX = zoom.offset.x
+                        translationY = zoom.offset.y
+                    }
                     .testTag(FileTags.PICTURE)
-                    .clickable(role = Role.Image) { viewing = true },
+                    .semantics {
+                        role = Role.Image
+                        onClick { viewing = true; true }
+                    },
             )
         }
     }
     if (viewing) PictureViewer(load.bytes, "file:$filePath:${load.bytes.size}", fileName) { viewing = false }
+}
+
+/**
+ * A recording file: the path bar, then the recording fitted on black with
+ * the viewer's play/pause, scrubber and time ([VideoPage]), read from the
+ * bytes already here. It waits for play.
+ */
+@Composable
+private fun VideoFile(load: FileLoad.Video, filePath: String) {
+    val fileName = filePath.substringAfterLast('/').ifEmpty { filePath }
+    val key = "file:$filePath:${load.bytes.size}"
+    val source = remember(load) {
+        object : ViewerSource {
+            override suspend fun bytes(key: String): ByteArray? = null
+            override fun video(key: String): MediaDataSource = BytesMediaSource(load.bytes)
+        }
+    }
+    Column(Modifier.fillMaxSize()) {
+        MediaPathBar(filePath)
+        Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black).testTag(FileTags.VIDEO)) {
+            VideoPage(ViewerItem(key, fileName, isVideo = true), source, active = false, current = true, motion = null)
+        }
+    }
+}
+
+/** Bytes in memory as the platform player reads them. */
+private class BytesMediaSource(private val bytes: ByteArray) : MediaDataSource() {
+    override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
+        if (position >= bytes.size) return -1
+        val count = minOf(size.toLong(), bytes.size - position).toInt()
+        System.arraycopy(bytes, position.toInt(), buffer, offset, count)
+        return count
+    }
+
+    override fun getSize(): Long = bytes.size.toLong()
+
+    override fun close() = Unit
 }
 
 private fun Modifier.hairlineBelow(color: Color) = drawBehind {

@@ -89,4 +89,5 @@
     <string name="cloud_invite_other_account">Accedi con un altro account</string>
     <string name="cloud_invite_not_now">Non ora</string>
     <string name="cloud_invite_inviter">%1$s ti ha invitato</string>
+    <string name="cloud_switch_footer">Mostra Happy Cloud nella prima schermata e nel menu degli account e apre i suoi link di invito nell\'app. I server già su questo telefono continuano a funzionare comunque.</string>
 </resources>

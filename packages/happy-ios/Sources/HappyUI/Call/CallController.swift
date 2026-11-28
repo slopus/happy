@@ -2,12 +2,19 @@
 import AVFAudio
 import HappyCore
 import HappyLayout
+#if DEBUG
+import LiveKit
+#endif
 import UIKit
 
-/// The agent connection's voice call: started from home's voice button,
-/// shown as the bar across the window's top (`ShellViewController`), bound
-/// to the one connection it started on. It ends in the background, on an
-/// audio interruption or a lost route, and when the connection changes.
+/// The voice call: started from an agent connection's home or a Happy
+/// account's (Happy CLI), shown as the bar across the
+/// window's top (`ShellViewController`), bound to the one connection or
+/// account it started on. Both are the same call, with the same bar,
+/// lifecycle, sheets and free time (`CallAllowance`); only what its tools
+/// reach differs (`SessionCallTargets`, `LegacyCallTargets`). It ends in
+/// the background, on an audio interruption or a lost route, and when the
+/// connection or account changes.
 /// What each call said is kept for the connection's next one
 /// (`CallHistory`), and a call that ends unasked plays `CallDropSound`.
 @MainActor
@@ -19,7 +26,7 @@ final class CallController {
 
     private var session: CallSession?
     private var context: CallContext?
-    private var targets: SessionCallTargets?
+    private var targets: (any LiveCallTargets)?
     private var directoryWatch: Watch?
     private var directorySettle: DirectorySettle?
     private var connectionID: String?
@@ -64,28 +71,72 @@ final class CallController {
 
     var isShowing: Bool { state.isShown }
 
-    /// The voice button: a call on this connection, or the one already on.
-    /// While a subscription is on sale, a device's first tap is voice's
-    /// welcome instead, once: its "Start Voice Session" calls, and from then
-    /// on the button does. With nothing on sale there is no welcome.
+    /// The voice button on an agent connection: a call on this
+    /// connection, or the one already on.
     func start(session account: Session, from controller: UIViewController) {
         guard let shell = controller.view.window?.rootViewController as? ShellViewController else { return }
         if state.isLive, connectionID == account.accountID { return }
-        guard !offers.isShowing else { return }
-        if offers.welcomes() {
-            // Only its "Start Voice Session" calls; closing it, or buying there, starts nothing.
-            Task { [weak self, weak controller] in
-                guard let self, await self.offers.ask(.welcome, over: Self.top(of: shell)) == .start, let controller else { return }
-                self.start(session: account, from: controller)
-            }
-            return
+        guard !welcomes(over: shell, then: { [weak self, weak controller] in
+            guard let controller else { return }
+            self?.start(session: account, from: controller)
+        }) else { return }
+        let targets = SessionCallTargets(session: account, shell: shell)
+        begin(binding: account.accountID, shell: shell, targets: targets, context: CallContext(targets: targets),
+              history: CallHistory(store: account.offline.map { OfflineCallHistoryStore(offline: $0) })) {
+            await Self.person(account)
         }
+    }
+
+    /// The voice button on a Happy account's home: a call over its
+    /// sessions (Happy CLI's, and Happy Agent's over the relay), or the one
+    /// already on. The same hosted agent, prompt, tools, bar and free time;
+    /// only what the tools reach differs (`LegacyCallTargets`).
+    func start(account: AccountSession, from controller: UIViewController) {
+        guard let shell = controller.view.window?.rootViewController as? ShellViewController else { return }
+        let binding = Self.binding(account)
+        if state.isLive, connectionID == binding { return }
+        guard !welcomes(over: shell, then: { [weak self, weak controller] in
+            guard let controller else { return }
+            self?.start(account: account, from: controller)
+        }) else { return }
+        let targets = LegacyCallTargets(session: account, context: shell.context, shell: shell)
+        begin(binding: binding, shell: shell, targets: targets, context: CallContext(targets: targets),
+              history: CallHistory(store: account.callHistoryFile.map { FileCallHistoryStore(url: $0) })) { nil }
+    }
+
+    /// What a call on a Happy account is bound to, as `connectionDidChange`
+    /// is told: the signed-in account, until it signs out or another opens.
+    static func binding(_ account: AccountSession) -> String {
+        "happy:\(ObjectIdentifier(account))"
+    }
+
+    /// While a subscription is on sale, a device's first tap is voice's
+    /// welcome instead of a call, once: its "Start Voice Session" calls
+    /// (`then`), and from then on the button does. With nothing on sale
+    /// there is no welcome. True when the tap went to the welcome, or an
+    /// offer sheet already shows.
+    private func welcomes(over shell: ShellViewController, then start: @escaping @MainActor () -> Void) -> Bool {
+        guard !offers.isShowing else { return true }
+        guard offers.welcomes() else { return false }
+        // Only its "Start Voice Session" calls; closing it, or buying there, starts nothing.
+        Task { [weak self] in
+            guard let self, await self.offers.ask(.welcome, over: Self.top(of: shell)) == .start else { return }
+            start()
+        }
+        return true
+    }
+
+    /// One call, whatever its account: `targets` reach its conversations,
+    /// `context` tells the agent of them, `history` is what its earlier
+    /// calls said, `person` who it talks to in a team.
+    private func begin(binding: String, shell: ShellViewController, targets: any LiveCallTargets, context: CallContext,
+                       history: CallHistory, person: @escaping @MainActor () async -> String?) {
+        #if DEBUG
+        guard !Self.typedButAudible else { return }
+        #endif
         close()
         self.shell = shell
-        connectionID = account.accountID
-        let targets = SessionCallTargets(session: account, shell: shell)
-        let context = CallContext(targets: targets)
-        let history = CallHistory(store: account.offline.map { OfflineCallHistoryStore(offline: $0) })
+        connectionID = binding
         let call = CallSession(grants: Self.grants, allowance: allowance, permission: {
             await AVAudioApplication.requestRecordPermission()
         }, history: history) { grant, request, events in
@@ -155,7 +206,7 @@ final class CallController {
         }
         focus = targets.focusedNow
         call.start(language: nil, context: {
-            let initial = await context.initial(previous: history.slots, person: await Self.person(account))
+            let initial = await context.initial(previous: history.slots, person: await person())
             await Self.hold(await context.followed, in: targets)
             return initial
         }, tool: { call in
@@ -196,12 +247,13 @@ final class CallController {
 
     /// Exactly the conversations the call hears from stay read: one that
     /// dropped out of the last visited is let go.
-    private static func hold(_ followed: [String], in targets: SessionCallTargets) async {
+    private static func hold(_ followed: [String], in targets: any LiveCallTargets) async {
         for id in targets.following where !followed.contains(id) { await targets.follow(id, false) }
         for id in followed where !targets.following.contains(id) { await targets.follow(id, true) }
     }
 
-    /// The window's connection changed: a call bound to another one ends.
+    /// The window's connection or Happy account changed (`binding`): a
+    /// call bound to another one ends.
     func connectionDidChange(to id: String?) {
         guard state.isShown, id != connectionID else { return }
         close()
@@ -321,7 +373,8 @@ final class CallController {
     /// shows the welcome again (`seen`: never), `HAPPY_CALL_USED=1` spends the free time
     /// (a 20-minute call that ended now), and `HAPPY_CALL_STEPS` presses
     /// what a person would, one step every 3 s: `tap` the voice button,
-    /// `subscribe`, `session` or `close` on voice's sheet on top, `dismiss` an alert. Each step logs what is
+    /// `subscribe`, `session` or `close` on voice's sheet on top, `dismiss` an alert,
+    /// the bar's `mute` (again to unmute) and `end`; any other word waits. Each step logs what is
     /// on top and the call's state (`[call-steps]`).
     func applyTestEnvironment(tap: @escaping @MainActor () -> Void) {
         let environment = ProcessInfo.processInfo.environment
@@ -330,6 +383,16 @@ final class CallController {
         if environment["HAPPY_CALL_USED"] == "1" {
             let now = Date().timeIntervalSince1970
             allowance.record(call: "test-used", from: now - CallAllowance.freeSeconds, to: now)
+        }
+        if let typed = environment["HAPPY_CALL_TYPE"]?.split(separator: "|").map(String.init), !typed.isEmpty {
+            // Typed, the call is silent: no microphone and no speaker, as the
+            // harness's live check (`CallLiveCheck`). A run that can't be
+            // silent makes no call at all.
+            try? AudioManager.shared.setManualRenderingMode(true)
+            Self.typedButAudible = !AudioManager.shared.isManualRenderingMode
+            CallDropSound.muted = true
+            print("[call-type] silent: \(!Self.typedButAudible)")
+            Task { await Self.typeTurns(typed) }
         }
         guard let steps = environment["HAPPY_CALL_STEPS"]?.split(separator: ",").map(String.init) else { return }
         Task { [weak self] in
@@ -342,6 +405,9 @@ final class CallController {
                 case "subscribe": sheet?.subscribe?.sendActions(for: .touchUpInside)
                 case "session": if sheet?.session.isEnabled == true { sheet?.session.sendActions(for: .touchUpInside) }
                 case "close": sheet?.close.sendActions(for: .primaryActionTriggered)
+                // The bar's own buttons, as a finger presses them.
+                case "mute": self.shell?.callBar.onMute?()
+                case "end": self.shell?.callBar.onEnd?()
                 case "dismiss": (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }.first.map(Self.top(of:)) as? UIAlertController)?.dismiss(animated: true)
                 default: break
                 }
@@ -352,6 +418,41 @@ final class CallController {
             }
             print("[call-steps] done")
         }
+    }
+
+    /// A typed run (`HAPPY_CALL_TYPE`) that couldn't silence the audio: it calls no one.
+    private static var typedButAudible = false
+
+    /// `HAPPY_CALL_TYPE=first|second|…`: the person's turns typed into the
+    /// live call (`CallProbe.type`), each once the agent has answered the one
+    /// before, as Android's live check types its prompts: a real call with
+    /// no one to speak, logged as `[call-type]` with the agent's answers.
+    private static func typeTurns(_ prompts: [String]) async {
+        func agentLines() -> Int { CallProbe.transcript.filter { $0.role == "agent" }.count }
+        /// The agent has said more than `lines` lines and been quiet for 2 s, or `limit` passed.
+        func answered(after lines: Int, limit: Double) async -> Bool {
+            let end = Date().addingTimeInterval(limit)
+            var quietSince: Date?
+            while Date() < end {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard agentLines() > lines, !CallProbe.agentSpeaking else { quietSince = nil; continue }
+                if let since = quietSince { if Date().timeIntervalSince(since) >= 2 { return true } } else { quietSince = Date() }
+            }
+            return false
+        }
+        let connected = Date().addingTimeInterval(90)
+        while CallProbe.type == nil || CallProbe.transcript.isEmpty, Date() < connected { try? await Task.sleep(for: .milliseconds(250)) }
+        guard CallProbe.type != nil else { return print("[call-type] never connected") }
+        // The agent's greeting first.
+        _ = await answered(after: 0, limit: 20)
+        for prompt in prompts {
+            let lines = agentLines()
+            print("[call-type] \(prompt)")
+            CallProbe.type?(prompt)
+            if await !answered(after: lines, limit: 90) { print("[call-type] no answer") }
+            for line in CallProbe.transcript.filter({ $0.role == "agent" }).dropFirst(lines) { print("[call-type] agent: \(line.text)") }
+        }
+        print("[call-type] done")
     }
 
     /// Screenshots only: draws the bar in one state from a script, with no

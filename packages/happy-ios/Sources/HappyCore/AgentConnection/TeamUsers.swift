@@ -9,14 +9,17 @@ public struct TeamUser: Codable, Equatable, Sendable {
     public var id: String
     public var name: String
     public var photo: AgentWire.Profile.Photo?
+    /// What they do, such as "designer"; nil when unset or from an older daemon.
+    public var role: String?
 
-    public init(id: String, name: String, photo: AgentWire.Profile.Photo? = nil) {
+    public init(id: String, name: String, photo: AgentWire.Profile.Photo? = nil, role: String? = nil) {
         self.id = id
         self.name = name
         self.photo = photo
+        self.role = role
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, photo }
+    enum CodingKeys: String, CodingKey { case id, name, photo, role }
 
     /// A picture it can't read is none, never a lost member.
     public init(from decoder: Decoder) throws {
@@ -24,6 +27,7 @@ public struct TeamUser: Codable, Equatable, Sendable {
         id = try container.decode(String.self, forKey: .id)
         name = (try? container.decode(String.self, forKey: .name)) ?? ""
         photo = try? container.decodeIfPresent(AgentWire.Profile.Photo.self, forKey: .photo)
+        role = (try? container.decodeIfPresent(String.self, forKey: .role)).flatMap { $0 }
     }
 
     /// Where a member's picture is read.

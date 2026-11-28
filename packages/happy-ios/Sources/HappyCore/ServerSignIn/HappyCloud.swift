@@ -65,9 +65,27 @@ public enum HappyCloud {
                     refreshUrl: api + "/token", clientId: "happy", scope: "happy", resource: server + "/")
     }
 
-    /// Offered in development and preview builds only, not yet in the
-    /// App Store app.
-    public static func isOffered(in variant: AppVariant) -> Bool { variant != .production }
+    /// Settings' Happy Cloud switch: whether the app offers Happy Cloud's
+    /// ways in (Start's Use Happy Cloud, the account menu's, its invite
+    /// links). This phone's own, never an account's or a server's. An
+    /// override over the build's default (`isOfferedByDefault`), kept only
+    /// once the switch is turned, so a phone that never turns it follows
+    /// each build's default. Servers already on the phone keep working
+    /// either way.
+    public static func isOffered(in variant: AppVariant, defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: offeredKey) as? Bool ?? isOfferedByDefault(in: variant)
+    }
+
+    /// Until the switch is turned: on in development and preview builds,
+    /// off in the App Store app.
+    public static func isOfferedByDefault(in variant: AppVariant) -> Bool { variant != .production }
+
+    /// The switch's own change: the one place the override is written.
+    public static func setOffered(_ on: Bool, defaults: UserDefaults = .standard) {
+        defaults.set(on, forKey: offeredKey)
+    }
+
+    static let offeredKey = "happy-cloud"
 
     /// The origin of the server called `name`.
     public static func server(named name: String) -> String { "https://\(name).\(base)" }

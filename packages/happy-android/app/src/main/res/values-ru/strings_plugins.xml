@@ -3,6 +3,7 @@
     <string name="plugins_title">Плагины</string>
     <string name="plugins_installed">Установлены</string>
     <string name="plugins_available">Доступны</string>
+    <string name="plugins_features">Функции</string>
     <string name="plugins_loading">Загружаем плагины…</string>
     <string name="plugins_empty">Этот сервер пока не предлагает плагинов.</string>
     <string name="plugins_failed">Не удалось загрузить плагины</string>
@@ -36,4 +37,8 @@
     <string name="plugins_field_required">Обязательно</string>
     <string name="plugins_not_installable">Happy Agent пока не может установить этот плагин.</string>
     <string name="plugins_signed_in_browser">Завершите вход в браузере и вернитесь сюда.</string>
+    <string name="plugins_uninstall">Отключить</string>
+    <string name="plugins_uninstall_title">Отключить %1$s?</string>
+    <string name="plugins_uninstall_body">%1$s скроется от вас во всех командах, где вы состоите. Ничего не удаляется, а после повторной установки всё вернётся.</string>
+    <string name="plugins_feature_note">Только для вас, во всех командах, где вы состоите. Если отключить %1$s, все данные сохранятся: всё, что с ним сделала команда, останется, а после повторной установки всё вернётся.</string>
 </resources>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A viewer's ring around their 24 face and its 1.5 gap in its 32 cell, white, tinted their colour (SRC_IN). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <group
+        android:name="breath"
+        android:pivotX="16"
+        android:pivotY="16">
+        <path
+            android:name="ring"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="2"
+            android:pathData="M1.5,16 A14.5,14.5 0 1,0 30.5,16 A14.5,14.5 0 1,0 1.5,16 Z" />
+    </group>
+</vector>

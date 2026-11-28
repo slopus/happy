@@ -270,7 +270,7 @@ public final class AppCoordinator {
     /// connection's home.
     private func openInstanceTarget() {
         guard let target = instanceTarget, case .agentConnection(let shown) = context.account.state, shown.id == target.connection,
-              shell.stack.first is AgentHomeViewController, let session = Session.session(for: target.connection, context: context) else { return }
+              shell.agentHome != nil, let session = Session.session(for: target.connection, context: context) else { return }
         instanceTarget = nil
         shell.presentedViewController?.dismiss(animated: false)
         if case .settings(let page) = target.link.target, let top = shell.topViewController {
@@ -325,7 +325,8 @@ public final class AppCoordinator {
         let identity = session.map(ObjectIdentifier.init)
         let pending = context.account.pendingServerConfirmation
         let agentConnectionID = context.account.agentConnections.activeID
-        CallController.shared.connectionDidChange(to: agentConnectionID)
+        // A call is bound to the connection on screen, else to the signed-in Happy account.
+        CallController.shared.connectionDidChange(to: agentConnectionID ?? session.map(CallController.binding))
         if let shownSession, shownSession == identity, shownServerConfirmationID == pending?.id, shownAgentConnectionID == agentConnectionID { return }
         let animated = shownSession != nil
         shownSession = .some(identity)

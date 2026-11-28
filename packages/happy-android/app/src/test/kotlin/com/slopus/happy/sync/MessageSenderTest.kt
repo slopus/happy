@@ -6,7 +6,10 @@ import com.slopus.happy.crypto.RandomSource
 import com.slopus.happy.data.OutboxKind
 import com.slopus.happy.data.OutboxRecord
 import com.slopus.happy.data.OutboxState
+import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.net.HappyJson
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -28,6 +31,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * The user record against happy-app's own `sendMessage` output
@@ -294,6 +299,50 @@ class MessageSenderTest {
         assertEquals(SendFailure.TimedOut, MessageSender.failure(outbox().single().error))
         assertEquals(SendFailure.Refused(403), MessageSender.failure("Server error: 403"))
         assertNull(MessageSender.failure("HTTP 500"))
+    }
+
+    /**
+     * A cold start: the account starts while MainActivity is still on its
+     * way, and the activity starts before the account's watcher of the
+     * foreground has run. The sender is in the foreground all the same, so a
+     * send a minute later that needs a second POST goes, rather than failing
+     * at once as "failed in background after 30s" (build 167).
+     */
+    @Test
+    fun theForegroundReachedBeforeTheAccountWatchesItStillCounts() = runBlocking {
+        h.close()
+        val held = HeldDispatcher(Dispatchers.IO)
+        h = AccountHarness(io = held)
+        server.addSession("s1", updatedAt = 100, metadata = buildJsonObject { put("path", "/repo"); put("host", "mac"); put("flavor", "claude") })
+        h.foreground.value = false
+        h.account.start()
+        h.foreground.value = true
+        held.release()
+        eventually(message = "socket connected") { h.account.connectionStatus.value == ConnectionStatus.CONNECTED }
+        h.account.syncNow()
+
+        h.now += 60_000
+        server.failSends += 503
+        sender.send("s1", "after a minute")
+        eventually(message = "sent or failed") { server.sentRecords("s1").isNotEmpty() || outbox().any { it.state == OutboxState.FAILED } }
+        assertNull(outbox().firstOrNull { it.state == OutboxState.FAILED }?.error)
+        assertEquals(1, server.sentRecords("s1").size)
+    }
+
+    /** Holds what is dispatched until [release], as a busy pool at cold start does. */
+    private class HeldDispatcher(private val target: CoroutineDispatcher) : CoroutineDispatcher() {
+        private val held = mutableListOf<Runnable>()
+        private var open = false
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            val now = synchronized(this) { open.also { if (!it) held += block } }
+            if (now) target.dispatch(context, block)
+        }
+
+        fun release() {
+            val blocks = synchronized(this) { open = true; held.toList().also { held.clear() } }
+            blocks.forEach { target.dispatch(EmptyCoroutineContext, it) }
+        }
     }
 
     /** sync.send.test.ts: the synced Happy Agent draft is spent once its text is accepted. */

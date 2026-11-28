@@ -11,7 +11,6 @@
     <string name="chat_created">Created %1$s</string>
     <string name="chat_permissions_in_terminal">Permissions shown in terminal only. Reset or send a message to control from app.</string>
     <string name="chat_stop">Stop</string>
-    <string name="chat_voice">Voice</string>
     <string name="chat_send">Send</string>
     <string name="chat_markdown_image">Markdown image</string>
     <string name="chat_remove_image">Remove %1$s</string>
@@ -38,5 +37,6 @@
     <string name="link_status_updating">updating…</string>
     <string name="link_status_connecting">connecting…</string>
     <string name="link_status_waiting_for_network">waiting for network…</string>
+    <string name="link_status_restarting">agent restarting…</string>
     <string name="message_select">Select</string>
 </resources>

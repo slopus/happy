@@ -21,7 +21,7 @@ final class AgentHarness {
             clientID: "ios/agent-harness",
             credentialStore: InMemoryCredentialStore(),
             storeDirectory: nil,
-            agentTransport: { _ in UnixSocketAgentTransport(path: socket) },
+            agentTransport: { _ in SocketAgentTransport(.unix(socket)) },
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }
         )
         let context = AppContext(account: controller, variant: .development, version: "agent-harness")
@@ -33,10 +33,18 @@ final class AgentHarness {
     }
 }
 
-/// HTTP/1.1 over a Unix socket, one connection a request, with the framing
-/// the Tailcat transport uses.
-struct UnixSocketAgentTransport: AgentTransport {
-    let path: String
+/// HTTP/1.1 over a Unix socket, or plain TCP to a daemon a phone can reach
+/// on the network (`ViewersHarness`'s `-real`), one connection a request,
+/// with the framing the Tailcat transport uses.
+struct SocketAgentTransport: AgentTransport {
+    enum Address: Sendable {
+        case unix(String)
+        case tcp(host: String, port: UInt16)
+    }
+
+    let address: Address
+
+    init(_ address: Address) { self.address = address }
 
     func request(method: String, path route: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         try await request(method: method, path: route, credential: credential, body: body, headers: headers, sent: nil)
@@ -117,7 +125,7 @@ struct UnixSocketAgentTransport: AgentTransport {
     }
 
     private func connect() async throws -> Int32 {
-        let path = path
+        guard case .unix(let path) = address else { return try await connectTCP() }
         return try await Task.detached {
             let socket = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
             guard socket >= 0 else { throw PairingError.unavailable }
@@ -135,6 +143,31 @@ struct UnixSocketAgentTransport: AgentTransport {
             var on: Int32 = 1
             setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
             return socket
+        }.value
+    }
+
+    private func connectTCP() async throws -> Int32 {
+        guard case .tcp(let host, let port) = address else { throw PairingError.unavailable }
+        return try await Task.detached {
+            var hints = addrinfo()
+            hints.ai_family = AF_UNSPEC
+            hints.ai_socktype = SOCK_STREAM
+            var found: UnsafeMutablePointer<addrinfo>?
+            guard getaddrinfo(host, String(port), &hints, &found) == 0, let first = found else { throw PairingError.unavailable }
+            defer { freeaddrinfo(first) }
+            var next: UnsafeMutablePointer<addrinfo>? = first
+            while let info = next {
+                next = info.pointee.ai_next
+                let socket = Darwin.socket(info.pointee.ai_family, info.pointee.ai_socktype, info.pointee.ai_protocol)
+                guard socket >= 0 else { continue }
+                if Darwin.connect(socket, info.pointee.ai_addr, info.pointee.ai_addrlen) == 0 {
+                    var on: Int32 = 1
+                    setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+                    return socket
+                }
+                Darwin.close(socket)
+            }
+            throw PairingError.unavailable
         }.value
     }
 

@@ -17,7 +17,6 @@
     <string name="settings_appearance_file_diffs_sidebar">ファイル差分サイドバー</string>
     <string name="settings_appearance_file_diffs_sidebar_description">デスクトップでチャットの横に git の変更を表示</string>
     <string name="chat_scroll_to_bottom">一番下までスクロール</string>
-    <string name="voice_clear_search">検索をクリア</string>
     <string name="scan_unavailable">このデバイスでは QR スキャナーを使えません。代わりにリンクを貼り付けてください。</string>
     <string name="scan_not_happy_code">この QR コードは Happy のものではありません。</string>
     <string name="scan_terminal_code_elsewhere">このコードはターミナルを接続します。「設定 › QRコードをスキャンして認証」からスキャンしてください。</string>
@@ -31,7 +30,4 @@
     <string name="state_animation_replay">もう一度再生</string>
     <string name="scan_no_camera">このデバイスにはカメラがありません。リンクを貼り付けてください。</string>
     <string name="scan_camera_failed">カメラを起動できませんでした。もう一度試すか、リンクを貼り付けてください。</string>
-    <string name="voice_microphone_title">マイクへのアクセスが必要です</string>
-    <string name="voice_microphone_ask">ボイスチャットには Happy がマイクにアクセスする必要があります。確認が表示されたら許可してください。</string>
-    <string name="voice_microphone_settings">ボイスチャットには Happy がマイクにアクセスする必要があります。デバイスの設定でマイクへのアクセスを有効にしてください。</string>
 </resources>

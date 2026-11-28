@@ -1,0 +1,28 @@
+{
+    "description": "A legacy inline page presentation.",
+    "message": {
+        "id": "msgpage0000000000000000001",
+        "role": "agent",
+        "createdAt": 1764100000013,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolpage000000000000000001",
+                "name": "show_page",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "page",
+                    "url": "http://localhost:5173/",
+                    "title": "Dev server",
+                    "display": null
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

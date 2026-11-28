@@ -100,6 +100,18 @@ class NewWorkPanelTest {
         rule.node(ConversationScreenTags.EMPTY).assertDoesNotExist()
     }
 
+    @Test fun `where people make no bots there is no choice, only a task's note under its picture`() {
+        state = state.copy(newWork = NewWork(WorkChoice(), bots = false))
+        show()
+        rule.node(NewWorkTags.KIND).assertDoesNotExist()
+        rule.node(NewWorkTags.NAME_FIELD).assertDoesNotExist()
+        val art = rule.node(NewWorkTags.art(StateArt.Action)).bounds
+        val note = rule.node(NewWorkTags.NOTE)
+        note.assertTextEquals("A task is one piece of work, big or small. It can reach across several projects and hand parts off to subtasks.")
+        assertDp("16 under the picture", art.bottom + 16.dp, note.bounds.top)
+        rule.onNodeWithText(BOT_NOTE).assertDoesNotExist()
+    }
+
     @Test fun `a bot asks its name under the kind, and says what it is`() {
         state = state.copy(newWork = NewWork(WorkChoice(WorkKind.Bot)))
         show()

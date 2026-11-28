@@ -9,12 +9,12 @@ extension SessionStarter {
     /// A starter on this account's machines, sessions and sender. Its spawn
     /// requests are the account's own unless a caller hands it a scope of
     /// that account's (a child scope, say).
-    static func make(for session: AccountSession, spawnRequests: SpawnRequests? = nil) -> SessionStarter {
+    static func make(for session: AccountSession, spawnRequests: SpawnRequests? = nil, sender: (any ChatSending)? = nil) -> SessionStarter {
         let sync = session.sync
         return SessionStarter(environment: .init(
             ops: session.homeOps,
             sessionOps: session.homeSessionOps,
-            sender: session.sender,
+            sender: sender ?? session.sender,
             metadataTransport: session.realtime,
             saveInitialModes: { [sender = session.sender] in try await sender.saveInitialModes(sessionId: $0, patch: $1) },
             refreshSessions: { await sync.run(.sessions) },

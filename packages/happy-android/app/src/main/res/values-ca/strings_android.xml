@@ -19,7 +19,6 @@
     <string name="settings_appearance_file_diffs_sidebar">Barra lateral de canvis de fitxers</string>
     <string name="settings_appearance_file_diffs_sidebar_description">Mostra els canvis de git al costat del xat a l\'escriptori</string>
     <string name="chat_scroll_to_bottom">Desplaça\'t al final</string>
-    <string name="voice_clear_search">Esborra la cerca</string>
     <string name="scan_unavailable">L\'escàner de QR no està disponible en aquest dispositiu. Enganxa l\'enllaç en lloc d\'això.</string>
     <string name="scan_not_happy_code">Aquest codi QR no és de Happy.</string>
     <string name="scan_terminal_code_elsewhere">Aquest codi connecta un terminal. Escaneja\'l des de Configuració › Escaneja el codi QR per autenticar-te.</string>
@@ -33,7 +32,4 @@
     <string name="state_animation_replay">Torna a reproduir</string>
     <string name="scan_no_camera">Aquest dispositiu no té càmera. Enganxa l\'enllaç.</string>
     <string name="scan_camera_failed">No s\'ha pogut iniciar la càmera. Torna-ho a provar o enganxa l\'enllaç.</string>
-    <string name="voice_microphone_title">Cal accés al micròfon</string>
-    <string name="voice_microphone_ask">Happy necessita accés al micròfon per al xat de veu. Concedeix el permís quan se\'t demani.</string>
-    <string name="voice_microphone_settings">Happy necessita accés al micròfon per al xat de veu. Activa l\'accés al micròfon a la configuració del dispositiu.</string>
 </resources>

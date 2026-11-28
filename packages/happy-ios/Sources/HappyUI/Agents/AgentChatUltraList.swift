@@ -88,6 +88,18 @@ final class AgentChatUltraList: UIView {
     /// A preview's: the newest row, taller than the room it has, shows
     /// from its start rather than its end.
     var showsNewestFromItsStart = false
+    /// Where the reader left a conversation: the row read at the top and
+    /// how far its top was below the top inset. Not an offset, as rows
+    /// above it may come or go before it is opened again.
+    struct Place {
+        var rowId: String
+        var top: CGFloat
+    }
+    /// Where the reader left this conversation last (`Session.scrollPlaces`):
+    /// the first pass with rows opens there rather than on the newest row,
+    /// if the row is among them. A send or a jump to the newest row first
+    /// lets it go.
+    var opensAt: Place?
     /// As close to the newest row as counts as on it.
     static let followThreshold: CGFloat = 24
     /// A send flying in from the composer: the row it waits for is
@@ -328,7 +340,10 @@ final class AgentChatUltraList: UIView {
         // viewport's keyboard motion where it ends, at once.
         let submission = Submission(rows: items.map { .init(identity: $0.identity, revision: $0.revision) },
                                     room: showsNewestFromItsStart ? viewportHeight : nil)
-        guard submission != submitted || !transition.isImmediate else { return }
+        // A place to open on goes in with the first rows the viewport can
+        // take, even the same rows handed over again.
+        let opens = opensAt != nil && !plans.isEmpty && viewportSize.height > 0
+        guard submission != submitted || !transition.isImmediate || opens else { return }
         submitted = submission
         if holdsPlace {
             holdsPlace = false
@@ -341,6 +356,12 @@ final class AgentChatUltraList: UIView {
             // the composer when it is shorter than the room.
             let room = Double(viewportHeight)
             target = .init(index: newest, identity: items[newest].identity, resolve: { height, _ in max(0, room - height) })
+        } else if opens, let place = opensAt {
+            // Back where the reader left it, or on its newest row if that
+            // row is gone.
+            opensAt = nil
+            let identity = "chat:row:\(place.rowId)"
+            target = items.firstIndex { $0.identity == identity }.map { .init(index: $0, identity: identity, pointOffset: Double(place.top)) } ?? .bottom
         } else {
             // The conversation opens on its newest row.
             target = reveals || list.items.isEmpty ? .bottom : nil
@@ -406,6 +427,7 @@ final class AgentChatUltraList: UIView {
     /// Back to the newest row, following what grows there again.
     func scrollToNewest(animated: Bool) {
         followsNewest = true
+        opensAt = nil
         list.scrollToBottom(animated: animated && !UIAccessibility.isReduceMotionEnabled)
     }
 
@@ -429,6 +451,18 @@ final class AgentChatUltraList: UIView {
             return
         }
         list.scrollToTop(animated: false)
+    }
+
+    /// The row read at the top of the screen and where its top is, for
+    /// opening there again; nil at the newest row, which a conversation
+    /// opens on anyway.
+    var place: Place? {
+        guard distanceFromNewest > Self.followThreshold else { return nil }
+        for index in list.loadedIndexRange {
+            guard let row = list.items[index] as? AgentChatRow, let frame = list.settledFrame(at: index), frame.maxY > insets.top else { continue }
+            return Place(rowId: row.plan.id, top: frame.minY - insets.top)
+        }
+        return nil
     }
 
     /// The reader opened or folded something: it grows or shrinks under

@@ -5,7 +5,7 @@
  * Environment files should be loaded using Node's --env-file flag
  */
 
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { chmodSync, closeSync, constants, existsSync, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import packageJson from '../package.json'
@@ -21,6 +21,7 @@ class Configuration {
   public readonly settingsFile: string
   public readonly privateKeyFile: string
   public readonly daemonStateFile: string
+  public readonly legacyDaemonStateFile: string
   public readonly daemonLockFile: string
   public readonly sessionsFile: string
   public readonly currentCliVersion: string
@@ -46,9 +47,25 @@ class Configuration {
     this.logsDir = join(this.happyHomeDir, 'logs')
     this.settingsFile = join(this.happyHomeDir, 'settings.json')
     this.privateKeyFile = join(this.happyHomeDir, 'access.key')
-    this.daemonStateFile = join(this.happyHomeDir, 'daemon.state.json')
+    this.legacyDaemonStateFile = join(this.happyHomeDir, 'daemon.state.json')
+    this.daemonStateFile = join(this.happyHomeDir, 'daemon.control.json')
     this.daemonLockFile = join(this.happyHomeDir, 'daemon.state.json.lock')
     this.sessionsFile = join(this.happyHomeDir, 'sessions.json')
+
+    mkdirSync(this.happyHomeDir, { recursive: true, mode: 0o700 })
+    if (process.platform !== 'win32') {
+      const dir = statSync(this.happyHomeDir)
+      const dedicatedHome = !process.env.HAPPY_HOME_DIR && !lstatSync(this.happyHomeDir).isSymbolicLink()
+      if (dir.uid !== process.getuid!() || (!dedicatedHome && (dir.mode & 0o022))) {
+        console.warn(`Happy home ${this.happyHomeDir} may be writable by other users. Use a private HAPPY_HOME_DIR or chmod go-w on your own dedicated directory.`)
+      } else if (dedicatedHome && (dir.mode & 0o777) !== 0o700) {
+        try { chmodSync(this.happyHomeDir, 0o700) } catch { console.warn(`Could not tighten Happy home permissions: ${this.happyHomeDir}`) }
+      }
+      for (const path of [this.privateKeyFile, this.daemonStateFile, this.legacyDaemonStateFile, this.sessionsFile, this.settingsFile,
+        this.sessionsFile + '.tmp', this.settingsFile + '.tmp', this.daemonLockFile, this.settingsFile + '.lock']) {
+        protectExistingFile(path)
+      }
+    }
 
     // URL precedence (both): HAPPY_*_URL env > settings.<key> > default.
     // Settings are read sync here (avoid circular import with persistence.ts).
@@ -80,13 +97,25 @@ class Configuration {
       console.log('\x1b[33m🔧 DEV MODE\x1b[0m - Data: ' + this.happyHomeDir)
     }
 
-    if (!existsSync(this.happyHomeDir)) {
-      mkdirSync(this.happyHomeDir, { recursive: true })
-    }
     // Ensure directories exist
     if (!existsSync(this.logsDir)) {
-      mkdirSync(this.logsDir, { recursive: true })
+      mkdirSync(this.logsDir, { recursive: true, mode: 0o700 })
     }
+  }
+}
+
+function protectExistingFile(path: string) {
+  let fd: number | undefined
+  try {
+    // Use the checked descriptor, not a path that another directory writer could replace.
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    const file = fstatSync(fd)
+    if (!file.isFile() || file.uid !== process.getuid!() || file.nlink !== 1) throw new Error()
+    if ((file.mode & 0o777) !== 0o600) fchmodSync(fd, 0o600)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.warn(`Could not safely tighten Happy state permissions: ${path}. Use a private, user-owned regular file.`)
+  } finally {
+    if (fd !== undefined) closeSync(fd)
   }
 }
 

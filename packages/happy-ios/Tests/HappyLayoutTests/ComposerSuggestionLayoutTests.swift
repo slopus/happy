@@ -55,6 +55,24 @@ final class ComposerSuggestionRowLayoutTests: XCTestCase {
         assertFrame(layout.label, rect(295, 16.75, 50, 14.5))
     }
 
+    func testAPersonAndTheirRole() {
+        let layout = ComposerSuggestionRowLayout(
+            width: 361,
+            input: .person(name: CGSize(width: 120, height: 17), role: CGSize(width: 400, height: 16))
+        )
+        assertFrame(layout.icon, rect(16, 8, 32, 32))
+        // 16 + 32 + 12 = 60; the role from 60 + 120 + 12 = 192 to 345.
+        assertFrame(layout.name, rect(60, 15.5, 120, 17))
+        assertFrame(layout.description, rect(192, 16, 153, 16))
+        XCTAssertNil(layout.label)
+    }
+
+    func testALongNameWithoutARoleStopsAtThePadding() {
+        let layout = ComposerSuggestionRowLayout(width: 200, input: .person(name: CGSize(width: 300, height: 17), role: nil))
+        assertFrame(layout.name, rect(60, 15.5, 124, 17))
+        XCTAssertNil(layout.description)
+    }
+
     func testTheListsRows() {
         let rows = ComposerSuggestionListLayout.rows(count: 3, width: 361, border: 0.5)
         XCTAssertEqual(rows.count, 3)

@@ -180,6 +180,8 @@ final class ComposerSuggestionRowView: UIControl {
     /// A command's picture, over its circle.
     private let pictureView = UIImageView()
     private let picture = MarkPicture()
+    /// A person without a picture wears their placeholder.
+    private let placeholder = AvatarPlaceholderSlot()
     weak var images: Images?
 
     var suggestion: ComposerSuggestion? {
@@ -260,6 +262,8 @@ final class ComposerSuggestionRowView: UIControl {
         textScale = traitCollection.textEnvironment?.scale
         applyBackground()
         iconCircle.backgroundColor = UIColor(Palette.surfaceHigh)
+        // Only a person without a picture wears a placeholder.
+        if case .person(let user) = suggestion?.kind, user.photo?.thumbhash == nil {} else { placeholder.cancel() }
         switch suggestion?.kind {
         case .command(let name, let description):
             nameLabel.attributedText = style(TextStyles.suggestionCommand).attributedString("/\(name)", color: UIColor(Palette.text))
@@ -302,10 +306,37 @@ final class ComposerSuggestionRowView: UIControl {
             tagLabel.isHidden = tag == nil
             showPicture(command.image.map { (imagePath, $0.thumbhash) })
             accessibilityLabel = [ "/\(command.name)", command.description, tag ?? "" ].filter { !$0.isEmpty }.joined(separator: ", ")
+        case .person(let user):
+            nameLabel.attributedText = style(TextStyles.suggestionCommand).attributedString(user.name, color: UIColor(Palette.text), lineBreakMode: .byTruncatingTail)
+            detailLabel.attributedText = user.role.map {
+                style(TextStyles.suggestionDescription).attributedString($0, color: UIColor(Palette.textSecondary), lineBreakMode: .byTruncatingTail)
+            }
+            nameLabel.isHidden = false
+            detailLabel.isHidden = user.role == nil
+            iconCircle.isHidden = false
+            iconView.isHidden = true
+            tagLabel.isHidden = true
+            showPerson(user)
+            accessibilityLabel = [user.name, user.role ?? ""].filter { !$0.isEmpty }.joined(separator: ", ")
         case nil:
             break
         }
         setNeedsLayout()
+    }
+
+    /// A person's picture over the circle, as their thumbhash at once, or
+    /// the placeholder their user ID picks.
+    private func showPerson(_ user: TeamUser) {
+        if let thumbhash = user.photo?.thumbhash {
+            showPicture((TeamUser.photoPath(user.id), thumbhash))
+            return
+        }
+        picture.cancel()
+        pictureView.isHidden = false
+        pictureView.image = nil
+        placeholder.show(seed: user.id, side: ComposerSuggestionRowLayout.Metrics.iconSize) { [weak self] image in
+            self?.pictureView.image = image
+        }
     }
 
     /// A command with no picture of its own wears its kind's mark, as a
@@ -373,6 +404,15 @@ final class ComposerSuggestionRowView: UIControl {
             nameLabel.setLayoutFrame(layout.name ?? .zero)
             detailLabel.setLayoutFrame(layout.description ?? .zero)
             tagLabel.setLayoutFrame(layout.label ?? .zero)
+        case .person(let user):
+            let layout = ComposerSuggestionRowLayout(
+                width: bounds.width,
+                input: .person(name: natural(nameLabel), role: user.role == nil ? nil : natural(detailLabel))
+            )
+            iconCircle.setLayoutFrame(layout.icon ?? .zero)
+            pictureView.setLayoutFrame(layout.icon ?? .zero)
+            nameLabel.setLayoutFrame(layout.name ?? .zero)
+            detailLabel.setLayoutFrame(layout.description ?? .zero)
         case nil:
             break
         }

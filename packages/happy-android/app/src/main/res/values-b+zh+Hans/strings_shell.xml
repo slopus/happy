@@ -21,4 +21,5 @@
     <string name="account_kind_restore_another_footer">用另一个 Happy CLI 账户的密钥，或用已登录该账户的手机登录它。此账户会保留在这里。</string>
     <string name="tablet_hide_sidebar">隐藏边栏</string>
     <string name="tablet_show_sidebar">显示边栏</string>
+    <string name="drawer_open">打开菜单</string>
 </resources>

@@ -9,7 +9,6 @@
     <string name="chat_created">Creata %1$s</string>
     <string name="chat_permissions_in_terminal">Le autorizzazioni sono mostrate solo nel terminale. Reimposta o invia un messaggio per gestirle dall\'app.</string>
     <string name="chat_stop">Interrompi</string>
-    <string name="chat_voice">Voce</string>
     <string name="chat_send">Invia</string>
     <string name="chat_markdown_image">Immagine Markdown</string>
     <string name="chat_remove_image">Rimuovi %1$s</string>
@@ -34,5 +33,6 @@
     <string name="link_status_updating">sincronizzazione…</string>
     <string name="link_status_connecting">connessione…</string>
     <string name="link_status_waiting_for_network">in attesa di rete…</string>
+    <string name="link_status_restarting">riavvio dell\'agente…</string>
     <string name="message_select">Seleziona</string>
 </resources>

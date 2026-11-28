@@ -239,8 +239,17 @@ actor TurnServer: AgentTransport {
     }
 
     static func message(_ id: String, role: String, content: [JSONValue]) -> JSONValue {
-        .object(["id": .string(id), "role": .string(role), "createdAt": .number(1), "metadata": .object([:]), "content": .array(content)])
+        var message: [String: JSONValue] = ["id": .string(id), "role": .string(role), "createdAt": .number(1), "metadata": .object([:]), "content": .array(content)]
+        // What the schema asks of a person's message (`MessageSchema`).
+        if role == "user" { message.merge(userFields) { _, new in new } }
+        return .object(message)
     }
+
+    /// An accepted person's message's own fields.
+    static let userFields: [String: JSONValue] = [
+        "status": .string("accepted"), "delivery": .string("queue"), "runId": .string("r"),
+        "mode": .object(["providerId": .string("p"), "modelId": .string("m"), "effort": .string("medium"), "serviceTier": .null, "permissionMode": .string("auto")]),
+    ]
 
     static func run(_ id: String, ended: Bool, content: [Any]) -> JSONValue {
         let blocks: [JSONValue] = content.map { part in

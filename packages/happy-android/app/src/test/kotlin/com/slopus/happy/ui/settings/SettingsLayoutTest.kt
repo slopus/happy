@@ -26,6 +26,7 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.components.ItemTags
+import com.slopus.happy.ui.connection.AgentVoiceTags
 import com.slopus.happy.ui.connection.DataStorageTags
 import com.slopus.happy.ui.connection.PrivacyTags
 import com.slopus.happy.ui.home.AccountMenu
@@ -118,7 +119,7 @@ class SettingsLayoutTest {
         }
         assertEquals(0, cardOf(SettingsPageTags.ADD_AGENT))
         assertEquals(listOf(1, 1), listOf(SettingsTags.ACCOUNT, SettingsTags.BACKUP).map(::cardOf))
-        assertEquals(listOf(2, 2, 2, 2, 2), listOf(SettingsTags.APPEARANCE, SettingsTags.LANGUAGE, SettingsTags.VOICE, SettingsTags.AGENTS, DataStorageTags.ROW).map(::cardOf))
+        assertEquals(listOf(2, 2, 2, 2, 2), listOf(SettingsTags.APPEARANCE, SettingsTags.LANGUAGE, AgentVoiceTags.ROW, SettingsTags.AGENTS, DataStorageTags.ROW).map(::cardOf))
         assertEquals(listOf(3, 3), listOf(SettingsTags.SCAN_TERMINAL, SettingsTags.ENTER_TERMINAL).map(::cardOf))
         assertEquals(4, cardOf(SettingsTags.SUPPORT))
         // Privacy, a card of its own between Support us and About.
@@ -136,7 +137,7 @@ class SettingsLayoutTest {
     @Test
     fun everyRowOpensItsPage() {
         show()
-        for (tag in listOf(SettingsTags.ACCOUNT, SettingsTags.BACKUP, SettingsTags.APPEARANCE, SettingsTags.LANGUAGE, SettingsTags.VOICE, SettingsTags.AGENTS, DataStorageTags.ROW, SettingsTags.SCAN_TERMINAL, SettingsTags.ENTER_TERMINAL, PrivacyTags.ROW)) {
+        for (tag in listOf(SettingsTags.ACCOUNT, SettingsTags.BACKUP, SettingsTags.APPEARANCE, SettingsTags.LANGUAGE, AgentVoiceTags.ROW, SettingsTags.AGENTS, DataStorageTags.ROW, SettingsTags.SCAN_TERMINAL, SettingsTags.ENTER_TERMINAL, PrivacyTags.ROW)) {
             rule.node(tag).performScrollTo().performClick()
         }
         assertEquals(listOf("account", "backup", "appearance", "language", "voice", "agents", "storage", "scan", "url", "privacy"), opened)

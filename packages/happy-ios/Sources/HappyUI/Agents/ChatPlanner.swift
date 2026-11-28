@@ -206,6 +206,7 @@ actor ChatPlanner {
         }
         switch item.role {
         case .failure(let failure): return Self.failure(failure, id: item.id, key: key, syntax: syntax)
+        case .unreadable(let unreadable): return Self.unreadable(unreadable, id: item.id, key: key, syntax: syntax)
         case .tool(let tool):
             return item.pieces.isEmpty ? Self.tool(tool, id: item.id, key: key) : Self.toolResult(tool, item: item, key: key, syntax: syntax, proposals: proposals)
         case .turnEnd(let ended): return Self.turnEnd(ended, id: item.id, key: key, copied: copied)
@@ -345,7 +346,7 @@ actor ChatPlanner {
                 selectable.isEmpty ? nil : ChatSelectable(texts: selectable, whole: item.text, frame: bubble, card: false)
             }
             return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles, flight: flight, mine: true, selection: selection)
-        case .collaborator, .own, .failure, .tool, .turnEnd, .trace, .question, .section:
+        case .collaborator, .own, .failure, .unreadable, .tool, .turnEnd, .trace, .question, .section:
             // Planned above.
             return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: [])
         }
@@ -561,6 +562,47 @@ actor ChatPlanner {
         let spoken = [Strings.failure, failure.reason] + failure.steps + (actionText.map { [$0] } ?? [])
         return ChatRowPlan(id: id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"))
     }
+
+    /// A message that doesn't match the protocol schema: one muted line in
+    /// italics where it stands, and "Report bug", which opens a GitHub issue
+    /// filled in with where it was and why it failed, as Settings' Report
+    /// an Issue opens the issues.
+    static func unreadable(_ unreadable: ChatItem.Unreadable, id: String, key: Key, syntax: CodeSyntaxService) -> ChatRowPlan {
+        func piece(_ text: String, _ color: ColorToken) -> MarkdownPiece {
+            MarkdownPiece(text, color: color, diagrams: ChatMermaidHeights(row: id), syntax: syntax, in: key.environment, body: ChatTextStyles.text, header: ChatTextStyles.header)
+        }
+        let pieces = [piece("*\(Strings.messageFailedToDisplay)*", Palette.textSecondary), piece(Strings.reportBug, Palette.textLink)]
+        let layout = MessageLayout.agent(width: key.width, maxContentWidth: key.maxContentWidth, parts: pieces.map { .markdown($0.blocks) })
+        var items: [ChatDrawItem] = []
+        for (placed, piece) in zip(layout.parts, pieces) {
+            guard case .markdown(let markdown, let origin) = placed else { continue }
+            items += piece.draw(markdown, origin: origin).items
+        }
+        // The button's whole line answers, a finger's room above and below.
+        var hits: [ChatHit] = []
+        if case .markdown(let markdown, let origin)? = layout.parts.last {
+            hits.append(ChatHit(frame: CGRect(origin: origin, size: markdown.size).insetBy(dx: 0, dy: -8), action: .openURL(reportURL(unreadable, key: key).absoluteString)))
+        }
+        return ChatRowPlan(id: id, size: layout.size, items: items, hits: hits, accessibilityLabel: "\(Strings.messageFailedToDisplay)\n\n\(Strings.reportBug)")
+    }
+
+    /// A new issue on the app's tracker, filled in with nothing the message
+    /// chose: IDs only when `MessageSchema.reportable`, the problem as its
+    /// code and path (`MessageSchema.summary`) in a closed alphabet, the
+    /// whole at most `reportLimit` long. No server address.
+    static func reportURL(_ unreadable: ChatItem.Unreadable, key: Key) -> URL {
+        let problem = String(String.UnicodeScalarView(unreadable.problem.unicodeScalars.filter { reportAlphabet.contains($0) }).prefix(160))
+        let report = Strings.messageFailedReport(agentId: MessageSchema.reportable(key.agentId), messageId: MessageSchema.reportable(unreadable.messageId),
+                                                 problem: problem.isEmpty ? "unknown" : problem)
+        var components = URLComponents(url: Strings.Links.issues.appendingPathComponent("new"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "title", value: report.title), URLQueryItem(name: "body", value: report.body)]
+        if let url = components?.url, url.absoluteString.utf8.count <= reportLimit { return url }
+        components?.queryItems = [URLQueryItem(name: "title", value: report.title)]
+        return components?.url ?? Strings.Links.issues
+    }
+
+    static let reportLimit = 2_000
+    private static let reportAlphabet = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_/*()+ ")
 
     /// happy-desktop's `AgentMessageActivity`: who it came from on one line,
     /// the message itself behind it. With the sender's one line on what it

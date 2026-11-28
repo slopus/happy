@@ -7,9 +7,14 @@ import UIKit
 /// list running under it with iOS 26's soft scroll edge as the bar's shade.
 /// At the left, alone, the account switcher (`AccountSwitcher`): the active
 /// account's picture and name, the name giving way to the link's status
-/// while the computer isn't live. Settings stays at the right. Search, the
-/// call, compose and the microphone are in UIKit's bottom toolbar; what search finds
-/// shows over home, which stays where it was.
+/// while the computer isn't live. Settings (but on an iPhone) and the call
+/// are at the right. Search, compose and the microphone are in UIKit's
+/// bottom toolbar; what search finds shows over home, which stays where it
+/// was.
+///
+/// On an iPhone the face opens the drawer (`PhoneDrawer`), which holds the
+/// accounts, the places and Settings, and home lists the bots and tasks
+/// alone (`Drawer.home`).
 ///
 /// As the iPad's sidebar (`SidebarColumnTrait`) the header keeps the
 /// switcher alone: search is a field at the top of the list
@@ -158,6 +163,10 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         }
         v2.onListScroll = { [weak self] in self?.placeSearchField() }
         switcher = AccountSwitcher(context: context, controller: self)
+        if usesDrawer {
+            v2.botsAndTasksOnly = true
+            switcher?.onTap = { [weak self] in self?.drawer?.open() }
+        }
         headerWatch = Session.session(for: id, context: context)?.watchHeader { [weak self] in self?.headerState = $0 }
         accessWatch = Session.session(for: id, context: context)?.watchAccess { [weak self] in
             guard let self, shownMayWrite != mayWrite else { return }
@@ -308,21 +317,42 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
 
     /// Account and settings stay in the header while search lives below:
     /// the header never changes for it. As the sidebar, settings is at the
-    /// foot and the switcher is alone.
+    /// foot and the switcher is alone; with the drawer, settings is the
+    /// drawer's.
     private func updateBar() {
         guard let switcher else { return }
         navigationItem.leftBarButtonItem = switcher.barItem
         navigationItem.rightBarButtonItems = traitCollection.isSidebarColumn ? [] : HeaderBar.trailing([
             .call: mayWrite ? callItem : nil,
-            .settings: settingsItem,
+            .settings: usesDrawer ? nil : settingsItem,
         ].compactMapValues { $0 })
     }
+
+    /// An iPhone's: the iPad keeps its sidebar, and Settings in the bar
+    /// where it shows none.
+    private var usesDrawer: Bool { UIDevice.current.userInterfaceIdiom == .phone }
+
+    /// The drawer of the stack this home is the root of.
+    private var drawer: PhoneDrawer? { navigationController.flatMap(PhoneDrawer.of) }
+
+    /// Home's rows, for the drawer's places, and their changes.
+    var rows: [Row] { v2.rows }
+    var onRows: (([Row]) -> Void)? {
+        get { v2.onRows }
+        set { v2.onRows = newValue }
+    }
+
+    /// The screen a place's row opens, the drawer's.
+    func place(_ row: Row) -> UIViewController? { v2.place(row) }
 
     private lazy var settingsItem = HeaderBar.settingsItem { [weak self] in self?.openSettings() }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         HomeToolbar.show(for: self, animated: animated)
+        if usesDrawer, let navigation = navigationController, navigation.viewControllers.first === self {
+            PhoneDrawer.attach(home: self, context: context, id: id, to: navigation)
+        }
     }
 
     /// The bar shades whichever list is under it: the results while they

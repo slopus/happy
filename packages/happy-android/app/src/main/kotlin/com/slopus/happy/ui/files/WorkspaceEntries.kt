@@ -76,8 +76,8 @@ internal fun WorkspaceFilesEntry(graph: AppGraph, route: WorkspaceFilesRoute, na
 
 /**
  * One workspace file in the viewer (desktop's FilePreview): read through
- * the agent, then shown as text with its syntax, a picture, or a Markdown
- * document with its source a tab away; past the agent's size limit, said.
+ * the agent, then shown as text with its syntax, a picture, a recording, or
+ * a Markdown document with its source a tab away; past the agent's size limit, said.
  * Once read, any file (one with no viewer too) can be saved to the phone
  * from the bar (desktop d122790d); a failed read offers Retry.
  */

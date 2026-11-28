@@ -1,0 +1,1355 @@
+{
+  "about": "Android's own cases beside the shared protocol/ fixtures (desktop's happy-desktop-state fixtures/protocol-messages): checked against happy-agent-client protocol/messages.ts (MessageCheck). Each invalid message becomes one placeholder row; problem is MessageCheck's short reason, a JSON pointer and what is wrong there.",
+  "valid": [
+    {
+      "name": "user text",
+      "message": {
+        "id": "u1",
+        "role": "user",
+        "createdAt": 1700000000000,
+        "content": [
+          {
+            "type": "text",
+            "text": "Ship it"
+          }
+        ],
+        "metadata": {},
+        "status": "accepted",
+        "delivery": "queue",
+        "mode": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5",
+          "effort": "high",
+          "serviceTier": null,
+          "permissionMode": "auto"
+        },
+        "runId": "run1",
+        "profile": null
+      }
+    },
+    {
+      "name": "user pending, from a team member, with an attachment",
+      "message": {
+        "id": "u2",
+        "role": "user",
+        "createdAt": 1700000000000,
+        "content": [
+          {
+            "type": "text",
+            "text": "Look"
+          },
+          {
+            "type": "file",
+            "attachment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "name": "shot.png",
+            "mimeType": "image/png",
+            "size": 1200,
+            "kind": "image",
+            "width": 640,
+            "height": 480,
+            "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+            "scale": 2
+          }
+        ],
+        "metadata": {
+          "userId": "u_kirill"
+        },
+        "status": "pending",
+        "delivery": "steer",
+        "mode": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5",
+          "effort": "high",
+          "serviceTier": null,
+          "permissionMode": "auto"
+        },
+        "runId": null,
+        "profile": null,
+        "clientMetadata": {
+          "source": "android"
+        }
+      }
+    },
+    {
+      "name": "user image without its bytes",
+      "message": {
+        "id": "u3",
+        "role": "user",
+        "createdAt": 1700000000000,
+        "content": [
+          {
+            "type": "image",
+            "mimeType": "image/jpeg"
+          }
+        ],
+        "metadata": {},
+        "status": "accepted",
+        "delivery": "queue",
+        "mode": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5",
+          "effort": "high",
+          "serviceTier": null,
+          "permissionMode": "auto"
+        },
+        "runId": "run1",
+        "profile": null
+      }
+    },
+    {
+      "name": "user tool call request",
+      "message": {
+        "id": "u4",
+        "role": "user",
+        "createdAt": 1700000000000,
+        "content": [
+          {
+            "type": "tool_call_request",
+            "name": "compact",
+            "arguments": {
+              "keep": true
+            }
+          }
+        ],
+        "metadata": {},
+        "status": "accepted",
+        "delivery": "queue",
+        "mode": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5",
+          "effort": "high",
+          "serviceTier": null,
+          "permissionMode": "auto"
+        },
+        "runId": "run1",
+        "profile": null
+      }
+    },
+    {
+      "name": "legacy user message with a null mode",
+      "message": {
+        "id": "u5",
+        "role": "user",
+        "createdAt": 1700000000000,
+        "content": [
+          {
+            "type": "text",
+            "text": "Ship it"
+          }
+        ],
+        "metadata": {},
+        "status": "accepted",
+        "delivery": "queue",
+        "mode": null,
+        "runId": "run1",
+        "profile": null
+      }
+    },
+    {
+      "name": "agent text, reasoning and a command",
+      "message": {
+        "id": "m1",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "reasoning",
+            "text": "Checking."
+          },
+          {
+            "type": "text",
+            "text": "Done."
+          },
+          {
+            "type": "tool_call",
+            "id": "c1",
+            "name": "exec_command",
+            "status": "completed",
+            "presentation": {
+              "type": "exec_command",
+              "command": "ls",
+              "output": null
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      }
+    },
+    {
+      "name": "agent running call, raw data omitted",
+      "message": {
+        "id": "m2",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c2",
+            "name": "read",
+            "status": "running"
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      }
+    },
+    {
+      "name": "answered question card, cluster's empty header",
+      "message": {
+        "id": "m3",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "call_m3",
+            "name": "request_user_input",
+            "status": "completed",
+            "arguments": {
+              "questions": [
+                {
+                  "id": "reviewer",
+                  "header": "",
+                  "question": "Who should review this change?",
+                  "multiSelect": false,
+                  "options": [
+                    {
+                      "label": "Kirill",
+                      "description": ""
+                    },
+                    {
+                      "label": "Steve",
+                      "description": "Owns the Android app."
+                    }
+                  ]
+                }
+              ]
+            },
+            "result": {
+              "requestId": "call_m3",
+              "status": "answered"
+            },
+            "presentation": {
+              "type": "user_input",
+              "questions": [
+                {
+                  "id": "reviewer",
+                  "header": "",
+                  "question": "Who should review this change?",
+                  "multiSelect": false,
+                  "options": [
+                    {
+                      "label": "Kirill",
+                      "description": ""
+                    },
+                    {
+                      "label": "Steve",
+                      "description": "Owns the Android app."
+                    }
+                  ]
+                }
+              ],
+              "answers": {
+                "reviewer": [
+                  "Kirill"
+                ]
+              }
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      }
+    },
+    {
+      "name": "question answered in free text",
+      "message": {
+        "id": "m4",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "call_m4",
+            "name": "request_user_input",
+            "status": "completed",
+            "arguments": {
+              "questions": [
+                {
+                  "id": "reviewer",
+                  "header": "",
+                  "question": "Who should review this change?",
+                  "multiSelect": false,
+                  "options": [
+                    {
+                      "label": "Kirill",
+                      "description": ""
+                    },
+                    {
+                      "label": "Steve",
+                      "description": "Owns the Android app."
+                    }
+                  ]
+                }
+              ]
+            },
+            "result": {
+              "requestId": "call_m4",
+              "status": "answered"
+            },
+            "presentation": {
+              "type": "user_input",
+              "questions": [
+                {
+                  "id": "reviewer",
+                  "header": "",
+                  "question": "Who should review this change?",
+                  "multiSelect": false,
+                  "options": []
+                }
+              ],
+              "answers": {
+                "reviewer": [
+                  "Whoever is around"
+                ]
+              }
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      }
+    },
+    {
+      "name": "reviewed call",
+      "message": {
+        "id": "m5",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c5",
+            "name": "exec_command",
+            "status": "failed",
+            "arguments": {
+              "cmd": "rm -rf build"
+            },
+            "result": {
+              "error": "denied"
+            },
+            "elevated": false,
+            "review": {
+              "outcome": "denied",
+              "reason": "Deletes files.",
+              "risk": "high",
+              "userAuthorization": "low"
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      }
+    },
+    {
+      "name": "unproven review",
+      "message": {
+        "id": "m6",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c6",
+            "name": "exec_command",
+            "status": "failed",
+            "elevated": true,
+            "review": {
+              "outcome": "unproven",
+              "kind": "timed_out",
+              "reason": "No answer."
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      }
+    },
+    {
+      "name": "file diff, exploration, search",
+      "message": {
+        "id": "m7",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c7a",
+            "name": "apply_patch",
+            "status": "completed",
+            "presentation": {
+              "type": "file_diff",
+              "files": [
+                {
+                  "added": 1,
+                  "deleted": 0,
+                  "hunks": [
+                    {
+                      "lines": [
+                        {
+                          "kind": "add",
+                          "text": "x"
+                        }
+                      ],
+                      "newStart": 1,
+                      "oldStart": 0
+                    }
+                  ],
+                  "kind": "add",
+                  "path": "a.txt",
+                  "language": "text"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call",
+            "id": "c7b",
+            "name": "read",
+            "status": "completed",
+            "presentation": {
+              "type": "exploration",
+              "operations": [
+                {
+                  "kind": "read",
+                  "name": "a.txt"
+                },
+                {
+                  "kind": "list",
+                  "target": "."
+                },
+                {
+                  "kind": "search",
+                  "command": "rg x",
+                  "query": "x"
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool_call",
+            "id": "c7c",
+            "name": "web_search",
+            "status": "completed",
+            "presentation": {
+              "type": "search",
+              "query": "kotlin",
+              "target": "web",
+              "sources": [
+                {
+                  "title": "Kotlin",
+                  "url": "https://kotlinlang.org"
+                }
+              ]
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      }
+    },
+    {
+      "name": "media, artifact, page, spawn, terminal",
+      "message": {
+        "id": "m8",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c8a",
+            "name": "present_files",
+            "status": "completed",
+            "presentation": {
+              "type": "media",
+              "items": [
+                {
+                  "kind": "image",
+                  "name": "a.png",
+                  "mimeType": "image/png",
+                  "size": 10,
+                  "width": 2,
+                  "height": 2,
+                  "thumbhash": "abc"
+                },
+                {
+                  "kind": "document",
+                  "name": "a.pdf",
+                  "mimeType": "application/pdf",
+                  "size": 10
+                }
+              ],
+              "layout": {
+                "type": "columns",
+                "columns": 2
+              }
+            }
+          },
+          {
+            "type": "tool_call",
+            "id": "c8b",
+            "name": "create_artifact",
+            "status": "completed",
+            "presentation": {
+              "type": "artifact",
+              "artifactId": "art1",
+              "version": 1,
+              "artifactType": "markdown",
+              "title": "Notes",
+              "shows": "latest"
+            }
+          },
+          {
+            "type": "tool_call",
+            "id": "c8c",
+            "name": "show_page",
+            "status": "completed",
+            "presentation": {
+              "type": "page",
+              "url": "http://localhost:3000",
+              "title": "Dev",
+              "display": null
+            }
+          },
+          {
+            "type": "tool_call",
+            "id": "c8d",
+            "name": "spawn_agent",
+            "status": "completed",
+            "presentation": {
+              "type": "agent_spawn",
+              "model": {
+                "modelId": "m",
+                "providerId": "p",
+                "name": "Opus"
+              },
+              "agentId": "child1"
+            }
+          },
+          {
+            "type": "tool_call",
+            "id": "c8e",
+            "name": "write_stdin",
+            "status": "completed",
+            "presentation": {
+              "type": "background_terminal_interaction",
+              "command": "npm run dev",
+              "input": "q",
+              "terminalId": "t1"
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      }
+    },
+    {
+      "name": "retired blocks and a newer presentation",
+      "message": {
+        "id": "m9",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "ui",
+            "ui": {}
+          },
+          {
+            "type": "quick_replies",
+            "options": [
+              "Yes"
+            ]
+          },
+          {
+            "type": "tool_call",
+            "id": "c9",
+            "name": "x",
+            "status": "completed",
+            "presentation": {
+              "type": "hologram"
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      }
+    },
+    {
+      "name": "compaction completed",
+      "message": {
+        "id": "s1",
+        "role": "service",
+        "createdAt": 1700000002000,
+        "content": [
+          {
+            "type": "compaction",
+            "trigger": "automatic",
+            "status": "completed",
+            "tokensBefore": 180000,
+            "tokensAfter": null,
+            "failureReason": null,
+            "startedAt": 1,
+            "completedAt": 2
+          }
+        ],
+        "metadata": {}
+      }
+    },
+    {
+      "name": "compaction running",
+      "message": {
+        "id": "s2",
+        "role": "service",
+        "createdAt": 1700000002000,
+        "content": [
+          {
+            "type": "compaction",
+            "trigger": "manual",
+            "status": "running",
+            "tokensBefore": null,
+            "tokensAfter": null,
+            "failureReason": null,
+            "completedAt": null,
+            "startedAt": 1
+          }
+        ],
+        "metadata": {}
+      }
+    },
+    {
+      "name": "configuration",
+      "message": {
+        "id": "s3",
+        "role": "service",
+        "createdAt": 1700000002000,
+        "content": [
+          {
+            "type": "configuration",
+            "before": null,
+            "after": {
+              "providerId": "claude",
+              "modelId": "anthropic/opus-5",
+              "effort": "high",
+              "serviceTier": null,
+              "permissionMode": "auto"
+            },
+            "beforeMessageId": null
+          }
+        ],
+        "metadata": {}
+      }
+    },
+    {
+      "name": "usage limit failure",
+      "message": {
+        "id": "s4",
+        "role": "service",
+        "createdAt": 1700000002000,
+        "content": [
+          {
+            "type": "text",
+            "text": "Claude's limit is reached."
+          }
+        ],
+        "metadata": {},
+        "failure": {
+          "kind": "usage_limit",
+          "message": "Claude's limit is reached.",
+          "fallbackProviders": [],
+          "provider": {
+            "id": "claude",
+            "type": "claude",
+            "vendorName": "Claude",
+            "label": "claude"
+          },
+          "resetsAt": null
+        },
+        "error": {
+          "code": "usage_limit",
+          "mode": {
+            "providerId": "claude",
+            "modelId": "anthropic/opus-5",
+            "effort": "high",
+            "serviceTier": null,
+            "permissionMode": "auto"
+          },
+          "credentialSource": null,
+          "recovery": {
+            "steps": [],
+            "actions": [
+              "ask_chief"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "system message",
+      "message": {
+        "id": "y1",
+        "role": "system",
+        "createdAt": 5,
+        "content": [
+          {
+            "type": "text",
+            "text": "Context."
+          }
+        ],
+        "metadata": {}
+      }
+    },
+    {
+      "name": "cluster's settled call reviewed before elevated was sent",
+      "message": {
+        "id": "m10",
+        "role": "agent",
+        "createdAt": 1700000003000,
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Running it."
+          },
+          {
+            "type": "tool_call",
+            "id": "c10",
+            "name": "exec_command",
+            "status": "completed",
+            "arguments": {
+              "cmd": "ls"
+            },
+            "result": {
+              "output": "a\nb"
+            },
+            "review": {
+              "outcome": "allowed",
+              "reason": "Lists files.",
+              "risk": "low",
+              "userAuthorization": "high"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "cluster's older history: a string result and string arguments",
+      "message": {
+        "id": "m11",
+        "role": "agent",
+        "createdAt": 1700000004000,
+        "metadata": {},
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c11a",
+            "name": "send_agent_message",
+            "status": "completed",
+            "arguments": {
+              "agentId": "a2",
+              "text": "hi"
+            },
+            "result": "Message delivered."
+          },
+          {
+            "type": "tool_call",
+            "id": "c11b",
+            "name": "exec_command",
+            "status": "completed",
+            "arguments": "ls",
+            "result": [
+              "a",
+              "b"
+            ]
+          },
+          {
+            "type": "tool_call",
+            "id": "c11c",
+            "name": "x",
+            "status": "failed",
+            "arguments": 42,
+            "result": true
+          }
+        ]
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "cancelled question card from the cluster",
+      "message": {
+        "id": "bad1",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "call_bad1",
+            "name": "request_user_input",
+            "status": "completed",
+            "arguments": {
+              "questions": [
+                {
+                  "id": "reviewer",
+                  "header": "",
+                  "question": "Who should review this change?",
+                  "multiSelect": false,
+                  "options": [
+                    {
+                      "label": "Kirill",
+                      "description": ""
+                    },
+                    {
+                      "label": "Steve",
+                      "description": "Owns the Android app."
+                    }
+                  ]
+                }
+              ]
+            },
+            "result": {
+              "requestId": "call_bad1",
+              "status": "answered"
+            },
+            "presentation": {
+              "type": "user_input",
+              "questions": [
+                {
+                  "id": "reviewer",
+                  "header": "",
+                  "question": "Who should review this change?",
+                  "multiSelect": false,
+                  "options": [
+                    {
+                      "label": "Kirill",
+                      "description": ""
+                    },
+                    {
+                      "label": "Steve",
+                      "description": "Owns the Android app."
+                    }
+                  ]
+                }
+              ],
+              "status": "canceled",
+              "answers": null
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      },
+      "problem": "/content/0/presentation/answers: expected an object, got null"
+    },
+    {
+      "name": "answers not string arrays",
+      "message": {
+        "id": "bad2",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "call_bad2",
+            "name": "request_user_input",
+            "status": "completed",
+            "arguments": {
+              "questions": [
+                {
+                  "id": "reviewer",
+                  "header": "",
+                  "question": "Who should review this change?",
+                  "multiSelect": false,
+                  "options": [
+                    {
+                      "label": "Kirill",
+                      "description": ""
+                    },
+                    {
+                      "label": "Steve",
+                      "description": "Owns the Android app."
+                    }
+                  ]
+                }
+              ]
+            },
+            "result": {
+              "requestId": "call_bad2",
+              "status": "answered"
+            },
+            "presentation": {
+              "type": "user_input",
+              "questions": [
+                {
+                  "id": "reviewer",
+                  "header": "",
+                  "question": "Who should review this change?",
+                  "multiSelect": false,
+                  "options": [
+                    {
+                      "label": "Kirill",
+                      "description": ""
+                    },
+                    {
+                      "label": "Steve",
+                      "description": "Owns the Android app."
+                    }
+                  ]
+                }
+              ],
+              "answers": {
+                "reviewer": "Kirill"
+              }
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      },
+      "problem": "/content/0/presentation/answers/<key>: expected an array, got a string"
+    },
+    {
+      "name": "no questions",
+      "message": {
+        "id": "bad3",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "call_bad3",
+            "name": "request_user_input",
+            "status": "completed",
+            "arguments": {
+              "questions": [
+                {
+                  "id": "reviewer",
+                  "header": "",
+                  "question": "Who should review this change?",
+                  "multiSelect": false,
+                  "options": [
+                    {
+                      "label": "Kirill",
+                      "description": ""
+                    },
+                    {
+                      "label": "Steve",
+                      "description": "Owns the Android app."
+                    }
+                  ]
+                }
+              ]
+            },
+            "result": {
+              "requestId": "call_bad3",
+              "status": "answered"
+            },
+            "presentation": {
+              "type": "user_input",
+              "questions": [],
+              "answers": {}
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      },
+      "problem": "/content/0/presentation/questions: expected at least one question"
+    },
+    {
+      "name": "question without multiSelect",
+      "message": {
+        "id": "bad4",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "call_bad4",
+            "name": "request_user_input",
+            "status": "completed",
+            "arguments": {
+              "questions": [
+                {
+                  "id": "reviewer",
+                  "header": "",
+                  "question": "Who should review this change?",
+                  "multiSelect": false,
+                  "options": [
+                    {
+                      "label": "Kirill",
+                      "description": ""
+                    },
+                    {
+                      "label": "Steve",
+                      "description": "Owns the Android app."
+                    }
+                  ]
+                }
+              ]
+            },
+            "result": {
+              "requestId": "call_bad4",
+              "status": "answered"
+            },
+            "presentation": {
+              "type": "user_input",
+              "questions": [
+                {
+                  "id": "reviewer",
+                  "header": "",
+                  "question": "Who should review this change?",
+                  "options": [
+                    {
+                      "label": "Kirill",
+                      "description": ""
+                    },
+                    {
+                      "label": "Steve",
+                      "description": "Owns the Android app."
+                    }
+                  ]
+                }
+              ],
+              "answers": {}
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      },
+      "problem": "/content/0/presentation/questions/0/multiSelect: expected a boolean, got missing"
+    },
+    {
+      "name": "tool call status out of the enum",
+      "message": {
+        "id": "bad5",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c",
+            "name": "x",
+            "status": "done"
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      },
+      "problem": "/content/0/status: expected one of running|completed|failed, got a string"
+    },
+    {
+      "name": "no role",
+      "message": {
+        "id": "bad6",
+        "createdAt": 1,
+        "content": [],
+        "metadata": {}
+      },
+      "problem": "/role: expected one of user|agent|system|service, got missing"
+    },
+    {
+      "name": "unknown role",
+      "message": {
+        "id": "bad7",
+        "role": "bot",
+        "createdAt": 1,
+        "content": [],
+        "metadata": {}
+      },
+      "problem": "/role: expected one of user|agent|system|service, got a string"
+    },
+    {
+      "name": "content not an array",
+      "message": {
+        "id": "bad8",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": {
+          "type": "text",
+          "text": "hi"
+        },
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      },
+      "problem": "/content: expected an array, got an object"
+    },
+    {
+      "name": "text block without text",
+      "message": {
+        "id": "bad9",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "text"
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      },
+      "problem": "/content/0/text: expected a string, got missing"
+    },
+    {
+      "name": "no metadata",
+      "message": {
+        "id": "bad10",
+        "role": "agent",
+        "createdAt": 1,
+        "content": []
+      },
+      "problem": "/metadata: expected an object, got missing"
+    },
+    {
+      "name": "user message without its mode",
+      "message": {
+        "id": "bad11",
+        "role": "user",
+        "createdAt": 1700000000000,
+        "content": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ],
+        "metadata": {},
+        "status": "accepted",
+        "delivery": "queue",
+        "runId": "run1",
+        "profile": null
+      },
+      "problem": "/mode: expected a value or null, got missing"
+    },
+    {
+      "name": "createdAt as a string",
+      "message": {
+        "id": "bad12",
+        "role": "agent",
+        "createdAt": "1700000000000",
+        "content": [],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      },
+      "problem": "/createdAt: expected an integer, got a string"
+    },
+    {
+      "name": "completed compaction with a failure reason",
+      "message": {
+        "id": "bad13",
+        "role": "service",
+        "createdAt": 1700000002000,
+        "content": [
+          {
+            "type": "compaction",
+            "trigger": "manual",
+            "status": "completed",
+            "tokensBefore": 1,
+            "tokensAfter": 1,
+            "failureReason": "x",
+            "startedAt": 1,
+            "completedAt": 2
+          }
+        ],
+        "metadata": {}
+      },
+      "problem": "/content/0/failureReason: expected null, got a string"
+    },
+    {
+      "name": "unknown artifact type",
+      "message": {
+        "id": "bad14",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c",
+            "name": "x",
+            "status": "completed",
+            "presentation": {
+              "type": "artifact",
+              "artifactId": "a",
+              "version": 1,
+              "artifactType": "spreadsheet",
+              "title": "T"
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      },
+      "problem": "/content/0/presentation/artifactType: expected one of markdown|html|image|image_series|video|document|gen_ui, got a string"
+    },
+    {
+      "name": "review risk out of the enum",
+      "message": {
+        "id": "bad15",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c",
+            "name": "x",
+            "status": "completed",
+            "elevated": false,
+            "review": {
+              "outcome": "allowed",
+              "reason": "ok",
+              "risk": "extreme",
+              "userAuthorization": "high"
+            }
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      },
+      "problem": "/content/0/review/risk: expected one of low|medium|high|critical, got a string"
+    },
+    {
+      "name": "tool call request with an extra field",
+      "message": {
+        "id": "bad17",
+        "role": "user",
+        "createdAt": 1700000000000,
+        "content": [
+          {
+            "type": "tool_call_request",
+            "name": "compact",
+            "extra": 1
+          }
+        ],
+        "metadata": {},
+        "status": "accepted",
+        "delivery": "queue",
+        "mode": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5",
+          "effort": "high",
+          "serviceTier": null,
+          "permissionMode": "auto"
+        },
+        "runId": "run1",
+        "profile": null
+      },
+      "problem": "/content/0/<key>: not allowed"
+    },
+    {
+      "name": "not an object",
+      "message": 42,
+      "problem": "/: expected an object, got a number"
+    },
+    {
+      "name": "a block type the protocol doesn't have",
+      "message": {
+        "id": "bad18",
+        "role": "agent",
+        "createdAt": 1700000001000,
+        "content": [
+          {
+            "type": "hologram",
+            "beam": 1
+          }
+        ],
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        }
+      },
+      "problem": "/content/0/type: unknown block type"
+    },
+    {
+      "name": "elevated without its review",
+      "message": {
+        "id": "bad19",
+        "role": "agent",
+        "createdAt": 1,
+        "metadata": {},
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c",
+            "name": "x",
+            "status": "completed",
+            "elevated": true
+          }
+        ]
+      },
+      "problem": "/content/0/elevated: expected review with it"
+    },
+    {
+      "name": "a review alone that is malformed",
+      "message": {
+        "id": "bad20",
+        "role": "agent",
+        "createdAt": 1,
+        "metadata": {},
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c",
+            "name": "x",
+            "status": "completed",
+            "review": {
+              "outcome": "allowed",
+              "reason": "ok"
+            }
+          }
+        ]
+      },
+      "problem": "/content/0/review/risk: expected one of low|medium|high|critical, got missing"
+    }
+  ]
+}

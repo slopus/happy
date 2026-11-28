@@ -125,6 +125,33 @@ class HappyStoreTest {
         assertEquals(emptyList<MessageRecord>(), store.messages("a"))
     }
 
+    /**
+     * Build 167 stored whatever it decrypted: a row past the 2 MB cursor
+     * window threw SQLiteBlobTooBigException on every read of the chat, and
+     * the home list ran out of memory on agent states. Such a column reads
+     * as null; the rest of the session reads on, and the next write replaces it.
+     */
+    @Test
+    fun aColumnStoredPastTheCursorWindowReadsAsNullAndTheRestReadsOn() {
+        store.upsertSessions(listOf(session("a")))
+        store.insertMessages("a", listOf(message("a", 1), message("a", 3)))
+        val huge = """{"output":"${"x".repeat(3 * 1024 * 1024)}"}"""
+        database.writableDatabase.execSQL(
+            "INSERT INTO messages (session_id, seq, id, local_id, content, created_at, updated_at) VALUES ('a', 2, 'm2', NULL, ?, 2, 2)",
+            arrayOf(huge),
+        )
+        database.writableDatabase.execSQL("UPDATE sessions SET agent_state = ?, metadata = ? WHERE id = 'a'", arrayOf(huge, huge))
+
+        assertEquals(listOf("{}", null, "{}"), store.messages("a").map { it.contentJson })
+        val stored = store.sessions().single()
+        assertNull(stored.agentStateJson)
+        assertNull(stored.metadataJson)
+        assertEquals("key", stored.wrappedDataKey)
+
+        store.insertMessages("a", listOf(message("a", 2)))
+        assertEquals(listOf("{}", "{}", "{}"), store.messages("a").map { it.contentJson })
+    }
+
     @Test
     fun sessionsAreListedNewestFirst() {
         store.upsertSessions(listOf(session("old", updatedAt = 1), session("new", updatedAt = 2)))

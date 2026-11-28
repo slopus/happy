@@ -76,7 +76,7 @@ private actor StreamNumbersServer: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
         let value: JSONValue
         if path.contains("/messages?") {
-            let user: JSONValue = .object(["id": .string("u"), "role": .string("user"), "createdAt": .number(0), "metadata": .object([:]),
+            let user: JSONValue = .object(["id": .string("u"), "role": .string("user"), "createdAt": .number(0), "metadata": .object([:]), "status": .string("accepted"), "delivery": .string("queue"), "runId": .string("r"), "mode": TurnServer.userFields["mode"]!, 
                                            "content": .array([.object(["type": .string("text"), "text": .string("go")])])])
             let agent: JSONValue = .object(["id": .string("m"), "role": .string("agent"), "createdAt": .number(1), "status": .string("streaming"),
                                             "metadata": .object([:]), "content": .array([.object(["type": .string("text"), "text": .string("Hel")])])])

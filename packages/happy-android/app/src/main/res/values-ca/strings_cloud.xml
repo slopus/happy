@@ -89,4 +89,5 @@
     <string name="cloud_invite_other_account">Inicia la sessió amb un altre compte</string>
     <string name="cloud_invite_not_now">Ara no</string>
     <string name="cloud_invite_inviter">%1$s t\'ha convidat</string>
+    <string name="cloud_switch_footer">Mostra Happy Cloud a la primera pantalla i al menú de comptes, i obre els seus enllaços d\'invitació a l\'app. Els servidors que ja són en aquest telèfon continuen funcionant igualment.</string>
 </resources>

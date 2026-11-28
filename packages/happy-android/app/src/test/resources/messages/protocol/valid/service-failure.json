@@ -1,0 +1,46 @@
+{
+    "description": "An error service message with diagnostics and a typed usage-limit failure.",
+    "message": {
+        "id": "msgfailure000000000000001",
+        "role": "service",
+        "createdAt": 1764100000022,
+        "content": [
+            {
+                "type": "text",
+                "text": "Claude is out of usage until 5 PM."
+            }
+        ],
+        "metadata": {},
+        "error": {
+            "code": "usage_limit",
+            "mode": {
+                "providerId": "claude_work",
+                "modelId": "claude-sonnet-4-5",
+                "effort": "medium",
+                "serviceTier": null,
+                "permissionMode": "auto"
+            },
+            "credentialSource": {
+                "kind": "native_login",
+                "location": "~/.claude",
+                "host": null
+            },
+            "recovery": {
+                "steps": ["Wait for the limit to reset."],
+                "actions": ["ask_chief"]
+            }
+        },
+        "failure": {
+            "kind": "usage_limit",
+            "message": "Claude is out of usage.",
+            "fallbackProviders": [],
+            "provider": {
+                "id": "claude_work",
+                "type": "claude",
+                "vendorName": "Claude",
+                "label": "claude_work"
+            },
+            "resetsAt": 1764103600000
+        }
+    }
+}

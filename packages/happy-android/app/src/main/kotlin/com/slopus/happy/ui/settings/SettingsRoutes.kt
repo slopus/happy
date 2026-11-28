@@ -30,7 +30,6 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
 import com.slopus.happy.ui.components.ProvideRowReveal
-import com.slopus.happy.ui.voice.voicePageEntries
 import com.slopus.happy.AppGraph
 import com.slopus.happy.analytics.setAnalyticsOptOut
 import com.slopus.happy.BuildConfig
@@ -51,8 +50,11 @@ import com.slopus.happy.ui.LocalAccountSwitcher
 import com.slopus.happy.ui.AccountSwitcher
 import com.slopus.happy.ui.ProvideSettingsDissolve
 import com.slopus.happy.ui.connection.AgentConnectionSettings
+import com.slopus.happy.ui.connection.AgentVoiceRoute
+import com.slopus.happy.ui.connection.rememberAgentVoiceSummary
 import com.slopus.happy.ui.connection.LegacyDataStorageRoute
 import com.slopus.happy.ui.connection.PrivacyRoute
+import com.slopus.happy.ui.connection.rememberHappyCloudSwitch
 import com.slopus.happy.ui.connection.SupportRoute
 import com.slopus.happy.ui.connection.dataStorageRoutes
 import androidx.compose.foundation.ScrollState
@@ -72,8 +74,6 @@ import com.slopus.happy.ui.connect.rememberTerminalConnect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import com.slopus.happy.ui.voice.voiceRoutes
-import com.slopus.happy.ui.voice.VoiceSettingsRoute
 
 // A page Settings' search opens has [reveal], the row it found there ([ProvideRowReveal]).
 @Serializable data class AccountRoute(val reveal: String? = null)
@@ -85,7 +85,6 @@ import com.slopus.happy.ui.voice.VoiceSettingsRoute
 
 /** Settings' screens; [SettingsRoute] itself is HappyApp's ([AccountSettings]). */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
-    voiceRoutes(graph, nav)
     dataStorageRoutes(graph, nav)
     page<AccountRoute> { entry -> ProvideRowReveal(entry.toRoute<AccountRoute>().reveal) { Account(graph, nav) } }
     page<BackupRoute> { entry -> ProvideRowReveal(entry.toRoute<BackupRoute>().reveal) { Backup(graph, nav) } }
@@ -227,12 +226,14 @@ internal fun supportAction(nav: NavHostController): () -> Unit = { nav.navigate(
 internal fun rememberAboutInfo(graph: AppGraph): AboutInfo {
     val resources = LocalResources.current
     val pro by graph.subscription.pro.collectAsStateWithLifecycle()
+    val local by graph.localSettings.values.collectAsStateWithLifecycle()
     return AboutInfo(
         versionName = versionDetail(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
         versionSubtitle = buildSubtitle(BuildConfig.BUILD_COMMIT_SHA, BuildConfig.BUILD_COMMIT_TIMESTAMP, resources.getString(R.string.settings_commit)) {
             resources.getString(R.string.settings_commit_at, it)
         },
         isPro = BuildConfig.DEBUG || pro,
+        devMode = local.devModeEnabled,
     )
 }
 
@@ -342,7 +343,7 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController, scroll: Scrol
                 onBackup = { nav.navigate(BackupRoute()) },
                 onAppearance = { nav.navigate(AppearanceRoute) },
                 onLanguage = { nav.navigate(LanguageRoute()) },
-                onVoice = { nav.navigate(VoiceSettingsRoute()) },
+                onVoice = { nav.navigate(AgentVoiceRoute(id)) },
                 onAgents = { nav.navigate(AgentsRoute) },
                 onDataStorage = { nav.navigate(LegacyDataStorageRoute) },
                 onPrivacy = { nav.navigate(PrivacyRoute) },
@@ -354,21 +355,23 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController, scroll: Scrol
         aboutActions = rememberAboutActions(graph, nav),
         connectingTerminal = connect.isLoading,
         pages = rememberPageEntries(graph, nav, signedIn, profile ?: Profile.Defaults),
+        voice = rememberAgentVoiceSummary(graph.offers, graph.subscription),
         scroll = scroll,
+        happyCloud = rememberHappyCloudSwitch(graph),
+        onHappyCloud = graph.happyCloud::set,
     )
     if (enteringUrl) EnterTerminalUrlPrompt(connect, onDismiss = { enteringUrl = false })
 }
 
 /**
  * The rows of a Happy account's own pages, for Settings' search (iOS's
- *  for a Happy account: Account, Backup & Restore, Voice and
+ *  for a Happy account: Account, Backup & Restore and
  * Language; its Support us is the paywall here, not a page). Each opens
  * its page at the row.
  */
 @Composable
 private fun rememberPageEntries(graph: AppGraph, nav: NavHostController, account: AuthState.SignedIn, profile: Profile): List<SettingsEntry> {
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val pro by graph.subscription.pro.collectAsStateWithLifecycle()
     return accountPageEntries(
         anonId = account.encryption.anonId,
         publicId = account.publicId,
@@ -377,7 +380,6 @@ private fun rememberPageEntries(graph: AppGraph, nav: NavHostController, account
         server = serverHost(graph),
     ) { nav.navigate(AccountRoute(reveal = it)) } +
         backupPageEntries { nav.navigate(BackupRoute(reveal = it)) } +
-        voicePageEntries(settings, pro) { nav.navigate(VoiceSettingsRoute(reveal = it)) } +
         languagePageEntries(settings.preferredLanguage, Languages.detectedName(graph.language.deviceLocales())) { nav.navigate(LanguageRoute(reveal = it)) }
 }
 

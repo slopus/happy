@@ -11,7 +11,8 @@ import CoreGraphics
 /// one line taking what is left, 8, then FILE or FOLDER. A Happy Agent
 /// command is the file's 32pt round mark (its picture, or a glyph for its
 /// kind), 12, `/name`, 12, its description in what is left, then its kind
-/// 8 from the end of that.
+/// 8 from the end of that. A person is their 32pt round picture, 12,
+/// their name, 12, their role in what is left.
 public struct ComposerSuggestionRowLayout: Equatable, Sendable {
     public enum Metrics {
         public static let height: CGFloat = 48
@@ -30,6 +31,8 @@ public struct ComposerSuggestionRowLayout: Equatable, Sendable {
         case file(path: CGSize, label: CGSize)
         /// The single-line sizes of `/name`, the description and the kind.
         case agentCommand(name: CGSize, description: CGSize?, label: CGSize?)
+        /// The single-line sizes of the name and the role.
+        case person(name: CGSize, role: CGSize?)
     }
 
     public var size: CGSize
@@ -73,6 +76,8 @@ public struct ComposerSuggestionRowLayout: Equatable, Sendable {
             // flex: 1 — the path takes the room left, whatever its text.
             self.path = centred(pathX, pathWidth, path.height)
             self.label = centred(pathX + pathWidth + M.labelGap, labelWidth, label.height)
+        case .person(let name, let role):
+            self = ComposerSuggestionRowLayout(width: width, input: .agentCommand(name: name, description: role, label: nil))
         case .agentCommand(let name, let description, let label):
             let icon = centred(left, M.iconSize, M.iconSize)
             self.icon = icon

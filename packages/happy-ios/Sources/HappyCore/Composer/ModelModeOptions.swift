@@ -86,6 +86,22 @@ extension AgentDefaults {
         }
         return retiredClaudeModelModes[mode] ?? mode
     }
+
+    /// A Claude Code session: flavor `claude`, or none from a CLI that predates it.
+    public static func isClaude(flavor: String?) -> Bool {
+        flavor == nil || flavor == "claude"
+    }
+
+    /// The model a Claude session with no pick of its own shows and sends
+    /// with every message and resume: the user's default; else the model its
+    /// CLI reports running (`currentModelCode`), a no-op for the running
+    /// process; else the code default.
+    public static func unpickedClaudeModel(_ overrides: [String: JSONValue], cliVersion: String?, reported: String?) -> String {
+        let reported = reported.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        return override(overrides, .claude, .modelMode)
+            ?? reported
+            ?? resolve(overrides, .claude, cliVersion: cliVersion).modelMode
+    }
 }
 
 /// modelModeOptions.ts: what the composer's permission, model and effort
@@ -172,9 +188,13 @@ public enum ModelModeOptions {
         guard
             flavor == "codex" || flavor == "agy" || isClaude,
             let key = AgentDefaults.retireModelMode(configured, flavor: flavor),
-            !key.isEmpty, key != "default",
+            !key.isEmpty,
             !models.contains(where: { $0.key == key })
         else { return models }
+        // Claude takes `--model default` (its account default) and its CLI reports it as such.
+        if key == "default" {
+            return isClaude ? models + [ModeOption(key: key, name: "Default", description: "Claude's default")] : models
+        }
         return models + [ModeOption(
             key: key,
             name: (isClaude ? unlistedClaudeModelNames[key] : nil) ?? key,

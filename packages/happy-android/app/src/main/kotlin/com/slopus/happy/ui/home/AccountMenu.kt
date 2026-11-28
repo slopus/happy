@@ -147,7 +147,7 @@ object AccountMenuSpec {
  * the server or kind under it; the open one checked, one needing attention
  * flagged), then Add, which scans a code and adds the Happy account or
  * agent connection it is for ([LocalAddFlow]), and a + for Happy Cloud
- * ([LocalCloudConnect], left out where the build has none). Picking one
+ * ([LocalCloudConnect], left out while Happy Cloud isn't offered). Picking one
  * switches.
  * Outside a top app bar, where the slot is not already 4 in, pass a 0 [inset].
  */
@@ -159,92 +159,119 @@ fun AccountMenuButton(
     onCloud: (() -> Unit)? = LocalCloudConnect.current,
     inset: Dp = AccountMenuSpec.buttonInset,
 ) {
-    val colors = HappyTheme.colors
     var open by remember { mutableStateOf(false) }
-    val active = menu.active
-    val label = stringResource(R.string.account_menu_title)
-    val interaction = remember { MutableInteractionSource() }
     Box(Modifier.padding(horizontal = inset)) {
+        AccountAvatarButton(menu, stringResource(R.string.account_menu_title), AccountMenuTags.BUTTON) { open = true }
+        AccountMenuDropdown(menu, open, { open = false }, onSwitch, onAdd, onCloud)
+    }
+}
+
+/**
+ * The open account's 32 avatar in a 48 target, the account menu's button
+ * and, on a phone with the drawer, home's way into it (Steve: the
+ * instance's picture stays on the bar). Read as [label], then the name.
+ */
+@Composable
+fun AccountAvatarButton(menu: AccountMenu, label: String, tag: String, onClick: () -> Unit) {
+    val colors = HappyTheme.colors
+    val active = menu.active
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .size(AccountMenuSpec.button)
+            .clickable(interaction, indication = null, role = Role.Button, onClickLabel = label, onClick = onClick)
+            .semantics { contentDescription = active?.name?.let { "$label, $it" } ?: label }
+            .testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
         Box(
-            modifier = Modifier
-                .size(AccountMenuSpec.button)
-                .clickable(interaction, indication = null, role = Role.Button, onClickLabel = label) { open = true }
-                .semantics { contentDescription = active?.name?.let { "$label, $it" } ?: label }
-                .testTag(AccountMenuTags.BUTTON),
+            Modifier.size(AccountMenuSpec.ripple).clip(CircleShape).indication(interaction, ripple()),
             contentAlignment = Alignment.Center,
         ) {
-            Box(
-                Modifier.size(AccountMenuSpec.ripple).clip(CircleShape).indication(interaction, ripple()),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (active != null) {
-                    // The button moves; the menu's rows stay still, as happy-ios's system menu does.
-                    Avatar(active.seed, AccountMenuSpec.avatar, imageUri = active.imageUrl, thumbhash = active.thumbhash, animated = active.liveSeed != null)
-                } else {
-                    Icon(Ionicon.PersonCircleOutline, AccountMenuSpec.avatar, colors.header.tint)
-                }
+            if (active != null) {
+                // The button moves; the menu's rows stay still, as happy-ios's system menu does.
+                Avatar(active.seed, AccountMenuSpec.avatar, imageUri = active.imageUrl, thumbhash = active.thumbhash, animated = active.liveSeed != null)
+            } else {
+                Icon(Ionicon.PersonCircleOutline, AccountMenuSpec.avatar, colors.header.tint)
             }
         }
-        HappyDropdownMenu(
-            expanded = open,
-            onDismissRequest = { open = false },
-            offset = AccountMenuSpec.menuOffset,
-            modifier = Modifier.testTag(AccountMenuTags.MENU),
-        ) {
-            for (entry in menu.entries) {
-                // The two kinds (iOS 64edb6a34): an agent connection is Happy Agent, a relay account Happy CLI. One
-                // with no name of its own goes by its kind; the rows look alike, so TalkBack hears the kind after the name.
-                val kind = stringResource(if (entry.agent) R.string.account_kind_agent else R.string.account_kind_cli)
-                val name = entry.name ?: kind
-                HappyMenuItem(
-                    label = name,
-                    labelMaxLines = 2,
-                    supporting = entry.detail,
-                    leading = { Avatar(entry.seed, AccountMenuSpec.rowAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = false) },
-                    trailing = if (entry.attention && !entry.active) {
-                        { Icon(Ionicon.AlertCircleOutline, AccountMenuSpec.attentionIcon, colors.textDestructive) }
-                    } else {
-                        null
-                    },
-                    selected = entry.active,
-                    onClick = {
-                        open = false
-                        if (!entry.active) onSwitch(entry.id)
-                    },
-                    modifier = Modifier
-                        .semantics { contentDescription = if (name == kind) name else "$name, $kind" }
-                        .testTag(AccountMenuTags.entry(entry.id)),
-                )
-            }
-            if (menu.entries.isNotEmpty()) HappyMenuDivider()
+    }
+}
+
+/**
+ * The account menu's drop-down ([AccountMenuButton]'s, and the drawer
+ * header's): every account (the open one checked), then Add and Happy Cloud.
+ */
+@Composable
+internal fun AccountMenuDropdown(
+    menu: AccountMenu,
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onSwitch: (String) -> Unit,
+    onAdd: () -> Unit,
+    onCloud: (() -> Unit)?,
+    offset: DpOffset = AccountMenuSpec.menuOffset,
+) {
+    val colors = HappyTheme.colors
+    HappyDropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        offset = offset,
+        modifier = Modifier.testTag(AccountMenuTags.MENU),
+    ) {
+        for (entry in menu.entries) {
+            // The two kinds (iOS 64edb6a34): an agent connection is Happy Agent, a relay account Happy CLI. One
+            // with no name of its own goes by its kind; the rows look alike, so TalkBack hears the kind after the name.
+            val kind = stringResource(if (entry.agent) R.string.account_kind_agent else R.string.account_kind_cli)
+            val name = entry.name ?: kind
             HappyMenuItem(
-                label = stringResource(R.string.account_menu_add),
+                label = name,
+                labelMaxLines = 2,
+                supporting = entry.detail,
+                leading = { Avatar(entry.seed, AccountMenuSpec.rowAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = false) },
+                trailing = if (entry.attention && !entry.active) {
+                    { Icon(Ionicon.AlertCircleOutline, AccountMenuSpec.attentionIcon, colors.textDestructive) }
+                } else {
+                    null
+                },
+                selected = entry.active,
+                onClick = {
+                    onDismiss()
+                    if (!entry.active) onSwitch(entry.id)
+                },
+                modifier = Modifier
+                    .semantics { contentDescription = if (name == kind) name else "$name, $kind" }
+                    .testTag(AccountMenuTags.entry(entry.id)),
+            )
+        }
+        if (menu.entries.isNotEmpty()) HappyMenuDivider()
+        HappyMenuItem(
+            label = stringResource(R.string.account_menu_add),
+            leading = {
+                Box(Modifier.size(AccountMenuSpec.rowAvatar), contentAlignment = Alignment.Center) {
+                    Icon(Ionicon.QrCodeOutline, AccountMenuSpec.addIcon, colors.text)
+                }
+            },
+            onClick = {
+                onDismiss()
+                onAdd()
+            },
+            modifier = Modifier.testTag(AccountMenuTags.ADD),
+        )
+        if (onCloud != null) {
+            HappyMenuItem(
+                label = stringResource(R.string.cloud_connect_row),
                 leading = {
                     Box(Modifier.size(AccountMenuSpec.rowAvatar), contentAlignment = Alignment.Center) {
-                        Icon(Ionicon.QrCodeOutline, AccountMenuSpec.addIcon, colors.text)
+                        Icon(Ionicon.Add, AccountMenuSpec.addIcon, colors.text)
                     }
                 },
                 onClick = {
-                    open = false
-                    onAdd()
+                    onDismiss()
+                    onCloud()
                 },
-                modifier = Modifier.testTag(AccountMenuTags.ADD),
+                modifier = Modifier.testTag(AccountMenuTags.CLOUD),
             )
-            if (onCloud != null) {
-                HappyMenuItem(
-                    label = stringResource(R.string.cloud_connect_row),
-                    leading = {
-                        Box(Modifier.size(AccountMenuSpec.rowAvatar), contentAlignment = Alignment.Center) {
-                            Icon(Ionicon.Add, AccountMenuSpec.addIcon, colors.text)
-                        }
-                    },
-                    onClick = {
-                        open = false
-                        onCloud()
-                    },
-                    modifier = Modifier.testTag(AccountMenuTags.CLOUD),
-                )
-            }
         }
     }
 }

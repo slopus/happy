@@ -72,7 +72,8 @@ private actor GroupedHomeTransport: AgentTransport {
     private var events: AsyncThrowingStream<Data, Error>.Continuation?
     private var sequence = 1
 
-    private static let now = Date().timeIntervalSince1970 * 1000
+    // Whole milliseconds: the schema's `createdAt` is an integer.
+    private static let now = (Date().timeIntervalSince1970 * 1000).rounded()
 
     private static func agent(_ id: String, _ title: String, status: String = "idle", question: Bool = false, unread: Bool = false, line: String? = nil, subtasks: [[String: Any]] = [], parent: String? = nil, ago minutes: Double = 240) -> [String: Any] {
         var agent: [String: Any] = ["id": id, "workspaceId": "w-\(id)", "title": title, "status": status, "subtasks": subtasks, "lastActivityAt": now - minutes * 60_000]
@@ -125,8 +126,34 @@ private actor GroupedHomeTransport: AgentTransport {
         ]
     }
 
-    private var tasks: [[String: Any]] { made + base }
-    private var bots: [[String: Any]] { madeBots + Self.bots }
+    private var tasks: [[String: Any]] { arranged(made + base, taskOrder) }
+    private var bots: [[String: Any]] { arranged(madeBots + Self.bots, botOrder) }
+
+    /// The bots and tasks as moved and archived here (`POST …/reorder`,
+    /// `…/archive`), as the daemon keeps them; any the person may archive.
+    private var botOrder: [String]?
+    private var taskOrder: [String]?
+    private var archived: Set<String> = []
+
+    private func arranged(_ entries: [[String: Any]], _ order: [String]?) -> [[String: Any]] {
+        let live = entries.map { entry -> [String: Any] in
+            var entry = entry
+            entry["canArchive"] = true
+            entry["version"] = "v1"
+            if let id = entry["id"] as? String, archived.contains(id) { entry["status"] = "archived" }
+            return entry
+        }
+        guard let order else { return live }
+        // One made since the last move comes first, as made.
+        let rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        return live.enumerated().sorted { (rank[$0.element["id"] as? String ?? ""] ?? -1, $0.offset) < (rank[$1.element["id"] as? String ?? ""] ?? -1, $1.offset) }.map(\.element)
+    }
+
+    private static func moved(_ ids: [String], _ id: String, after: String?) -> [String] {
+        var ids = ids.filter { $0 != id }
+        ids.insert(id, at: after.flatMap { ids.firstIndex(of: $0).map { $0 + 1 } } ?? 0)
+        return ids
+    }
     private lazy var base: [[String: Any]] = Self.tasks + (churns ? (1...24).map { n in
         ["id": "busy\(n)", "name": "Busy task number \(n) with a long title", "agent": Self.agent("busy\(n)-agent", "Busy task \(n)", status: n % 3 == 0 ? "idle" : "working", ago: Double(n))]
     } : [])
@@ -146,7 +173,7 @@ private actor GroupedHomeTransport: AgentTransport {
         let reply = "Ask [](\(page)/happy-agent?as=bot) about the tone, and read [the crash](\(page)/crash-agent?as=task) first. "
             + "Theirs: https://link.happy.page/#1/m1n2b3v4c5x6z7l8k9j0h1g2/agents/t7bgxjt05aexj73frl6ul37e?as=task"
         let run: [String: Any] = ["id": "r1", "status": "completed", "startedAt": now - 60_000, "endedAt": now - 50_000, "reason": "completed", "messages": [
-            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "content": [["type": "text", "text": "Who should I ask about the headlines?"]]],
+            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "status": "accepted", "delivery": "queue", "runId": "r1", "mode": ["providerId": "claude", "modelId": "opus", "effort": "medium", "serviceTier": NSNull(), "permissionMode": "auto"], "content": [["type": "text", "text": "Who should I ask about the headlines?"]]],
             ["id": "m1", "role": "agent", "createdAt": now - 55_000, "metadata": [:], "content": [["type": "text", "text": reply]]],
         ]]
         return (try? JSONSerialization.data(withJSONObject: ["runs": [run], "hasMore": false])) ?? Data()
@@ -172,7 +199,7 @@ private actor GroupedHomeTransport: AgentTransport {
             + "- Bare: \(page)/report-agent?as=task\n"
             + "- Theirs: [](https://link.happy.page/#1/m1n2b3v4c5x6z7l8k9j0h1g2/agents/t7bgxjt05aexj73frl6ul37e?as=task)"
         let run: [String: Any] = ["id": "r1", "status": "completed", "startedAt": now - 60_000, "endedAt": now - 50_000, "reason": "completed", "messages": [
-            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "content": [["type": "text", "text": "How is [](\(page)/crash-agent?as=task) going?"]]],
+            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "status": "accepted", "delivery": "queue", "runId": "r1", "mode": ["providerId": "claude", "modelId": "opus", "effort": "medium", "serviceTier": NSNull(), "permissionMode": "auto"], "content": [["type": "text", "text": "How is [](\(page)/crash-agent?as=task) going?"]]],
             ["id": "m1", "role": "agent", "createdAt": now - 55_000, "metadata": [:], "content": [["type": "text", "text": reply]]],
         ]]
         return (try? JSONSerialization.data(withJSONObject: ["runs": [run], "hasMore": false])) ?? Data()
@@ -280,6 +307,28 @@ private actor GroupedHomeTransport: AgentTransport {
             self.made.insert(made, at: 0)
             tell("task.created", ["task": made])
             return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["task": made, "membership": ["taskId": made["id"]!]]))
+        }
+        // A bot or task read, moved or archived (`/v0/bots/:id`, `/v0/tasks/:id`).
+        let parts = route.split(separator: "/").map(String.init)
+        if parts.count >= 3, parts[0] == "v0", parts[1] == "bots" || parts[1] == "tasks", parts[2] != "" {
+            let bot = parts[1] == "bots", id = parts[2]
+            let entries = bot ? bots : tasks
+            guard let entry = entries.first(where: { $0["id"] as? String == id }) else { return .init(status: 404, body: Data("{}".utf8)) }
+            switch (method, parts.count > 3 ? parts[3] : "") {
+            case ("GET", ""):
+                break
+            case ("POST", "reorder"):
+                let ids = entries.compactMap { $0["id"] as? String }
+                if bot { botOrder = Self.moved(ids, id, after: sent["afterId"] as? String) } else { taskOrder = Self.moved(ids, id, after: sent["afterId"] as? String) }
+                tell(bot ? "bot.updated" : "task.reordered", bot ? ["botId": id] : ["taskId": id])
+            case ("POST", "archive"):
+                archived.insert(id)
+                tell(bot ? "bot.updated" : "task.updated", bot ? ["botId": id] : ["taskId": id])
+            default:
+                return .init(status: 404, body: Data("{}".utf8))
+            }
+            let answer: [String: Any] = bot ? ["bot": entry] : ["task": entry, "membership": ["taskId": id]]
+            return .init(status: 200, body: try JSONSerialization.data(withJSONObject: answer))
         }
         if linkChips, route.hasPrefix("/v0/artifacts/brief") {
             switch route {
@@ -390,12 +439,60 @@ final class GroupedHomeHarness {
         Task {
             await open(window: window, churns: churns, shareLinks: shareLinks, linkChips: linkChips)
             if churns { await churn(window: window, jumps: !arguments.contains("-noJumps"), flips: !arguments.contains("-noFlips")) }
+            if arguments.contains("-moveAndArchive") { await moveAndArchive() }
             // With `-bottom`, the list's end, where the projects are.
             guard bottom else { return }
             try? await Task.sleep(for: .seconds(1.5))
             guard let list = home?.view.firstSubview(of: SidebarList.self) else { return }
             list.setContentOffsetY(max(-list.contentInsets.top, list.edge.contentSize.height + list.contentInsets.bottom - list.bounds.height))
         }
+    }
+
+    /// `-moveAndArchive`: on a phone whose UI tests can't take a finger, the
+    /// list's own hold, carry and swipe steps, at a finger's pace: Quarterly
+    /// report held, which lifts it, then carried up above Landing page copy
+    /// and set down;
+    /// Onboarding emails swiped all the way across; Fix login crash swiped
+    /// open on Archive, then put back.
+    private func moveAndArchive() async {
+        func pause(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
+        await pause(2.5)
+        guard let list = home?.view.firstSubview(of: SidebarList.self) else { return }
+        // The tasks up the screen.
+        list.setContentOffsetY(list.contentOffsetY + 260, animated: true)
+        await pause(1.2)
+        guard let report = list.view(for: "task:report"), let landing = list.view(for: "task:landing") else { return }
+        let start = report.convert(CGPoint(x: report.box.midX, y: report.box.midY), to: list)
+        let end = landing.convert(CGPoint(x: landing.box.midX, y: landing.box.minY + 6), to: list)
+        list.openHold(report, at: start)
+        await pause(0.6)
+        for step in 1...40 {
+            let t = CGFloat(step) / 40
+            list.holdMoved(report, to: CGPoint(x: start.x, y: start.y + (end.y - start.y) * t), from: start)
+            await pause(1.0 / 40)
+        }
+        await pause(0.4)
+        list.holdEnded(report, cancelled: false)
+        await pause(2.5)
+        guard let onboarding = list.view(for: "task:onboarding") else { return }
+        list.swipeBegan(onboarding)
+        let width = onboarding.box.width
+        for step in 1...24 {
+            let reveal = width * 0.8 * CGFloat(step) / 24
+            onboarding.setReveal(reveal, full: SidebarSwipeLayout.isFull(reveal, width: width), animated: SidebarSwipeLayout.isFull(reveal, width: width) != onboarding.revealFull)
+            await pause(1.0 / 40)
+        }
+        list.swipeEnded(onboarding, outcome: .full)
+        await pause(2.5)
+        guard let crash = list.view(for: "task:crash") else { return }
+        list.swipeBegan(crash)
+        for step in 1...12 {
+            crash.setReveal(110 * CGFloat(step) / 12, full: false, animated: false)
+            await pause(1.0 / 40)
+        }
+        list.swipeEnded(crash, outcome: .open)
+        await pause(1.8)
+        list.closeSwipe()
     }
 
     /// A repo's picture: a GitHub-like square, its initial on a gradient.
@@ -412,6 +509,7 @@ final class GroupedHomeHarness {
     }
 
     private var transport: GroupedHomeTransport?
+    private var recorder: FrameRecorder?
 
     private func open(window: UIWindow, churns: Bool, shareLinks: Bool, linkChips: Bool = false) async {
         let transport = GroupedHomeTransport(avatar: Self.repoPicture(), lineCounts: lineCounts, longTitles: longTitles, statusMarks: statusMarks)
@@ -437,8 +535,12 @@ final class GroupedHomeHarness {
             // their own pushes (new work's waits for its keyboard).
             window.rootViewController = ShellViewController(context: context, phone: navigation)
             window.layoutIfNeeded()
-            // `-openChat <agentId>`: that conversation over home, for a run with no finger.
             let arguments = ProcessInfo.processInfo.arguments
+            // `-recordFrames SECONDS`: what the window draws, for a video off a phone.
+            if let index = arguments.firstIndex(of: "-recordFrames"), arguments.indices.contains(index + 1), let seconds = Double(arguments[index + 1]) {
+                recorder = FrameRecorder(window: window, seconds: seconds, top: nil)
+            }
+            // `-openChat <agentId>`: that conversation over home, for a run with no finger.
             if let index = arguments.firstIndex(of: "-openChat"), arguments.indices.contains(index + 1) {
                 try? await Task.sleep(for: .seconds(2))
                 if let session = Session.session(for: connection.id, context: context) {

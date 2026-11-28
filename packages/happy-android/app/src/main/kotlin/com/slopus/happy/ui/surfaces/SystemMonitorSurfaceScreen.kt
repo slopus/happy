@@ -9,6 +9,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.ui.monitor.MonitorModel
 import com.slopus.happy.ui.monitor.MonitorScreen
+import com.slopus.happy.ui.viewers.ViewersSlot
+import com.slopus.happy.viewers.ViewerTarget
 
 /** Visible and foreground only: poll the host, keep its latest readings, and pause beneath another page. */
 @Composable
@@ -17,5 +19,8 @@ fun SystemMonitorSurfaceScreen(session: AgentSession, surfaceId: String, onBack:
     val model = viewModel(key = "monitor:${session.connectionId}:$surfaceId") { MonitorModel(session, surfaceId) }
     val state by model.feed.state.collectAsStateWithLifecycle()
     LifecycleResumeEffect(model) { model.resume(); onPauseOrDispose { model.pause() } }
-    MonitorScreen(state, surfaceTitle(session, surface?.name.orEmpty()), onBack) { SurfaceMenu(session, surfaceId, onBack, open = open) }
+    MonitorScreen(state, surfaceTitle(session, surface?.name.orEmpty()), onBack) {
+        ViewersSlot(session, ViewerTarget.surface(surfaceId))
+        SurfaceMenu(session, surfaceId, onBack, open = open)
+    }
 }

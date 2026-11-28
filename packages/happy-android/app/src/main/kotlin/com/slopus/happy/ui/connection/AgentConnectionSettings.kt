@@ -5,6 +5,8 @@ import com.slopus.happy.agent.Permission
 import com.slopus.happy.agent.AutoJoinKind
 import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.ui.tablet.BackOrSidebarToggle
+import com.slopus.happy.ui.plugins.PluginsRoute
+import com.slopus.happy.ui.plugins.PluginsTags
 import com.slopus.happy.ui.settings.SettingsTags
 import com.slopus.happy.call.CallAllowance
 import com.slopus.happy.ui.components.ProvideRowReveal
@@ -112,7 +114,7 @@ data class AgentSettingsRow(val id: String, val title: String, val icon: Ionicon
  * connection away. The titles are the page's own (`AgentSettingsIndexTest`).
  */
 @Composable
-fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable: Boolean = false): List<AgentSettingsRow> {
+fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable: Boolean = false, providerAccountsAvailable: Boolean = false): List<AgentSettingsRow> {
     fun row(id: String, title: String, icon: Ionicon, place: AgentSettingsPlace = AgentSettingsPlace.Settings, ask: String? = null) =
         AgentSettingsRow(id, title, icon, place, ask)
     return listOfNotNull(
@@ -131,6 +133,7 @@ fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable
         row(AgentSharingTags.row(AutoJoinKind.Surfaces), stringResource(R.string.sharing_surfaces), Ionicon.PeopleOutline, AgentSettingsPlace.Notifications),
         row(AgentVoiceTags.SUPPORT, stringResource(R.string.agent_voice_support_title), Ionicon.Heart),
         row(AgentAgentsTags.ROW, stringResource(R.string.settings_agents), Ionicon.OptionsOutline),
+        row(ProviderAccountsTags.ROW, stringResource(R.string.provider_accounts_title), Ionicon.KeyOutline).takeIf { providerAccountsAvailable },
         row(AgentUsageTags.ROW, stringResource(R.string.usage_title), Ionicon.AnalyticsOutline),
         row(PrivacyTags.ROW, stringResource(R.string.settings_account_privacy), Ionicon.LockClosedOutline),
         row(SettingsPageTags.ADD_AGENT, stringResource(R.string.settings_add_agent), Ionicon.Add),
@@ -191,6 +194,8 @@ class AgentSettingsActions(
     val onAgents: (() -> Unit)? = null,
     /** Members: who is on this Happy Cloud server, and leaving it; null for any other connection. */
     val onMembers: (() -> Unit)? = null,
+    /** Inference on a Happy Agent: where each Codex, Claude and Grok account's login comes from, and signing it in again; null where the agent doesn't offer it. */
+    val onProviderAccounts: (() -> Unit)? = null,
     /** AI providers: the Happy Cloud server's connections, and adding ChatGPT, Claude and API keys; null for any other connection. */
     val onProviders: (() -> Unit)? = null,
     /** A Happy Cloud server's instructions and security policy, where its settings serve them ([PolicyDocument.served]). */
@@ -199,6 +204,8 @@ class AgentSettingsActions(
     val onCompute: (() -> Unit)? = null,
     /** Usage: what the provider accounts spent and what is left of their plans; null where it isn't offered. */
     val onUsage: (() -> Unit)? = null,
+    /** Plugins, the same page home's Plugins row opens; null where the server doesn't serve them. */
+    val onPlugins: (() -> Unit)? = null,
     /** A Happy Cloud server: its push settings, on the same Notifications page. Every Cloud member can manage their own, read-only members included. */
     val onNotifications: (() -> Unit)? = null,
     /** Opens Notifications with one of its rows revealed, as search finds it; null where search shouldn't offer them. */
@@ -225,7 +232,8 @@ data class AgentPerson(val name: String = "", val photo: ImageBitmap? = null, va
  * desktop's Hide projects; the person's own Profile; Voice;
  * Data and Storage; Notifications, which is Sharing and on a Cloud server
  * its push settings too), Support Happy's boba row under it, Agents
- * (Agents, Inference, Compute, Usage), Team (Members, on Cloud); Privacy;
+ * (Agents, Inference: a Happy Agent's accounts or Cloud's providers, Compute, Usage, Plugins), Team (Members,
+ * on Cloud); Privacy;
  * the agent's version; About; Disconnect, after a
  * confirm. A device token can't reach
  * the agent's device list (API.md, "Credentials on the connector's
@@ -251,6 +259,9 @@ fun AgentConnectionSettingsScreen(
     daemonVersion: String? = null,
     /** This phone's free voice time, for the Voice row ([rememberAgentVoiceSummary]). */
     voice: AgentVoiceSummary = AgentVoiceSummary(CallAllowance.FREE_MILLIS),
+    /** Settings' Happy Cloud switch ([rememberHappyCloudSwitch]); null, no card. */
+    happyCloud: Boolean? = null,
+    onHappyCloud: (Boolean) -> Unit = {},
 ) {
     val namePrefix = stringResource(R.string.agent_settings_edit_name_prefix)
     val avatarPrefix = stringResource(R.string.agent_settings_edit_avatar_prefix)
@@ -267,7 +278,7 @@ fun AgentConnectionSettingsScreen(
     // unheaded first group (General, here Appearance; Account, here Profile;
     // Voice; the phone's Data and Storage; and Notifications, Steve's
     // "Sharing is notifications"), then Agents (what new sessions start on, Inference,
-    // Compute, Usage) and Team (Members; with none, no header). The phone's own cards keep their places: the accounts at the top,
+    // Compute, Usage, Plugins) and Team (Members; with none, no header). The phone's own cards keep their places: the accounts at the top,
     // Support Happy under the first group, Privacy and About at the end.
     val sections = listOf(
         SettingsSection(
@@ -315,6 +326,14 @@ fun AgentConnectionSettingsScreen(
                         onClick = open,
                     )
                 },
+                actions.onProviderAccounts?.let { open ->
+                    SettingsEntry(
+                        id = ProviderAccountsTags.ROW,
+                        title = stringResource(R.string.provider_accounts_title),
+                        icon = { SettingsTile(Ionicon.KeyOutline, SettingsTiles.indigo) },
+                        onClick = open,
+                    )
+                },
                 actions.onProviders?.let { open ->
                     SettingsEntry(
                         id = CloudProvidersTags.ROW,
@@ -343,12 +362,20 @@ fun AgentConnectionSettingsScreen(
                         onClick = open,
                     )
                 },
-                // Usage closes the group, after Compute.
                 actions.onUsage?.let { open ->
                     SettingsEntry(
                         id = AgentUsageTags.ROW,
                         title = stringResource(R.string.usage_title),
                         icon = { SettingsTile(Ionicon.AnalyticsOutline, SettingsTiles.teal) },
+                        onClick = open,
+                    )
+                },
+                // Plugins closes the group, after Usage, as desktop's last row there (after its Secrets).
+                actions.onPlugins?.let { open ->
+                    SettingsEntry(
+                        id = PluginsTags.ROW,
+                        title = stringResource(R.string.plugins_title),
+                        icon = { SettingsTile(Ionicon.ExtensionPuzzleOutline, SettingsTiles.orange) },
                         onClick = open,
                     )
                 },
@@ -368,6 +395,7 @@ fun AgentConnectionSettingsScreen(
             ),
             title = stringResource(R.string.settings_group_team),
         ),
+        happyCloudSection(happyCloud, onHappyCloud),
         privacySection(actions.onPrivacy),
         SettingsSection(
             listOfNotNull(
@@ -546,7 +574,10 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
     val askChief = permissions?.allows(Permission.BOTS_MANAGE) ?: true
     val compute = ComputeRole.of(cloud, permissions ?: com.slopus.happy.agent.ServerPermissions.Unknown) != ComputeRole.None
     val policy = cloud && permissions?.let(com.slopus.happy.agent.PolicyDocument::served) == true
-    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, compute, policy) {
+    // Happy Cloud keeps its own AI providers; a Happy Agent says it signs accounts in.
+    val providerAccounts = !cloud && session?.providerSignInAvailable?.collectAsStateWithLifecycle()?.value == true
+    val plugins = session?.pluginsAvailable?.collectAsStateWithLifecycle()?.value == true
+    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, compute, policy, providerAccounts, plugins) {
         AgentSettingsActions(
             onBack = { nav.popBackStack() },
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
@@ -556,10 +587,12 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onSharing = { nav.navigate(AgentSharingRoute(connectionId)) },
             onAgents = { nav.navigate(AgentAgentsRoute(connectionId)) },
             onMembers = if (cloud) ({ nav.navigate(CloudMembersRoute(connectionId)) }) else null,
+            onProviderAccounts = if (providerAccounts) ({ nav.navigate(ProviderAccountsRoute(connectionId)) }) else null,
             onProviders = if (cloud) ({ nav.openCloudProviders(connectionId) }) else null,
             onPolicy = if (policy) ({ document -> nav.navigate(PolicyDocumentRoute(connectionId, document.id)) }) else null,
             onCompute = if (compute) ({ nav.navigate(CloudComputeRoute(connectionId)) }) else null,
             onUsage = { nav.navigate(AgentUsageRoute(connectionId)) },
+            onPlugins = if (plugins) ({ nav.navigate(PluginsRoute(connectionId)) }) else null,
             onNotifications = if (cloud) ({ nav.navigate(CloudPushSettingsRoute(connectionId)) }) else null,
             onNotificationsRow = { reveal -> nav.navigate(AgentSharingRoute(connectionId, reveal = reveal)) },
             onPrivacy = { nav.navigate(PrivacyRoute) },
@@ -592,5 +625,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
         scroll = scroll,
         voice = rememberAgentVoiceSummary(graph.offers, graph.subscription),
         daemonVersion = agent.daemonVersion,
+        happyCloud = rememberHappyCloudSwitch(graph),
+        onHappyCloud = graph.happyCloud::set,
     )
 }

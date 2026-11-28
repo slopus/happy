@@ -148,4 +148,48 @@ class PipelinesTest {
         assertTrue(state.runs.failed)
         assertEquals(listOf("r1"), state.runs.entries.map { it.id })
     }
+
+    /**
+     * The Pipelines plugin uninstalled for the account: a route's `403 feature_not_installed`
+     * tells the session and is no failure; the page is leaving, and what showed stays.
+     */
+    @Test
+    fun aRouteRefusedAsTurnedOffTellsTheSessionAndShowsNoError() = runTest {
+        val off = """{"error":"Pipelines are not installed for your account. Install the Pipelines plugin to use them again.","code":"feature_not_installed","feature":"pipelines","plugin":"pipelines"}"""
+        val server = Server(
+            mapOf(
+                "GET /v0/pipelines" to listOf(200 to pipelines, 403 to off),
+                "GET /v0/pipeline-runs" to listOf(200 to """{"runs":[${run("r1", "running", 10)}],"nextCursor":null}""", 403 to off),
+                "POST /v0/pipeline-runs/r1/abort" to listOf(403 to off),
+            ),
+        )
+        var told = 0
+        val backend = ClusterPipelines(AgentClient(server, "t", cloud = true)) { told++ }
+        val events = MutableSharedFlow<AgentEvent>()
+        val source = PipelinesSource(backend, events, backgroundScope)
+        runCurrent()
+        events.emit(AgentEvent(null, AgentEvent.HELLO, JsonObject(emptyMap())))
+        runCurrent()
+        assertEquals(2, told)
+        val state = source.state.value
+        assertFalse(state.failed)
+        assertFalse(state.runs.failed)
+        assertEquals(2, state.pipelines.size)
+        assertEquals(listOf("r1"), state.runs.entries.map { it.id })
+        try {
+            backend.abort("r1")
+            org.junit.Assert.fail("refused")
+        } catch (_: PipelinesTurnedOff) {
+        }
+        assertEquals(3, told)
+        // A role's refusal is still a refusal to say.
+        val role = ClusterPipelines(AgentClient(Server(mapOf("GET /v0/pipelines" to listOf(403 to """{"error":"This needs the pipelines.read permission.","code":"forbidden"}"""))), "t", cloud = true)) { told++ }
+        try {
+            role.pipelines()
+            org.junit.Assert.fail("refused")
+        } catch (e: com.slopus.happy.agent.AgentApiException) {
+            assertEquals("forbidden", e.code)
+        }
+        assertEquals(3, told)
+    }
 }

@@ -47,6 +47,8 @@ class PipelinePageViewController<Input: PipelinePageInput>: UIViewController {
     private var pipeline: ApplyPipeline<Input, PipelineRows.Applied, Output>?
     private let initial: Input
     private var headerWatch: Watch?
+    /// Leaves once Pipelines are turned off for the account (`PipelinesGate`).
+    private var gateWatch: Watch?
     private var following: [Task<Void, Never>] = []
     private var clock: Timer?
     private var ticking = false
@@ -109,6 +111,7 @@ class PipelinePageViewController<Input: PipelinePageInput>: UIViewController {
             headerTitle = Strings.HeaderStatus.title(state)
             navigationItem.title = headerTitle ?? pageTitle
         }
+        gateWatch = PipelinesGate.watch(session, from: self)
     }
 
     override func viewWillAppear(_ animated: Bool) {

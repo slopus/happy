@@ -59,9 +59,12 @@ sealed interface ConversationSignal {
 @Immutable
 data class ComposerFocus(val serial: Int, val cursor: Int)
 
-/** A new chat before its first send has made it: what it will be, and whether a first message has fixed it ([locked]). */
+/**
+ * A new chat before its first send has made it: what it will be, and whether a first message has fixed it ([locked]).
+ * [bots] is false where people make no bots (Happy Cloud's come from its admin bot): it is a task, with no choice.
+ */
 @Immutable
-data class NewWork(val choice: WorkChoice, val locked: Boolean = false)
+data class NewWork(val choice: WorkChoice, val locked: Boolean = false, val bots: Boolean = true)
 
 /** A run's status, when it began and ended, and why it ended (`run.*` metadata). */
 internal data class RunInfo(val status: String, val startedAt: Long?, val endedAt: Long? = null, val reason: String? = null, val standalone: Boolean = false) {
@@ -159,6 +162,8 @@ class Conversation(
     knownTitle: String? = null,
     /** A new chat's Task or Bot and name, as last left. */
     initialChoice: WorkChoice = WorkChoice(),
+    /** A new chat may be a bot; false makes it a task ([NewWork.bots]). */
+    private val makesBots: Boolean = true,
     /** The answer to `POST /v0/tasks` or `/v0/bots`, so home lists it at once. */
     private val onTaskCreated: (JsonObject) -> Unit = {},
     private val lane: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
@@ -229,6 +234,8 @@ class Conversation(
         val voice: Boolean = false,
         var accepted: Boolean = false,
         var failure: Problem? = null,
+        /** [failure] was the computer's or the link's for now (a 5xx, no answer): it goes again on the next (re)connect. */
+        var retryable: Boolean = false,
         val sentAt: Long,
         /**
          * Photos still being read (iOS's held previews): drawn from their
@@ -256,7 +263,7 @@ class Conversation(
             loaded = newTask != null,
             draft = initialDraft,
             knownTitle = knownTitle,
-            newWork = newTask?.let { NewWork(initialChoice) },
+            newWork = newTask?.let { NewWork(initialChoice.takeIf { makesBots || it.kind != WorkKind.Bot } ?: WorkChoice(), bots = makesBots) },
             // New work opens with the keyboard up, in its composer (iOS's focus with the push).
             composerFocus = newTask?.let { ComposerFocus(1, initialDraft.length) },
         ),
@@ -315,7 +322,7 @@ class Conversation(
     /** Each outgoing picture's way to the computer, for the ring on its tile. */
     val uploads = UploadBoard()
     private var creating: Deferred<Unit>? = null
-    private var choice = initialChoice
+    private var choice = initialChoice.takeIf { makesBots || it.kind != WorkKind.Bot } ?: WorkChoice()
     /** A first message is in: the new work's choice is fixed. */
     private var locked = false
     /** Events that came while history was read, applied after it. */
@@ -363,6 +370,14 @@ class Conversation(
                         // Some were lost: not current again until the read is in.
                         publish { it.copy(synced = false) }
                         reload()
+                        // Refused for now (a daemon draining to restart answers 503) or
+                        // unanswered: they go again, under the same ids, now it is back.
+                        val again = outgoing.filter { it.retryable && it.failure != null && !it.accepted }
+                        if (again.isNotEmpty()) {
+                            again.forEach { it.failure = null; it.retryable = false }
+                            publish()
+                            pump()
+                        }
                     }
                     is ConversationSignal.Event -> held?.add(signal) ?: receive(signal)
                 }
@@ -435,6 +450,9 @@ class Conversation(
     /** The kept history has been read from [keeper], or there was none to read. */
     private var restored = false
 
+    /** What was restored was kept by a build that didn't check messages: the next history read is whole. */
+    private var unchecked = false
+
     /**
      * Catches up with the agent. The first read starts from what this phone
      * kept, shown as soon as the disk answers; then the agent is asked only
@@ -490,12 +508,15 @@ class Conversation(
     /**
      * The last message of the newest run that has finished, where a catch-up
      * starts (API.md `after`). The newest run may still be going, so it is
-     * read whole again unless it is known to have finished.
+     * read whole again unless it is known to have finished. Only an ID the
+     * computer knows ([Message.serverId]) anchors: past a placeholder it sent
+     * with none, the last one before it; with none at all, a whole read.
      */
     private fun anchor(): String? {
+        if (unchecked) return null
         val going = lastTurn()?.takeIf { running || runInfo[it]?.status == "running" }
         val finished = if (going != null) runs.subList(0, runs.indexOfFirst { it.first == going }) else runs
-        return finished.lastOrNull { it.second.isNotEmpty() }?.second?.last()
+        return finished.asReversed().firstNotNullOfOrNull { run -> run.second.asReversed().firstNotNullOfOrNull { messages[it]?.serverId } }
     }
 
     private suspend fun readHistory(): HistoryRead {
@@ -513,7 +534,7 @@ class Conversation(
             // A daemon that ignored `after` sent the newest page, anchor and all: that is a whole read.
             if (page.runs.any { run -> run.messages.any { it.id == anchor } }) return HistoryRead(page.runs, page.hasMore, null)
             runs += page.runs
-            val last = page.runs.lastOrNull { it.messages.isNotEmpty() }?.messages?.last()?.id
+            val last = page.runs.asReversed().firstNotNullOfOrNull { run -> run.messages.asReversed().firstNotNullOfOrNull { it.serverId } }
             if (!page.hasMore || last == null) return HistoryRead(runs, snapshot.hasMore, anchor)
             after = last
         }
@@ -536,6 +557,7 @@ class Conversation(
         kept ?: return
         // Something came in while the disk was read: that is newer than what was kept.
         if (runs.isNotEmpty() || pending.isNotEmpty()) return
+        unchecked = !kept.checked
         for (run in kept.runs) putRun(run)
         for (message in kept.pending) {
             messages[message.id] = message
@@ -553,6 +575,7 @@ class Conversation(
     }
 
     private fun adopt(start: Bootstrap, read: HistoryRead) {
+        if (read.anchor == null) unchecked = false
         agent = start.agent
         mode = picked ?: start.draft?.mode ?: start.mode ?: mode
         start.draft?.let { adoptDraft(it) }
@@ -625,6 +648,8 @@ class Conversation(
             agent = agent,
             mode = mode,
             slashCommands = snapshot.commands,
+            // Kept unchecked until the whole read has come, so a failed one is tried again next open.
+            checked = !unchecked,
             syncedAt = snapshot.syncedAt,
         )
         try {
@@ -683,7 +708,8 @@ class Conversation(
         val payload = event.payload
         when (event.type) {
             "message.created", "message.updated" -> {
-                val message = Message.parse(payload["message"]) ?: return
+                // One that fails the protocol's check is its placeholder; one with no ID to place it by comes with history.
+                val message = Message.decode(payload["message"], "").takeIf { it.id.isNotEmpty() } ?: return reconcileSoon()
                 messages[message.id] = message
                 outgoing.removeAll { it.id == message.id }
                 uploads.clear(message.id)
@@ -696,6 +722,8 @@ class Conversation(
                 val index = payload["blockIndex"].num?.toInt() ?: return
                 val append = payload["append"].str ?: return
                 val message = messages[id]
+                // A placeholder has no blocks to grow: the message's update is checked again.
+                if (message?.undisplayable != null) return
                 val grown = message?.let { grow(it, index, payload["offset"].num?.toInt(), append) }
                 if (grown == null) {
                     reconcileSoon()
@@ -1052,7 +1080,7 @@ class Conversation(
     /** A new chat's Task or Bot and name, as picked; fixed once its first message is in. */
     fun setChoice(next: WorkChoice) {
         scope.launch(lane) {
-            if (created || locked || next == choice) return@launch
+            if (created || locked || next == choice || (!makesBots && next.kind == WorkKind.Bot)) return@launch
             choice = next
             publish()
         }
@@ -1174,6 +1202,7 @@ class Conversation(
                 } catch (e: Exception) {
                     uploads.clear(next.id)
                     next.failure = describe(e)
+                    next.retryable = transient(e)
                     // The failed bubble has only a delivery mark; explain a file refusal as well.
                     if (e is FilesUnavailable || e is FileTooLarge) publish { it.copy(alert = next.failure) }
                     if (made) errorShown(ErrorArea.MessageSend, AnalyticsReasons.error(e))
@@ -1820,7 +1849,7 @@ class Conversation(
         typesetter?.prepare(newestFirst)
         return base.copy(
             created = created,
-            newWork = if (created) null else NewWork(choice, locked),
+            newWork = if (created) null else NewWork(choice, locked, makesBots),
             rows = newestFirst,
             agent = agent,
             mode = mode,

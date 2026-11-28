@@ -21,7 +21,10 @@ import com.slopus.happy.ui.surfaces.openSurface
 import androidx.compose.ui.res.stringResource
 import kotlinx.serialization.Serializable
 
+/** Home's TODOs page. */
 @Serializable data class TodoListsRoute(val connectionId: String)
+/** Home's Documents page. */
+@Serializable data class DocumentListsRoute(val connectionId: String)
 @Serializable data class TodoDeletedRoute(val connectionId: String, val surfaceId: String)
 @Serializable data class TodoHistoryRoute(val connectionId: String, val surfaceId: String, val todoId: String, val text: String = "")
 
@@ -31,7 +34,13 @@ fun NavGraphBuilder.todoRoutes(graph: AppGraph, nav: NavHostController) {
         val route = entry.toRoute<TodoListsRoute>()
         val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
         if (session == null) MissingTodoConnection { nav.popBackStack() }
-        else TodoListsScreen(session, onBack = { nav.popBackStack() }, onOpen = { nav.openSurface(graph, route.connectionId, it) })
+        else SurfaceListsScreen(session, SurfaceList.Todos, onBack = { nav.popBackStack() }, onOpen = { nav.openSurface(graph, route.connectionId, it) })
+    }
+    page<DocumentListsRoute> { entry ->
+        val route = entry.toRoute<DocumentListsRoute>()
+        val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+        if (session == null) MissingTodoConnection { nav.popBackStack() }
+        else SurfaceListsScreen(session, SurfaceList.Documents, onBack = { nav.popBackStack() }, onOpen = { nav.openSurface(graph, route.connectionId, it) })
     }
     page<TodoDeletedRoute> { entry ->
         val route = entry.toRoute<TodoDeletedRoute>()
@@ -76,7 +85,7 @@ private fun TodoDeletedScreen(session: AgentSession, surfaceId: String, onBack: 
 
 @Composable
 private fun MissingTodoConnection(onBack: () -> Unit) {
-    PlaceScaffold(stringResource(R.string.todo_lists), onBack, tag = "todo.missing.connection") {
+    PlaceScaffold(stringResource(R.string.surface_lists_todos), onBack, tag = "todo.missing.connection") {
         CardNote(stringResource(R.string.todo_missing))
     }
 }

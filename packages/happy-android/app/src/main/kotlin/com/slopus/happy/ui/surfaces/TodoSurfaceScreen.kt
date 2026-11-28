@@ -13,6 +13,8 @@ import com.slopus.happy.ui.components.HappyMenuItem
 import com.slopus.happy.ui.todos.TodoDeletedRoute
 import com.slopus.happy.ui.todos.TodoListContent
 import com.slopus.happy.ui.todos.rememberTodoActions
+import com.slopus.happy.ui.viewers.ViewersSlot
+import com.slopus.happy.viewers.ViewerTarget
 
 /** iOS TodoListViewController: kept editable cards, with deleted todos and history on the same navigation stack. */
 @Composable
@@ -21,6 +23,7 @@ fun TodoSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -> Un
     val state by remember(session, surfaceId) { session.todos.states(surfaceId) }.collectAsStateWithLifecycle(TodoListState())
     val actions = rememberTodoActions(session, surfaceId, open)
     PlaceScaffold(surfaceTitle(session, surface?.name.orEmpty()), onBack, tag = "todo.screen", actions = {
+        ViewersSlot(session, ViewerTarget.surface(surfaceId))
         SurfaceMenu(session, surfaceId, onBack, open = open) { close ->
             HappyMenuItem(stringResource(R.string.todo_deleted_todos), onClick = { close(); open(TodoDeletedRoute(session.connectionId, surfaceId)) })
         }

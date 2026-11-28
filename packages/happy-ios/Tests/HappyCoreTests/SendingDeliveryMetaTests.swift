@@ -78,6 +78,29 @@ final class SendingDeliveryMetaTests: XCTestCase, @unchecked Sendable {
         }
     }
 
+    /// A voice send judges the session's row where it is kept: archived in
+    /// the store a moment before, it is refused and nothing is queued.
+    func testAnAdmittingCheckReadsTheRowInTheTransactionThatKeepsTheSend() async throws {
+        let (store, engine, _) = try setup()
+        await engine.setBackgrounded(true)
+        var archived = try XCTUnwrap(store.session(id: "s"))
+        archived.metadata = .object(["lifecycleState": .string("archived")])
+        archived.metadataVersion += 1
+        try store.upsertSessions([archived])
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let admitting: @Sendable (SessionRecord?) -> String? = { $0?.isArchived == false ? nil : "archived" }
+        do {
+            _ = try await engine.accept(OutgoingMessage(text: "late", source: .voice), sessionId: "s", filesDirectory: directory, admitting: admitting)
+            XCTFail("kept")
+        } catch let refused as SessionRefusedSend {
+            XCTAssertEqual(refused.reason, "archived")
+        }
+        XCTAssertTrue(try store.pendingOutbox(limit: Int.max).isEmpty)
+        let kept = try await engine.accept(OutgoingMessage(text: "fine", source: .voice), sessionId: "other", filesDirectory: directory, admitting: admitting)
+        XCTAssertNotNil(try store.outbox(localId: kept))
+    }
+
     func testAnIdleSessionWithNothingWaitingIsNotQueued() async throws {
         let (store, engine, _) = try setup()
         let bytes = try await acceptIdle(store, engine)

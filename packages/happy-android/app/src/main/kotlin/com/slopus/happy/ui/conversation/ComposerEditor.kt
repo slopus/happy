@@ -158,6 +158,7 @@ private fun EditorPage(
         BasicTextField(
             state = field,
             inputTransformation = typed,
+            outputTransformation = com.slopus.happy.ui.autocomplete.ComposerMentions,
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.text),
             cursorBrush = SolidColor(colors.text),
             lineLimits = TextFieldLineLimits.MultiLine(),

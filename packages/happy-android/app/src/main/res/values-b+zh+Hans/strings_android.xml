@@ -17,7 +17,6 @@
     <string name="settings_appearance_file_diffs_sidebar">文件差异侧边栏</string>
     <string name="settings_appearance_file_diffs_sidebar_description">在桌面端于聊天旁显示 git 更改</string>
     <string name="chat_scroll_to_bottom">滚动到底部</string>
-    <string name="voice_clear_search">清除搜索</string>
     <string name="scan_unavailable">此设备无法使用二维码扫描器。请改为粘贴链接。</string>
     <string name="scan_not_happy_code">这不是 Happy 的二维码。</string>
     <string name="scan_terminal_code_elsewhere">此代码用于连接终端。请在“设置 › 扫描二维码进行认证”中扫描。</string>
@@ -31,7 +30,4 @@
     <string name="state_animation_replay">再次播放</string>
     <string name="scan_no_camera">此设备没有摄像头。请粘贴链接。</string>
     <string name="scan_camera_failed">无法启动摄像头。请重试或粘贴链接。</string>
-    <string name="voice_microphone_title">需要麦克风权限</string>
-    <string name="voice_microphone_ask">Happy 需要访问麦克风才能进行语音聊天。出现提示时请允许。</string>
-    <string name="voice_microphone_settings">Happy 需要访问麦克风才能进行语音聊天。请在设备设置中开启麦克风权限。</string>
 </resources>

@@ -3,7 +3,10 @@ package com.slopus.happy.chat
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.model.settings.ModeOptions
+import com.slopus.happy.model.settings.AgentDefaultOverrides
 import com.slopus.happy.sync.AgentModeField
+import com.slopus.happy.sync.MessageMetaResolver
+import com.slopus.happy.sync.Present
 import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.sync.SessionComposerTest
 import kotlinx.serialization.json.Json
@@ -170,6 +173,55 @@ class ComposerModesTest {
         assertTrue(modes.permissionMode != null)
         assertTrue(modes.modelMode != null)
         assertEquals(listOf("low", "medium", "high", "xhigh", "max"), modes.availableEffortLevels.map { it.key })
+    }
+
+    /**
+     * A Claude session started from the terminal has no pick. Its chip names
+     * the model its next message sends.
+     */
+    @Test
+    fun aClaudeSessionsChipNamesTheModelItsNextMessageRuns() {
+        fun claude(reported: String?) = plain("claude") {
+            put("version", "1.2.7")
+            reported?.let { put("currentModelCode", it) }
+        }
+        fun check(metadata: SessionMetadata, mirror: ComposerMirror, overrides: AgentDefaultOverrides?, chip: String, sent: String?) {
+            assertEquals(chip, ComposerModeResolver.resolve(metadata, mirror, overrides, translate).modelMode?.key)
+            assertEquals(sent, MessageMetaResolver.mode(metadata, mirror, overrides).model?.value)
+        }
+        val haiku = AgentDefaultOverrides.parse(Json.parseToJsonElement("""{"claude":{"modelMode":"claude-haiku-5-5"}}"""))
+
+        // Nothing reported yet: the chip's default goes out with the message, or Claude Code would pick its own.
+        check(claude(null), ComposerMirror(), null, chip = "claude-opus-5-5", sent = "claude-opus-5-5")
+        // The CLI reports what it runs: the chip shows that and the message sends it.
+        check(claude("claude-sonnet-5-5"), ComposerMirror(), null, chip = "claude-sonnet-5-5", sent = "claude-sonnet-5-5")
+        // A reported [1m] model shows the row that runs it and is sent as reported.
+        check(claude("claude-opus-5[1m]"), ComposerMirror(), null, chip = "claude-opus-5", sent = "claude-opus-5[1m]")
+        // A model Claude was configured with that the list lacks gets its own row.
+        check(claude("opusplan"), ComposerMirror(), null, chip = "opusplan", sent = "opusplan")
+        // The user's default and the session's pick are sent, so they win.
+        check(claude("claude-sonnet-5-5"), ComposerMirror(), haiku, chip = "claude-haiku-5-5", sent = "claude-haiku-5-5")
+        check(claude("claude-sonnet-5-5"), ComposerMirror(modelMode = "claude-fable-5-2"), haiku, chip = "claude-fable-5-2", sent = "claude-fable-5-2")
+    }
+
+    @Test
+    fun claudesOwnDefaultAliasIsShownAndSentAsItself() {
+        val session = plain("claude") { put("version", "1.2.7"); put("currentModelCode", "default") }
+        // Started with `happy --model default`: the chip has a row for it, and messages
+        // and resume keep `--model default` rather than dropping the model.
+        val chip = ComposerModeResolver.resolve(session, ComposerMirror(), null, translate).modelMode
+        assertEquals("default" to "Default", chip?.key to chip?.name)
+        assertEquals(Present("default"), MessageMetaResolver.mode(session, ComposerMirror(), null).model)
+
+        // The app's own `default` pick is its reset: still sent as null.
+        assertEquals(Present(null), MessageMetaResolver.mode(session, ComposerMirror(modelMode = "default"), null).model)
+    }
+
+    @Test
+    fun otherHarnessesKeepTheirDefaultsAheadOfWhatTheyReport() {
+        val agy = plain("agy") { put("version", "1.2.7"); put("currentModelCode", "Gemini 4 Neon") }
+        assertEquals("Gemini 4 Hydrogen", ComposerModeResolver.resolve(agy, ComposerMirror(), null, translate).modelMode?.key)
+        assertEquals("Gemini 4 Hydrogen", MessageMetaResolver.mode(agy, ComposerMirror(), null).model?.value)
     }
 
     @Test

@@ -58,7 +58,7 @@ private actor LimitsComputer: AgentTransport {
         if path.contains("/messages?") {
             return try response(.object(["hasMore": .bool(false), "runs": .array([.object([
                 "id": .string("r1"), "status": .string("completed"), "startedAt": .number(1), "messages": .array([
-                    .object(["id": .string("u1"), "role": .string("user"), "createdAt": .number(1), "metadata": .object([:]),
+                    .object(["id": .string("u1"), "role": .string("user"), "createdAt": .number(1), "metadata": .object([:]), "status": .string("accepted"), "delivery": .string("queue"), "runId": .string("r1"), "mode": .object(["providerId": .string("claude"), "modelId": .string("opus"), "effort": .string("medium"), "serviceTier": .null, "permissionMode": .string("auto")]),
                              "content": .array([.object(["type": .string("text"), "text": .string("How full is the context?")])])]),
                     .object(["id": .string("a1"), "role": .string("agent"), "createdAt": .number(2), "metadata": .object([:]),
                              "content": .array([.object(["type": .string("text"), "text": .string("The meter under the composer says.")])])]),

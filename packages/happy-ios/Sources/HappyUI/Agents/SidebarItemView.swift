@@ -14,9 +14,24 @@ import UltraView
 /// It looks as `RowView` does in a grouped list: the card's quiet fill,
 /// rounded where the row ends the card, iOS's grey highlight under a
 /// finger and while its screen comes in, a new row's tint and pulse.
+///
+/// A row that can be archived swipes toward its leading edge
+/// (`SidebarSwipeLayout`): what it draws slides inside its card, over the
+/// red action the swipe uncovers, both clipped to the card while it moves.
 @MainActor
-final class SidebarItemView: ListRowView {
+final class SidebarItemView: ListRowView, UIGestureRecognizerDelegate {
     private(set) var item: SidebarItem
+    /// The row's card, clipping what is in it only while it is swiped.
+    private let clip = UIView()
+    /// Everything the row draws, in the slot's coordinates: a swipe slides it.
+    private let content = UIView()
+    private let action = SidebarSwipeActionView()
+    private let swipe = UIPanGestureRecognizer()
+    /// How far the row stands swiped open, and whether its action fills it.
+    private(set) var reveal: CGFloat = 0
+    private(set) var revealFull = false
+    /// Where the finger's swipe began, as a reveal.
+    private var swipeStart: CGFloat = 0
     private let fill = UIView()
     private var drawingView: ListRowView
     private let tile = UIView()
@@ -43,6 +58,14 @@ final class SidebarItemView: ListRowView {
     }
     var pressed = false {
         didSet { if pressed != oldValue { applyFill() } }
+    }
+    /// Its row is in a finger's hand, its picture over the list: here only
+    /// the card's part stays, an empty place in the card.
+    var isCarried = false {
+        didSet {
+            guard isCarried != oldValue else { return }
+            for view in [drawingView, tile, seedling, picture, signal, titleBand].compactMap({ $0 }) { view.alpha = isCarried ? 0 : 1 }
+        }
     }
     /// A voice touch on the row (`VoiceTouch`): lit in its fill's shape,
     /// under its words, and pressed as a finger presses it.
@@ -78,7 +101,8 @@ final class SidebarItemView: ListRowView {
             )
             band.accessibilityIdentifier = "shimmer"
             titleBand?.removeFromSuperview()
-            insertSubview(band, aboveSubview: drawingView)
+            content.insertSubview(band, aboveSubview: drawingView)
+            band.alpha = isCarried ? 0 : 1
             titleBand = band
         }
     }
@@ -99,7 +123,18 @@ final class SidebarItemView: ListRowView {
         tile.isUserInteractionEnabled = false
         tile.layer.cornerRadius = GroupedSidebarMetrics.tileRadius
         tile.layer.cornerCurve = .continuous
-        for view in [fill, drawingView, tile, seedling, picture, signal] { addSubview(view) }
+        clip.isUserInteractionEnabled = false
+        clip.layer.cornerCurve = .continuous
+        content.isUserInteractionEnabled = false
+        addSubview(clip)
+        clip.addSubview(action)
+        clip.addSubview(content)
+        action.isHidden = true
+        for view in [fill, drawingView, tile, seedling, picture, signal] { content.addSubview(view) }
+        swipe.addTarget(self, action: #selector(swiped(_:)))
+        swipe.maximumNumberOfTouches = 1
+        swipe.delegate = self
+        addGestureRecognizer(swipe)
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         addGestureRecognizer(tap)
         let press = PressRecognizer(target: self, action: #selector(pressChanged(_:)))
@@ -159,8 +194,13 @@ final class SidebarItemView: ListRowView {
         var corners: CACornerMask = []
         if frames.cell?.roundsTop == true { corners.formUnion([.layerMinXMinYCorner, .layerMaxXMinYCorner]) }
         if frames.cell?.roundsBottom == true { corners.formUnion([.layerMinXMaxYCorner, .layerMaxXMaxYCorner]) }
-        fill.layer.cornerRadius = corners.isEmpty ? 0 : GroupedSidebarMetrics.radius
+        let radius = corners.isEmpty ? 0 : GroupedSidebarMetrics.radius
+        // Swiped, the card rounds what slides inside it; the fill sliding
+        // with the row has no corners of its own.
+        fill.layer.cornerRadius = reveal > 0 ? 0 : radius
         fill.layer.maskedCorners = corners
+        clip.layer.cornerRadius = radius
+        clip.layer.maskedCorners = corners
     }
 
     /// A glyph's tile, by what the row opens (`RowView.tint`), with a key to tell them apart.
@@ -220,6 +260,13 @@ final class SidebarItemView: ListRowView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        let box = box
+        clip.frame = box
+        // The slot's coordinates inside the card, slid by the swipe.
+        content.frame = CGRect(origin: CGPoint(x: -box.minX, y: -box.minY), size: bounds.size)
+        let swiped = SidebarSwipeLayout.frames(box: box.size, reveal: reveal, full: revealFull, icon: SidebarSwipeActionView.iconSize, title: action.titleSize)
+        content.bounds.origin.x = -swiped.offset
+        action.apply(swiped)
         drawingView.frame = bounds
         fill.frame = box
         let frames = frames
@@ -258,7 +305,10 @@ final class SidebarItemView: ListRowView {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         signal.onScreen = window != nil
-        if window == nil { pressed = false }
+        if window == nil {
+            pressed = false
+            setReveal(0, full: false, animated: false)
+        }
     }
 
     // MARK: Touch
@@ -279,6 +329,89 @@ final class SidebarItemView: ListRowView {
         item.owner?.tap(self, at: gesture.location(in: self))
     }
 
+    // MARK: Swipe
+
+    /// Whether `point`, in the slot, is on the action the swipe uncovered.
+    func isOnAction(_ point: CGPoint) -> Bool {
+        reveal > 0 && action.frame.offsetBy(dx: box.minX, dy: box.minY).contains(point)
+    }
+
+    /// Stands the row `reveal` open (`full`: its action filling it), at
+    /// once or on iOS's spring; `then` runs once it is there.
+    func setReveal(_ reveal: CGFloat, full: Bool, animated: Bool, then: (() -> Void)? = nil) {
+        let moved = reveal != self.reveal || full != revealFull
+        self.reveal = reveal
+        revealFull = full
+        if reveal > 0, action.isHidden {
+            clip.clipsToBounds = true
+            action.isHidden = false
+            applyFill()
+        }
+        let settled = { [weak self] in
+            guard let self else { return }
+            if self.reveal == 0, !action.isHidden {
+                clip.clipsToBounds = false
+                action.isHidden = true
+                applyFill()
+            }
+            then?()
+        }
+        guard moved else { return settled() }
+        guard animated, window != nil else {
+            setNeedsLayout()
+            layoutIfNeeded()
+            return settled()
+        }
+        setNeedsLayout()
+        UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 1, initialSpringVelocity: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+            self.layoutIfNeeded()
+        } completion: { _ in settled() }
+    }
+
+    @objc private func swiped(_ gesture: UIPanGestureRecognizer) {
+        guard let owner = item.owner else { return }
+        let width = box.width
+        switch gesture.state {
+        case .began:
+            owner.swipeBegan(self)
+            swipeStart = reveal
+            pressed = false
+        case .changed:
+            let shown = SidebarSwipeLayout.shown(swipeStart - gesture.translation(in: self).x, width: width)
+            let full = SidebarSwipeLayout.isFull(shown, width: width)
+            if full, !revealFull { Haptics.play(.armed) }
+            // The label crosses to the content's edge on a spring; the rest follows the finger.
+            setReveal(shown, full: full, animated: full != revealFull)
+        case .ended, .cancelled, .failed:
+            let velocity = gesture.state == .ended ? -gesture.velocity(in: self).x : 0
+            let outcome = SidebarSwipeLayout.release(reveal: reveal, velocity: velocity, width: width)
+            owner.swipeEnded(self, outcome: outcome)
+        default:
+            break
+        }
+    }
+
+    override func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+        guard gesture === swipe else { return super.gestureRecognizerShouldBegin(gesture) }
+        let moved = swipe.translation(in: self)
+        // Sideways only, and toward the leading edge unless it stands open.
+        guard heldAt == nil, abs(moved.x) > abs(moved.y), moved.x < 0 || reveal > 0 else { return false }
+        return item.owner?.swipes(row) == true
+    }
+
+    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard gesture === swipe, let owner = item.owner else { return true }
+        return owner.swipes(row) && !owner.isGliding
+    }
+
+    /// The list's pan, and any pan around it, waits until a sideways swipe
+    /// is ruled out.
+    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+        guard gesture === swipe, let list = item.owner?.list, let view = other.view, other is UIPanGestureRecognizer,
+              !(other is UIScreenEdgePanGestureRecognizer), other !== swipe else { return false }
+        return view === list.contentView || list.isDescendant(of: view)
+    }
+
     @objc private func pressChanged(_ gesture: PressRecognizer) {
         guard let owner = item.owner else { return }
         let down = gesture.state == .began || gesture.state == .changed
@@ -286,9 +419,31 @@ final class SidebarItemView: ListRowView {
         if gesture.state == .began, !stoppedGlide { owner.pressed(self) }
     }
 
+    /// The finger held still on the row long enough to hold it, and where
+    /// it was then, in the list's view; nil while it isn't held.
+    private var heldAt: CGPoint?
+
+    /// A hold opens the row's preview, or lifts a bot or task at once
+    /// (`SidebarList.holdCarries`); the held finger carries a lifted row,
+    /// and lets it go where it lifts.
     @objc private func held(_ gesture: UILongPressGestureRecognizer) {
-        guard gesture.state == .began, !stoppedGlide else { return }
-        item.owner?.openHold(self)
+        guard let owner = item.owner else { return }
+        switch gesture.state {
+        case .began:
+            guard !stoppedGlide, reveal == 0 else { return }
+            let point = gesture.location(in: owner)
+            heldAt = point
+            owner.openHold(self, at: point)
+        case .changed:
+            guard let heldAt else { return }
+            owner.holdMoved(self, to: gesture.location(in: owner), from: heldAt)
+        case .ended, .cancelled, .failed:
+            guard heldAt != nil else { return }
+            heldAt = nil
+            owner.holdEnded(self, cancelled: gesture.state != .ended)
+        default:
+            break
+        }
     }
 
     // MARK: VoiceOver
@@ -353,7 +508,7 @@ final class SidebarItemView: ListRowView {
         guard let mark = frames.mark, HatchView.canPlay(in: self) else { return }
         let hatch = HatchView(frame: mark)
         picture.alpha = 0
-        insertSubview(hatch, aboveSubview: picture)
+        content.insertSubview(hatch, aboveSubview: picture)
         HatchHaptics.shared.play(size: mark.width)
         hatch.play(seed: seed, image: image) { [weak self] in self?.picture.alpha = 1 }
     }

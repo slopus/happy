@@ -237,7 +237,8 @@ final class HostedLinkTitleTests: XCTestCase {
         let switcher = try XCTUnwrap(home.navigationItem.leftBarButtonItem?.customView as? AccountSwitcherButton)
         try await until("live: the name") { home.headerState == .online && self.shows(switcher) == nil }
         try await Task.sleep(for: .milliseconds(700))
-        let items = ["settings"]
+        // Settings, or on an iPhone, whose Settings is the drawer's, none.
+        let items = (home.navigationItem.rightBarButtonItems ?? []).compactMap(\.accessibilityIdentifier).filter { $0 == "settings" }
         let resting = try header(navigation, switcher, items: items)
         let nameWidth = switcher.bounds.width
         try await captureBoth(window, "agent-1-live")

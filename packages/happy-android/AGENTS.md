@@ -10,7 +10,7 @@ are authoritative. Translation catalogs now live as plain JSON in
 `packages/happy-i18n/translations`; run
 `node tools/translations/generate.mjs` with no TypeScript loader. The old
 RN-based crypto/send/diff generators are retired; their checked-in fixtures
-remain compatibility baselines. Version and legacy voice configuration are
+remain compatibility baselines. Version and voice agent configuration are
 owned by `app/build.gradle.kts`, Firebase by `app/google-services.json`.
 Preserve credential and push compatibility on upgrades.
 
@@ -21,16 +21,26 @@ Preserve credential and push compatibility on upgrades.
   Do not port legacy protocol paths:
   sessions and machines without a `dataEncryptionKey` are skipped, not
   decrypted with the account secret.
-- **Voice** in Happy (relay) sessions is switched off: `AppGraph.voice` is
-  built with `enabled = false`, so a session's chat shows no voice button and
-  `start` answers `NotAvailable` before the microphone, the server's grant,
-  a sheet or ElevenLabs. The engine stays in the tree (removal not decided).
-  When on, it uses Happy's server-controlled allowance and the app's own
-  offer sheets (`payments/`, see "Purchases"), with ElevenLabs over WebRTC. The pinned SDK source patch in
+- **Voice on a Happy CLI account** is the same call as an agent
+  connection's (below), bound to the open Happy account instead
+  (`CallController.startCli`, `LegacyCallTargets` over `AppGraph`'s
+  `LegacyCallAccount`): the same hosted agent, prompt, four tools, sheets and
+  one device-local `CallAllowance`. Its button is where the agent home has
+  it, left of compose (`ComposeFab(onVoice)`, the tablet's
+  `SidebarFootBar(onVoice)`), and nowhere else: no chat or composer has one.
+  Settings' Voice row opens the agent connection's Voice page
+  (`AgentVoiceRoute`). The directory is home's sessions (bots, tasks, then
+  projects, each newest made first; no side chats, no stopped Happy CLI
+  session; an unnamed one reads "New chat", as its row does); a session
+  that isn't online is read, never sent to; reads are the chat screen's reduction (`ChatFeed`), sends the
+  composer's sender marked `voice`, model and effort the composer's chips
+  (refused only when the computer locks them). New tasks and named bots
+  start through Happy Agent's spawn on compose's computer, else the only one
+  that can. Nothing reads the server's old voice usage or token endpoints;
+  the old relay voice (`VoiceEngine`) is gone. The pinned SDK source patch in
   `vendor/elevenlabs` fixes audio focus, teardown and call-local mute.
 - **An agent connection's voice call** (`call/`, `ui/call/`), iOS's
-  `HappyCore/Call` ported: apart from the relay's voice above, its own new
-  hosted ElevenLabs agent, its system prompt sent from the phone
+  `HappyCore/Call` ported: its own hosted ElevenLabs agent, its system prompt sent from the phone
   (`CallPrompt`) and v3's four client tools (`CallTool`), no permission
   or question tool, hearing only new words and stopping errors from the last
   four conversations visited or messaged, and a read brings one up to date
@@ -40,8 +50,7 @@ Preserve credential and push compatibility on upgrades.
   window, the top app bar first, down by its height, taking the top inset.
   A full-screen dialog goes through `PageDialog` or `WindowDialog` so that it
   carries the bar.
-  It ends when the app leaves the foreground, another account opens or the
-  relay's voice starts. For launch it connects to a public agent by its ID
+  It ends when the app leaves the foreground or another account opens. For launch it connects to a public agent by its ID
   (`PublicAgentCallGrants`), a connection mechanism and not authentication;
   the ID comes from `HAPPY_CALL_AGENT_V3_ID`, `-Phappy.callAgentV3Id` or the
   ignored `local.properties` (`happy.callAgentV3Id`) into
@@ -239,7 +248,10 @@ win:
   never "legacy" (iOS 64edb6a34): one with no name of its own goes by
   its kind, and TalkBack hears the kind after each row's name
   (`ui/home/AccountMenu.kt`); picking one switches
-  (`AppGraph.open`). Settings on the right. The legacy home and agent
+  (`AppGraph.open`). Settings on the right. On a phone an agent
+  connection's avatar opens the drawer instead (Steve: the instance's
+  picture stays), with search alone on the right: the account menu and
+  Settings are the drawer's (see "Phone drawer"). The legacy home and agent
   home share one bar (`AgentTopBar`, `BarTitle`): the account's name as
   the title. While the link is on its way (iOS 7aee3a9b8, Telegram's
   title) "Waiting for network…", "Connecting…" or "Updating…" stands in
@@ -263,13 +275,15 @@ win:
   `GrainGradient.kt`) behind everything, edge to edge; the logotype
   centred on the top row, Get help (a ? opening `GetHelpAlert`, iOS's four
   links) where a ⋮ would be, and no ⋮ (Steve); one centred "Start" that opens
-  the next screen, which scans, 48 above the bottom inset; where the build
-  offers Happy Cloud, "Use Happy Cloud" under it, the quiet text action, as
+  the next screen, which scans, 48 above the bottom inset; while Happy Cloud
+  is offered (Settings' switch), "Use Happy Cloud" under it, the quiet text action, as
   wide, 12 under Start with 24 kept above the bottom inset, Start rising to
   make room (iOS StartLayout). The code is routed
   (`ConnectKind.Add`): `happy://terminal?` creates a Happy account and
   approves that terminal in one step (`AuthRepository.createAccount`'s
-  `prepare`; a failed approval keeps no account), `happy:///account?`
+  `prepare`; a failed approval keeps no account; a code whose key isn't
+  32 bytes of base64url is "Invalid authentication URL" before any account
+  is made, `createAccountForTerminal`), `happy:///account?`
   says it needs a signed-in phone, `happy://direct?` pairs an agent. The
   other ways in are the self-hosted flow's: the next screen's ⋮
   (`StartMenu`) and the scanner's (`ScannerWay`) hold Enter link manually
@@ -284,9 +298,18 @@ win:
   (`Screen(avoidKeyboard = true)`); the first screen never does. Palette: blue and violet
   over near-black (dark) or their tints over lavender white (light), no
   green or orange, text AA or better. The shader runs on Android 13+
-  (`RuntimeShader`), at the display's rate (120 on the Fold) while resumed, still with
-  animations removed; older Android draws a still gradient in the same
-  colours.
+  (`RuntimeShader`), at the display's rate (120 on the Fold) while resumed.
+  The sky and the Happy Cloud mark (`LiquidMetalMark`) are always the
+  shaders' own pictures, grain and metal included, never a flat stand-in,
+  and nothing fades in: a screen opens straight onto the live shader or
+  onto its frame 0 (Kirill, every client). They hold frame 0 where
+  `rememberShadersMove` says: animations removed, Battery Saver, a low-RAM
+  phone, thermal status severe or worse. Before Android 13 `ShaderStills`
+  draws that frame 0 once with OpenGL ES 2 from the same AGSL, and a screen's
+  first frame waits for it (`StartWarmup` starts Start's ahead). The H in
+  the cloud is solid black (#000) under the metal in light and dark, never a
+  hole showing the sky: the shader adds its coverage, cloud.svg's H grown 2
+  texels, and no colour (desktop's liquidMetalShader.ts, every client).
 - **Worktree tabs:** a Happy CLI chat in the project layout has its
   checkout's chats as tabs under the header (`ui/session/WorktreeTabStrip`).
   A tab, `+`, archiving the open tab and a resume all switch the chat in
@@ -424,6 +447,52 @@ win:
   put into words: no error text, and an account with no windows, no
   model tokens and no history is left out (`usageVendors`).
   `UsageFixtures` is the test and shot data (`UsageShots`).
+- **Settings › Inference on a Happy Agent** (`ui/connection/ProviderAccounts.kt`,
+  `agent/ProviderSignIn.kt`, `agent/ProviderAccounts.kt`; named as desktop's
+  Settings › Inference, and iOS has the same pages and words; code keeps
+  the `ProviderAccounts` names) is happy-agent API.md's "Provider
+  sign-in": a row after Agents, only on a Happy Agent whose health says
+  `capabilities.providerSignIn` (kept per connection, never probed). Happy
+  Cloud's own Inference row (its AI providers) shows only on Cloud, so the
+  two never meet. Nothing on these pages moves with state: only what a
+  person typed or named may change a layout, and it is cut short, not
+  wrapped.
+  - The list is one Accounts card, a row per `codex`, `claude` and `grok`
+    account of `GET /v0/config` carrying `credential`, every row two lines:
+    vendor mark with a status dot, name and plan, chevron, and one line,
+    the first that applies (`AccountStatus`): Needs sign-in, since a
+    date where the error gives one (`signIn == "signed_out"` or a permanent
+    `login.refreshError`); Couldn't refresh (a transient error; its tail is
+    "expires in" in place of "last tried" when the login runs out within a
+    day); else Used/Not used yet and refreshed, "System login" first for
+    the machine's own. `lastUsedAt` and `login` come from `GET /v0/usage`;
+    an older agent without them gets "Last checked" from usage's
+    `refreshedAt`.
+  - Accounts switched off are left out of the list altogether, with no
+    way to show them (Steve); with every account off it is the empty
+    state, "Every account on this Happy Agent is switched off." (desktop's). An account switched off stays on
+    its page until it is left, so it can be switched back on there.
+  - A row opens the account: Enabled (`PATCH /v0/config`), then Login,
+    always the same five rows with "—" for what isn't known (Source, Last
+    used, Last refresh, Token expires, Last refresh error), then Sign in
+    again and Update token where `acceptsToken`.
+  - Signing in again is one page whose steps share a fixed-height area
+    and one action row (Cancel, Done, Try again or Close). A phone signs
+    in with `device`, or Claude's `browser` page with its code pasted
+    back; never Codex's or Grok's browser, which finishes on the computer.
+    The page started's operation is followed through
+    `provider_sign_in.updated` (the greater `version` wins) and read again
+    on resume and each reconnect; leaving it unfinished cancels it.
+  - The agent says nothing of who owns a team until it refuses (`403
+    forbidden`), so that refusal is remembered for the session and the
+    actions stay off with the reason. Codes and tokens are never kept,
+    logged or sent to analytics.
+  - Debug builds have `ui.connection.ProviderAccountsFixturesActivity`: the
+    real client over `ProviderSignInDaemon`, the contract in memory (`--es
+    providerAccounts.scene
+    normal|success|failure|owner|missing|states|legacy|off`, `--es
+    providerAccounts.account codex`, `--es providerAccounts.signIn codex`,
+    `--es providerAccounts.token claude_work`).
 - **Agent home search** looks and moves as iOS's
   (`HappyCore/Agents/Search.swift`, `SearchShown.swift`,
   `ui/connection/AgentSearch.kt`) and lists what desktop's ⌘K palette
@@ -1300,8 +1369,22 @@ change its wire behaviour on Android alone.
   Servers live under
   one domain, `BuildConfig.HAPPY_CLOUD_BASE` (`happy-clusters.com`; `HAPPY_CLOUD_BASE` or
   `-Phappy.cloudBase`): the server named `acme` is `https://acme.BASE`.
-  Only `debug` and `preview` builds offer it (`HappyCloud.offeredIn`, by
-  `BuildConfig.BUILD_TYPE`); `release` and `bench` have no way in at all.
+  Every build has it, and offers its ways in (Use Happy Cloud, the account
+  menu's +, invite links) only while Settings' Happy Cloud switch is on
+  (`config/HappyCloudSetting`, Kirill): this phone's own, never synced. Its
+  value is an override over the build's default (`HappyCloud.offeredByDefault`:
+  on in `debug` and `preview`, off in `release` and `bench`), kept in prefs
+  `happy-cloud` only once the switch is turned, so a phone that never turns
+  it follows each build's default. The switch is a card above Privacy on
+  both kinds of Settings, in developer mode only (ten taps on Version), and
+  nowhere else: outside developer mode no card, footer or search result,
+  never on Start or in onboarding. Entering or leaving developer mode
+  changes nothing but whether it shows. While developer mode is on, About's
+  footer opens with a line saying so and that ten more taps on Version turn
+  it off (`settings_developer_mode_footer`).
+  Its invite links' intent filters sit on the main manifest's disabled
+  `HappyCloudLinks` alias, which the switch enables; servers already added
+  keep working either way.
   The account menu's last row, a + reading "Connect to Happy Cloud" (with no
   account yet, the first screen's "Use Happy Cloud"), opens a full-screen
   welcome (no dialog), desktop's (CloudConnectScreen.tsx at dca9b205): its
@@ -1731,17 +1814,15 @@ SDK's own) stay on disk, unread.
   restore a new version makes of a subscription that names no one
   (`migrate`, once, only without `pro`).
 - `AppGraph.offers` (`Offers`) is the one offer presenter, drawn by the one
-  `OfferHost` in `HappyApp`: voice's welcome and used-up sheets and the relay
-  voice's Required sheet (`voice_must_pay`, unreachable while that voice is
-  off). One sheet at a time; `ask` answers Start (the welcome's only), Pro
+  `OfferHost` in `HappyApp`: voice's welcome and used-up sheets. One sheet
+  at a time; `ask` answers Start (the welcome's only), Pro
   or Dismissed. Support Happy is a pushed page, not a sheet (`SupportRoute`,
   `SupportScreen`; a Happy account's Support us and an agent connection's
   boba row, which is that page's only Support us): "Pledge <price>/month"
   over Subscribe, always there and greyed out while nothing is on sale,
   then Restore Purchases and Manage subscriptions as quiet links.
-- Grants are client-side. The server checks no subscription; its 2-hour
-  hard cap on every account's voice is a cost safety net, never sold, only
-  said.
+- Grants are client-side. The server checks no subscription, and no call
+  asks the relay server for voice time.
 - Debug builds treat About's Support row as Pro, as RN does; that grants no
   voice.
 
@@ -1750,20 +1831,9 @@ grace and identity.
 
 ## Voice
 
-`AppGraph.voice` owns one `VoiceEngine`, switched off for now (see the top).
-When on, it requests microphone permission
-before allocating a server conversation, applies server denial/paywall rules,
-and connects the ElevenLabs transport. `AppGraph.subscription` provides real Pro
-state and `AppGraph.offers` the sheets (`VoicePaywall`); debug-only Support us
-behavior does not grant voice Pro.
-Usage and credentials re-authenticate with the account secret when voice uses
-a different server. Voice language codes come from `VoiceLanguages`.
-
-`StoreVoiceContext` forwards normalized messages, permission prompts, ready
-events and focused-session context. Histories load lazily with a 50-row cap;
-events arriving during SDK connection are buffered. Client tools validate
-their parameters and use the existing sender/permission RPCs for the bound
-account. Logout, failed start and stop invalidate callbacks and close the call.
+Every call, an agent connection's or a Happy CLI account's, is
+`AppGraph.calls` (`call/`, `ui/call/`); see the scope above and
+`docs/agent-voice-call.md`.
 
 `vendor/elevenlabs/UPSTREAM.md` records the pinned MIT source archive and the
 audio lifecycle patch. LiveKit owns audio focus and device routing; call mute
@@ -1900,6 +1970,14 @@ dialog window has focus. It closes into the thumbnail if that is on the
 screen, by tap, back or a drag, and otherwise fades. Then it waits for the
 thumbnail to draw again (`ViewerOrigins.drawn`) before it goes, so there
 is no hole. A recording neither flies nor hides its tile.
+
+A file's own screen (`ui/files/FileScreen`: a workspace file, or a relay
+session's) shows desktop FilePreview's pictures and recordings itself, by
+extension (`isPicturePath`, `isVideoPath`), not as "Binary File". A picture
+rests fitted to the rest of the screen, never enlarged, and zooms in place
+(`PageZoom`, as a viewer page); a tap opens the viewer. A recording plays in
+`VideoPage` without the viewer's motion, on its first frame until played.
+Both are read whole: the agent's `file` route has no ranges to stream.
 
 A tap on a kept recording's play button plays it as soon as its first
 playable range is on the phone (iOS 42121e99e, `VideoOpening`). The
@@ -2175,6 +2253,8 @@ normalization as the photo picker.
 
 The composer's label slot holds two chips, as iOS does (e2238fdc4,
 083c30df4): the model (bold) and its effort (`ConversationModelChips`).
+When both don't fit, only the model gives way: its name is cut and the
+effort keeps its width (iOS `AgentInputCardLayout.middle`).
 Each opens its own list (`ui/conversation/ModelPicker`), in Android's
 menu card instead of iOS glass. The list's trailing edge sits on the
 chip's, 10 dp above it, and it opens scrolled to the checked line.
@@ -2649,33 +2729,177 @@ every locale, not happy-i18n.
 - Tests: `vaults/*Test` (listing, events, uploads against a fake daemon,
   routes, presets) and `ui/vaults/VaultLayoutTest`.
 
+### Viewers
+
+Who else is on a conversation or a Surface, in its header (happy-agent
+API.md, "Viewers"; the same contract happy-cluster serves). `viewers/` is
+the wire and state, `ui/viewers/` the slot; words are
+`strings_viewers.xml` in every locale.
+
+- **Store** (`Viewers`, one per `AgentSession`): one owner coroutine takes
+  every change in order (views, the hello's `streamId`, the stream's end,
+  frames, answers), so nothing shown comes from a stream or a send that is
+  over. One PUT at a time per stream: the computer may still apply a call
+  that was given up, so the next waits for the answer, and only a new
+  stream or its end cancels the one out (the computer ends the old
+  stream's views itself). A screen holds its target while resumed
+  (`ViewersSlot` does it with `repeatOnLifecycle(RESUMED)`), so background,
+  lock and leaving all unview it; a target this stream was already sent
+  stays viewed 600 ms after its last screen leaves, so a 450 ms push to
+  another screen of it (a vault's folders) never leaves it. One not sent
+  yet just goes, and a new stream keeps none.
+  What is viewed (newest first, at most 8) goes to `PUT
+  /v0/viewers/streams/:streamId` 300 ms after the last change (trailing),
+  again 15 s after each send (from the send, not its answer), 3 s after a
+  failed one, and `[]` once nothing is and the stream may still hold
+  something: any non-empty send counts until an answered `[]` or a new
+  stream, so a lost answer still gets cleared. Each answer replaces the
+  lists; a target left for good loses its list. `viewers.updated` frames
+  (routed beside the document frames, never to the journal) that come after
+  it land on top in arrival order; one that overtook it is healed by the
+  next heartbeat. Answers and
+  frames are read entry by entry, so a target type this build doesn't know
+  drops alone. A 404 (standalone, older) hides the slot and asks nothing
+  more until a hello with another `streamId`.
+- **Tiers** (`ViewerTier`): Here, Recent (gone at most 10 minutes) and
+  Seen; the slot redraws at the next badge minute or tier change
+  (`ViewerTier.nextChange`), never on a fixed tick.
+- **Slot** (`ViewersSpec`): 104 wide whenever viewers are served, the same
+  with 0 or 50 people, so the title never moves; four faces 18 apart at its
+  end, then `+N`. Here wears a ring in the person's colour that breathes on
+  the RenderThread (`RenderThreadBreath`, `viewer_ring_breathe.xml`) and a
+  green dot, pops in on a spring and fades its ring as they go; faces move
+  by translation alone. Recent shows its minutes, Seen is smaller and grey.
+  A tap lists everyone: "here now", "4 minutes ago", "Nov 12". In a
+  document the slot is the one indicator once served (as on iOS): its list
+  marks who is editing in their cursor's colour, and adds editors the
+  viewers don't name (older clients). Right to left it mirrors; at large
+  text the minutes grow past their cell over the faces. `+N` is always
+  drawn over the faces.
+- **Where:** the chat's bar (`ConversationScreen(viewers)`) and every
+  Surface's bar beside its menu (todo, document, calendar, system monitor,
+  vault, references and the rest).
+- **Fixture:** debug builds have `ui.viewers.ViewersFixturesActivity`: the
+  real store and slot over an in-memory computer (`--es viewers.screen
+  chat|todo --es viewers.scene tiers|none|ten|live`). `LiveViewersTest`
+  runs two people's sessions against a real team-mode daemon when
+  `HAPPY_VIEWERS_ENV` names the JSON happy-agent's live fixture writes.
+
+### Documents and TODOs
+
+Desktop's two sections, the same on every client (Steve): home's places
+have a fixed Documents row then a TODOs row (`AgentFeedRow.Documents`,
+`AgentFeedRow.Todos`) after Artifacts, before Plugins and Pipelines (the
+phone drawer's order), never left or moved. A document or
+todo list is never a home row of its own: the feed keeps the joined ones in
+`AgentFeed.lists` (search's), not in `rows`; other Surface kinds stay rows.
+Nothing stored changes. Each row opens a page (`ui/todos/SurfaceListsScreen`,
+`DocumentListsRoute` / `TodoListsRoute`, `MainPanelKey.DOCUMENTS` / `TODOS`)
+of every Surface of that kind in the catalog, joined or not, by name; a
+todo list's open todos (headings left out) trail it when there are any,
+kept or read once for the page (`TodoLibrary.readOutstanding`). + makes one
+of that kind ("New document", "New todo list") and opens it. An item opens
+the Surface's own page, Back returning to the list; tabs are desktop's
+alone. Search and links open a Surface directly.
+
+### Phone drawer
+
+Steve, on both phones: below the tablet split an agent connection has a
+Material modal navigation drawer from the start edge
+(`ui/connection/AgentDrawer.kt`, hosted by `TabletShell(drawer)` around
+the stack, always in the tree so the stack keeps its place). Its header is
+the open account's picture and name, which opens the account menu
+(`AccountMenuDropdown`: switch, Add, Happy Cloud); then Home, Activity
+(its unread count), Artifacts, Documents, TODOs, Plugins and Pipelines
+where the connection has them, the other joined Surfaces under a divider
+(`AgentDrawerItems`), and Settings at the foot. The item for the stack's
+root is lit; a document or todo list opened straight lights its section,
+anything opened from home lights Home. A pick is the stack's new root over
+home at once (`MainPanel.drawerOpener`, the sidebar's `showRoot`), Home
+pops to home alone (`showHome`), and the drawer closes. Such a root's back
+is the drawer's ☰ (`BackOrSidebarToggle`, `DrawerButton`); system back
+goes to home. Home's bar is the account's avatar, which opens the drawer
+(`AccountAvatarButton`; Steve wants the instance's picture kept), the
+name and search; home lists the shared
+bot, bots and tasks alone (`AgentFeed.withoutPlaces`; projects' chats are
+found by search), as iOS's does. The drawer
+opens from that avatar, a root's ☰, and by a swipe while home or a drawer
+root is on top. The
+tablet's sidebar is home as before, its places card in the drawer's
+order. Happy CLI accounts have no drawer.
+
 ### Plugins
 
 A Happy Cloud server's plugins (happy-cluster API.md, "Plugins"; desktop's
 plugin pages). `plugins/` is the wire and state, `ui/plugins/` the pages;
 words are `strings_plugins.xml` in every locale.
 
-- **Where:** home's Plugins row under Artifacts (`AgentFeedRow.Plugins`,
+- **Where:** home's Plugins row under TODOs (`AgentFeedRow.Plugins`,
   `MainPanelKey.PLUGINS` on the tablet), shown while
   `AgentSession.pluginsAvailable`: health's `capabilities.plugins`, kept per
   connection so the row doesn't come and go, and for servers deployed before
   the flag a marked fallback probe of `GET /v0/plugins` (404/501: none).
-  Happy Agent hosts don't advertise it and show no row.
+  Happy Agent hosts don't advertise it and show no row. The same flag adds
+  Plugins to the agent's Settings, last in Agents after Usage (desktop's
+  place for it, after its Secrets; `PluginsTags.ROW`), opening the same
+  page over Settings, so the drawer lights Settings there and Plugins when
+  it was picked from the drawer. Desktop has it in Settings only; phones and
+  tablets keep the row too (Steve).
 - **Wire:** `PluginsBackend` (`ClusterPlugins`) reads the catalog and the
   installations (`canManage` from that answer, else `mcp.manage`);
   `PluginsSource` reads again on `plugins.changed`, role changes, each
   reconnect, after every write and when a page resumes (back from a sign-in
   in the browser). Refusals are a typed `PluginRefusal`; refused setup fields
   show under their field in the server's words.
-- **Pages:** the list (Installed, then Available), a plugin (Install, Install
+- **Pages:** the list (Installed, then Available, then Features: feature
+  plugins not installed, apart so the role note under Available isn't
+  read as theirs), a plugin (Install, Install
   again where it may be installed more than once, its installations and
   tools), an installation (Set up by OAuth in a Custom Tab or by fields,
   Signed in with per-account Disconnect, Remove; each confirmed). Someone
   whose role can't manage plugins reads them. `NavHostController.openPlugin`
   opens one plugin from anywhere (Gen UI's `plugin` action).
+- **Feature plugins** (happy-cluster API.md, "Feature plugins"): a catalog
+  entry of `kind: "feature"` (`Plugin.feature`) is one of the app's own
+  features, the person's own in every team. Anyone may install it (no
+  `canManage`, `PluginsSnapshot.mayInstall`), once, with nothing to set up:
+  its page has Install, or Uninstall (confirmed) and a note that uninstalling
+  keeps the data. Its installation (ID = the plugin's) opens no page. The
+  catalog's `installed` stands in for an installations list a member is
+  refused. Installing or uninstalling tells `FeaturesSource` at once
+  (`noteFeature`); `features.updated` from the server follows.
 - **Fixture:** debug builds have `ui.plugins.PluginsFixturesActivity`: the
   real pages over an in-memory server (`--ez plugins.member true` for a
   member).
+
+### Bots on Happy Cloud
+
+A Happy Cloud bot carries `kind` (happy-cluster's bot object; a Happy Agent
+daemon sends none, and its bots stay as they were). `agent/Bots.kt` reads it
+(`BotKind`, `botEditable`) and edits one (`BotEditForm`, `BotEditor`).
+
+- **Where:** a `shared` bot (only owners are sent it) is the last row of
+  home's places card, after the order there (Activity, Artifacts,
+  Documents, TODOs, Plugins, Pipelines, then the other joined Surfaces),
+  opening its conversation; `personal`
+  bots are the Bots section, each `agent` the caller's own conversation.
+  Placement follows `kind` alone and editing `editable` alone, never
+  `isAdmin` or `systemKey` (any pair of kind and admin reads). An unknown
+  kind is listed as a bot.
+- **No making bots:** on Happy Cloud, or wherever a bot carries a kind
+  (`AgentSession.makesBots`), new work is a task: no Task | Bot choice, and a
+  kept or asked-for Bot choice becomes a task (`NewWork.bots`).
+- **Settings:** an `editable` bot's agent page has a Bot Settings row
+  (`ui/bots/BotSettingsRoute`): its picture (`PUT`/`DELETE
+  /v0/bots/:id/avatar`, at once), name and multiline instructions, Save in
+  the bar (`PATCH /v0/bots/:id` with only what changed, `If-Match`, once
+  more over a `409`'s newer version). The page waits for `GET /v0/bots/:id`,
+  whose instructions the catalog's copy may lack; a field not touched
+  follows `bot.updated`, one being typed keeps what was typed. Back with
+  unsaved changes asks first. A bot that isn't editable (the shared one)
+  has no row and no edit affordances.
+- **Fixture:** debug builds have `ui.bots.BotsFixturesActivity`
+  (`--es bots.scene owner|member|page|edit`).
 
 ### Pipelines
 
@@ -2686,9 +2910,27 @@ pages; words are `strings_pipelines.xml` in every locale.
 
 - **Where:** home's Pipelines row under Plugins (`AgentFeedRow.Pipelines`,
   `MainPanelKey.PIPELINES` on the tablet), shown only while health says
-  `capabilities.pipelines` (`AgentSession.pipelinesAvailable`, a
-  `CapabilityAvailability` kept per connection so the row doesn't come and
-  go). Nothing is probed: without the flag there is no row and no request.
+  `capabilities.pipelines` (a `CapabilityAvailability` kept per connection
+  so the row doesn't come and go) and the person hasn't uninstalled them
+  (`AgentSession.pipelinesAvailable`). Nothing is probed: without the flag
+  there is no row and no request.
+- **Uninstalled** (happy-cluster API.md, "Feature plugins";
+  `agent/Features.kt`): Pipelines is a feature plugin (see Plugins), the
+  person's own in every team they are in. `FeaturesSource` keeps
+  `GET /v0/features` (`available` per feature), read on every `hello`
+  (coming back to the foreground starts the link, so that is one too) where
+  health says `capabilities.features`, and once it does. `features.updated`
+  replaces the list with its payload's, live, and a read on its way
+  meanwhile is dropped. Without the flag, or on 404/501, every feature is
+  available; so is a feature not listed or a list not known yet. While
+  Pipelines is unavailable (`pipelinesTurnedOff`): no home row (so no tablet
+  or search entry), a run's card in a chat opens nothing, and
+  `PipelinesOffEffect` takes every pipeline page off the stack, with what
+  was opened over them, back to the page under the first (the empty panel
+  on a tablet). A route answering `403 feature_not_installed` marks it
+  unavailable here at once (`ClusterPipelines`' `turnedOff`), and its read
+  never answers (`PipelinesTurnedOff` in `attempt`), so the leaving page
+  shows no error. There is no switch in Settings.
 - **Wire:** `PipelinesBackend` (`ClusterPipelines`). Readers are tolerant
   as desktop's: what isn't the shape is left out, a name the server leaves
   out is the ID, `trigger.agentId` may be null. `GET /v0/pipeline-runs`
@@ -2763,7 +3005,12 @@ pages; words are `strings_pipelines.xml` in every locale.
   pipeline, with `--ei pipelines.version 2` a version, and with
   `--es pipelines.node triage` that version's node; `--ez pipelines.chat
   true` a chat told how its runs ended (`pipelines.chat.before` draws the
-  agent's own messages as before they were told apart).
+  agent's own messages as before they were told apart). Home has Plugins
+  too, with Pipelines as a feature plugin for a member; its row follows it,
+  and `am start -f 0x20000000 … --es pipelines.feature off|on` is another app
+  uninstalling or installing it (`plugins.changed` and `features.updated`;
+  with `--ez pipelines.feature.quiet true` no event, so the next read is
+  refused 403).
 
 ## Autocomplete
 
@@ -2809,3 +3056,16 @@ the task or bot's first message once it is made. The new agent's catalog (its
 bootstrap) decides: without that name, or with attachments, the words go as
 plain text. A failure leaves the message failed with Retry, as a first send's
 does. Other commands wait for an agent.
+
+Happy Agent chats, new work included, mention teammates from the same list
+(desktop's happyAgentMentionPlaces.ts): an `@` word at the cursor offers the
+bootstrap's `teammates` (`session.team`, kept offline; Happy Agent in team
+mode and Happy Cloud send it, standalone doesn't, so nobody is offered there),
+the reader left out, those whose name holds the word, five at most
+(`searchPeople`). A pick writes `[Name](happy://users/<id>)` (`mentionMarkdown`),
+which is what is sent and saved; in a task's chat the computer brings the
+person in (API.md "Mentioning from a message"). The field shows each such
+link as "@Name" in the strong face through an `OutputTransformation`
+(`ui/autocomplete/ComposerMentions`, desktop's composer mention): the caret
+steps over it and a delete into it takes it whole, keyboard or IME. Debug
+builds' `ViewersFixturesActivity` chat offers its people.

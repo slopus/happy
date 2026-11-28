@@ -462,7 +462,21 @@ final class SignInRequiredTests: XCTestCase {
         cloud.server = acme
         XCTAssertEqual(HappyCloud.connection(to: acme, in: [cloud])?.id, "server-1")
         XCTAssertNil(HappyCloud.connection(to: HappyCloud.server(named: "other"), in: [cloud]))
-        XCTAssertEqual(AppVariant.allCases.filter(HappyCloud.isOffered), [.development, .preview])
+    }
+
+    /// Settings' Happy Cloud switch: until turned, the build's default (on
+    /// in development and preview, off in the App Store app), with nothing
+    /// kept; then what the person chose, in every build.
+    func testHappyCloudIsOfferedByItsSwitch() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "HappyCloudSwitchTests"))
+        defaults.removePersistentDomain(forName: "HappyCloudSwitchTests")
+        defer { defaults.removePersistentDomain(forName: "HappyCloudSwitchTests") }
+        XCTAssertEqual(AppVariant.allCases.filter { HappyCloud.isOffered(in: $0, defaults: defaults) }, [.development, .preview])
+        XCTAssertNil(defaults.object(forKey: HappyCloud.offeredKey), "nothing kept until the switch is turned")
+        HappyCloud.setOffered(true, defaults: defaults)
+        XCTAssertEqual(AppVariant.allCases.filter { HappyCloud.isOffered(in: $0, defaults: defaults) }, AppVariant.allCases)
+        HappyCloud.setOffered(false, defaults: defaults)
+        XCTAssertEqual(AppVariant.allCases.filter { HappyCloud.isOffered(in: $0, defaults: defaults) }, [])
     }
 
     /// The account signs in at the accounts origin for an identity token

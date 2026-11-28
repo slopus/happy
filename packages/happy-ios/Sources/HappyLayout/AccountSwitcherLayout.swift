@@ -58,8 +58,12 @@ public struct AccountSwitcherLayout: Equatable, Sendable {
 
     /// Space left for the switcher after the navigation bar's margins,
     /// its trailing actions and the glass the bar draws round the switcher.
+    /// Past two buttons (a Happy account's filter, voice and settings) each
+    /// more takes 64: closer, iOS folds them into a ⋯ menu while a status
+    /// widens the switcher (`HostedLinkTitleTests`).
     public static func availableWidth(barWidth: CGFloat, safeArea: LayoutInsets, trailingItems: Int) -> CGFloat {
-        max(0, barWidth - safeArea.left - safeArea.right - 32 - CGFloat(trailingItems) * 48 - 2 * Metrics.barGlassOutset)
+        let actions = CGFloat(trailingItems) * 48 + CGFloat(max(0, trailingItems - 2)) * 16
+        return max(0, barWidth - safeArea.left - safeArea.right - 32 - actions - 2 * Metrics.barGlassOutset)
     }
 
     /// Sizes are single-line measurements; `maxWidth` is the room for the

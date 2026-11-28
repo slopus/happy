@@ -64,6 +64,9 @@ final class Session {
     let diffSyntax = DiffSyntaxService()
     /// The conversations read ahead and kept, so they open drawn.
     let warm: WarmChats
+    /// Where the reader left each conversation, to open there again while
+    /// the app runs, as desktop keeps it; none for one left at its newest.
+    var scrollPlaces: [String: AgentChatUltraList.Place] = [:]
     /// The person's settings for this phone.
     let localSettings: LocalSettings
     /// What this computer's placeholder picture is picked by, when it has
@@ -83,6 +86,8 @@ final class Session {
     private var madeProfile: ProfileSource?
     /// A Happy Cloud server's plugins, read while a screen watches.
     private(set) lazy var plugins = PluginsModel(client: client, store: store)
+    /// The names and faces of the people in viewers' slots.
+    private(set) lazy var viewerPeople = ViewerPeople(client: client, engine: engine)
     private(set) var snapshot = Snapshot()
     private var watchers: [UUID: (Snapshot) -> Void] = [:]
     /// Readable, not settable, so a test can say the follow was let go of

@@ -83,6 +83,20 @@ final class HomeViewController: UIViewController {
     /// Home's list moved, however it moved, for the screen around this
     /// one: the iPad sidebar's search field rides on it.
     var onListScroll: (() -> Void)?
+    /// Home's rows changed (`HomeSnapshot.rows`): the phone's drawer lists
+    /// its places from them.
+    var onRows: (([Row]) -> Void)?
+    /// The phone's home, with the drawer beside it: the bots and tasks
+    /// alone (`Drawer.home`). Its places are the drawer's.
+    var botsAndTasksOnly = false {
+        didSet { if botsAndTasksOnly != oldValue { sidebar.apply(listed(snapshot.rows)) } }
+    }
+
+    /// The rows home's list draws.
+    private func listed(_ rows: [Row]) -> [Row] { botsAndTasksOnly ? Drawer.home(rows) : rows }
+
+    /// Home's rows as last derived, for the drawer opening before the next change.
+    var rows: [Row] { snapshot.rows }
 
     /// The scroll edge the bar shades: it follows home's list.
     var list: UIScrollView { sidebar.edge }
@@ -118,6 +132,7 @@ final class HomeViewController: UIViewController {
         view.addSubview(sidebar)
         view.addSubview(empty)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keepPlace), name: UIApplication.didEnterBackgroundNotification, object: nil)
         resultsView.isHidden = true
         resultsView.alpha = 0
         resultsView.list.onSelect = { [weak self] row in self?.open(row) }
@@ -134,6 +149,8 @@ final class HomeViewController: UIViewController {
         }
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
+        sidebar.onReorder = { [weak self] move in self?.reorder(move) }
+        sidebar.onArchive = { [weak self] row in self?.archive(row) }
         sidebar.onWillBeginDragging = { [weak self] in self?.listWillBeginDragging() }
         sidebar.onScroll = { [weak self] in self?.listDidScroll() }
         sidebar.onMove = { [weak self] in self?.onListScroll?() }
@@ -162,6 +179,7 @@ final class HomeViewController: UIViewController {
         // panel shows (`shownBeside`).
         sidebar.selectedRowId = nil
         if let store = session?.store { Task { await store.attentionVisibleUpdate(false) } }
+        keepPlace()
     }
 
     /// No ground as the iPad's sidebar: the system's sidebar shows there.
@@ -201,6 +219,7 @@ final class HomeViewController: UIViewController {
         sidebar.images = session?.images
         resultsView.list.images = session?.images
         sidebar.apply([])
+        sidebar.opensAt = keptPlace()
         snapshot = Snapshot()
         agentHome = HomeSnapshot()
         if let session {
@@ -237,8 +256,9 @@ final class HomeViewController: UIViewController {
         snapshot.error = (waitingForNetwork ? nil : agentHome.error) ?? agentHome.notice.map { $0.isEmpty ? Strings.refused : $0 }
         onSnapshot?(snapshot)
         if previous != snapshot.rows {
-            sidebar.apply(snapshot.rows)
+            sidebar.apply(listed(snapshot.rows))
             if shownBeside != nil { updateSelection() }
+            onRows?(snapshot.rows)
         }
         if search != nil { showResults() }
         warmUp()
@@ -257,6 +277,22 @@ final class HomeViewController: UIViewController {
         // Prioritizing being off is Settings' business: home says nothing of it.
         sidebar.notice = notice
         view.setNeedsLayout()
+    }
+
+    // MARK: Moving and archiving
+
+    /// A bot or task carried somewhere new, as desktop moves it: it stays
+    /// where it was put, and goes back only if the computer refuses.
+    private func reorder(_ move: SidebarReorder.Move) {
+        guard let engine = session?.engine else { return }
+        Task { await engine.reorder(move) }
+    }
+
+    /// A bot or task swiped to Archive, as desktop's row menu archives it:
+    /// at once, without asking; its row comes back if the computer refuses.
+    private func archive(_ row: Row) {
+        guard let engine = session?.engine, let kind = row.targetKind, let id = row.targetId else { return }
+        Task { await engine.archive(kind: kind, id: id) }
     }
 
     // MARK: Search
@@ -332,10 +368,10 @@ final class HomeViewController: UIViewController {
         ]
     }
 
-    /// The open todos of the lists in the sidebar, which search finds by
+    /// The open todos of the lists the person is in, which search finds by
     /// what they say, as desktop's palette does (`listTodos`, active).
     private func readTodos() -> Task<Void, Never> {
-        let lists = snapshot.allRows.compactMap { $0.targetKind == "surface" && $0.surfaceType == "todo" ? $0.targetId : nil }
+        let lists = searchRows.compactMap { $0.targetKind == "surface" && $0.surfaceType == "todo" ? $0.targetId : nil }
         let client = session?.engine.client
         return Task { [weak self] in
             guard let client else { return }
@@ -443,7 +479,7 @@ final class HomeViewController: UIViewController {
     /// it. A sidebar row opens as the sidebar opens it. `best` is where the
     /// list stands among the other sections (`Search.foundBest`).
     private func foundResults(for query: String, remote answer: [HappyCore.Search.Result]?) -> (rows: [Row], runs: [String: () -> Void], best: Int) {
-        let local = Array(HappyCore.Search.local(rows: snapshot.allRows, unjoined: agentHome.unjoinedTasks, surfaces: surfaces, artifacts: artifacts, todos: todos, query: query).prefix(HappyCore.Search.foundLimit))
+        let local = Array(HappyCore.Search.local(rows: searchRows, unjoined: agentHome.unjoinedTasks, surfaces: surfaces, artifacts: artifacts, todos: todos, query: query).prefix(HappyCore.Search.foundLimit))
         let names = searchNames()
         let remote = (answer ?? []).compactMap { result in HappyCore.Search.shown(result, names: names).map { (result: result, shown: $0) } }
         let fused = HappyCore.Search.found(local: local.map(\.key), remote: remote.map { ($0.result.key, $0.result.rank) })
@@ -511,10 +547,14 @@ final class HomeViewController: UIViewController {
         return (rows, runs, best)
     }
 
+    /// What search finds among the person's own: the sidebar's rows, and
+    /// the documents and todo lists listed under its Documents and TODOs.
+    private var searchRows: [Row] { snapshot.allRows + agentHome.sectionedRows }
+
     /// What the phone holds to name what the computer found.
     private func searchNames() -> HappyCore.Search.Names {
         var named: [String: AgentWire.Surface] = [:]
-        for row in snapshot.allRows where row.targetKind == "surface" {
+        for row in searchRows where row.targetKind == "surface" {
             if let id = row.targetId { named[id] = AgentWire.Surface(id: id, type: row.surfaceType ?? "", name: row.label) }
         }
         for surface in surfaces { named[surface.id] = surface }
@@ -721,7 +761,7 @@ final class HomeViewController: UIViewController {
         if shown is ArtifactsViewController { return rows.first { $0.targetKind == "artifacts" }?.id }
         if shown is PluginsViewController { return rows.first { $0.targetKind == "plugins" }?.id }
         if shown is PipelinesViewController { return rows.first { $0.targetKind == "pipelines" }?.id }
-        if shown is TodoListsViewController { return rows.first { $0.targetKind == "todos" }?.id }
+        if let list = shown as? SurfaceListViewController { return rows.first { $0.targetKind == list.section.targetKind }?.id }
         if shown is FeedViewController { return rows.first { $0.targetKind == "feed" }?.id }
         return nil
     }
@@ -748,32 +788,14 @@ final class HomeViewController: UIViewController {
         case .space where row.targetKind == "project" || row.targetKind == "workspace":
             // A folder opens nothing: its sessions are listed under it.
             break
-        case .space where row.targetKind == "artifacts":
+        case .space where Drawer.placeKinds.contains(row.targetKind ?? "") || row.targetKind == "surface":
+            guard let controller = place(row) else { return }
             sidebar.selectedRowId = row.id
-            show(ArtifactsViewController(session: session), for: row, animated: animated)
-        case .space where row.targetKind == "plugins":
-            sidebar.selectedRowId = row.id
-            show(PluginsViewController(session: session), for: row, animated: animated)
-        case .space where row.targetKind == "pipelines":
-            sidebar.selectedRowId = row.id
-            show(PipelinesViewController(session: session), for: row, animated: animated)
-        case .space where row.targetKind == "todos":
-            sidebar.selectedRowId = row.id
-            show(TodoListsViewController(session: session), for: row, animated: animated)
-        case .space where row.targetKind == "feed":
-            sidebar.selectedRowId = row.id
-            show(FeedViewController(session: session), for: row, animated: animated)
+            show(controller, for: row, animated: animated)
         case .search:
             beginSearch()
         case .create:
             makeNewWork()
-        case .space where row.targetKind == "surface":
-            guard let surfaceId = row.targetId else { return }
-            sidebar.selectedRowId = row.id
-            let surface = AgentWire.Surface(id: surfaceId, type: row.surfaceType ?? "", name: row.label)
-            let controller = SurfaceScreens.make(session: session, surface: surface)
-            MainPanelKey.record("surface:\(surfaceId)", for: controller)
-            show(controller, for: row, animated: animated)
         case .space, .session:
             guard let agentId = row.agentId else { return }
             sidebar.selectedRowId = row.id
@@ -783,6 +805,27 @@ final class HomeViewController: UIViewController {
             show(chat, for: row, animated: animated)
         default:
             break
+        }
+    }
+
+    /// The screen a place's row or a Surface's opens: home's own rows
+    /// beside the iPad's sidebar, the phone's drawer (`PhoneDrawer`).
+    func place(_ row: Row) -> UIViewController? {
+        guard let session else { return nil }
+        switch row.targetKind {
+        case "artifacts": return ArtifactsViewController(session: session)
+        case "plugins": return PluginsViewController(session: session)
+        case "pipelines": return PipelinesViewController(session: session)
+        case "documents": return SurfaceListViewController(session: session, section: .documents)
+        case "todos": return SurfaceListViewController(session: session, section: .todos)
+        case "feed": return FeedViewController(session: session)
+        case "surface":
+            guard let surfaceId = row.targetId else { return nil }
+            let surface = AgentWire.Surface(id: surfaceId, type: row.surfaceType ?? "", name: row.label)
+            let controller = SurfaceScreens.make(session: session, surface: surface)
+            MainPanelKey.record("surface:\(surfaceId)", for: controller)
+            return controller
+        default: return nil
         }
     }
 
@@ -887,11 +930,33 @@ extension HomeViewController {
     }
 
     private func listDidEndDragging(decelerate: Bool) {
-        if !decelerate { warmUp() }
+        if !decelerate { warmUp(); keepPlace() }
     }
 
     private func listDidEndDecelerating() {
         warmUp()
+        keepPlace()
+    }
+
+    // MARK: Place
+
+    /// Where the list was left on this computer, kept on this phone: a new
+    /// home for it, after a switch or a relaunch, opens there within the
+    /// hour (Kirill). Nothing at the top.
+    private var placeKey: String? { session.map { "home-place.\($0.accountID)" } }
+
+    @objc private func keepPlace() {
+        // A place still to open on stays as it was kept.
+        guard let placeKey, sidebar.opensAt == nil else { return }
+        guard let place = sidebar.place else { return UserDefaults.standard.removeObject(forKey: placeKey) }
+        UserDefaults.standard.set(["row": place.rowId, "top": Double(place.top), "at": Date().timeIntervalSince1970], forKey: placeKey)
+    }
+
+    private func keptPlace() -> (rowId: String, top: CGFloat)? {
+        guard let placeKey, let kept = UserDefaults.standard.dictionary(forKey: placeKey),
+              let row = kept["row"] as? String, let top = kept["top"] as? Double, let at = kept["at"] as? Double,
+              Date().timeIntervalSince1970 - at < 60 * 60 else { return nil }
+        return (row, CGFloat(top))
     }
 
     /// The rows the sidebar shows and where it is scrolled, for reading

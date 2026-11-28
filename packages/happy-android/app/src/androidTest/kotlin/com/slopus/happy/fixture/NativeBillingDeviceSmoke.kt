@@ -4,7 +4,6 @@ import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasContentDescription
@@ -51,12 +50,6 @@ import com.slopus.happy.ui.settings.SettingsProfile
 import com.slopus.happy.ui.settings.SettingsScreen
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.ThemePreference
-import com.slopus.happy.ui.voice.LocalVoiceController
-import com.slopus.happy.voice.MicrophoneAccess
-import com.slopus.happy.voice.MicrophonePermission
-import com.slopus.happy.voice.VoiceStart
-import com.slopus.happy.voice.VoiceState
-import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -68,9 +61,9 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * The native billing owner and the relay voice gate on a device, through
- * the app's own graph: a Happy session's chat has no voice and its engine
- * asks for nothing; the agent home's voice button shows the debug preview
+ * The native billing owner and voice's places on a device, through the
+ * app's own graph: a Happy session's chat has no voice of its own (its
+ * account's home has the call's button); the agent home's voice button shows the debug preview
  * welcome and, closed, starts nothing; Support us opens the shared host,
  * whose Restore answers without a key. Pro is drawn from fixtures only.
  * No sign-in, purchase, microphone, grant or provider. Shots go to the
@@ -86,10 +79,6 @@ class NativeBillingDeviceSmoke {
     private val graph by lazy { (app.applicationContext as HappyApplication).graph }
     private val dir = File(app.getExternalFilesDir(null), "native-billing").apply { mkdirs() }
     private var microphones = 0
-    private val microphone = object : MicrophonePermission {
-        override suspend fun request(): MicrophoneAccess { microphones++; return MicrophoneAccess(false, false) }
-        override fun openSettings() {}
-    }
 
     @After fun reset() {
         graph.offers.dismiss()
@@ -114,20 +103,11 @@ class NativeBillingDeviceSmoke {
         sessionLoaded = true, online = true, thinking = false,
     )
 
-    @Test fun relayChatHasNoVoiceAndItsEngineAsksForNothing() {
-        val voice = graph.voice
-        assertFalse(voice.available)
-        show {
-            CompositionLocalProvider(LocalVoiceController provides voice) {
-                ChatScreen(relayChat(), "", "gray", ChatScreenActions())
-            }
-        }
+    @Test fun relayChatHasNoVoiceOfItsOwn() {
+        show { ChatScreen(relayChat(), "", "gray", ChatScreenActions()) }
         rule.onNodeWithTag(ComposerTags.PRIMARY).assert(hasContentDescription("Send"))
         assertEquals(0, rule.onAllNodesWithText("Voice").fetchSemanticsNodes().size)
         capture("relay-chat-no-voice")
-        assertEquals(VoiceStart.NotAvailable, runBlocking { voice.start("s", microphone) })
-        assertEquals(0, microphones)
-        assertEquals(VoiceState(), voice.state.value)
     }
 
     @Test fun agentVoiceShowsThePreviewWelcomeAndClosedStartsNothing() {

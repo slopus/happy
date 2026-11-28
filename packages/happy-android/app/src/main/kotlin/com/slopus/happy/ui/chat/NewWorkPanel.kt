@@ -230,7 +230,8 @@ fun NewWorkRoom(shown: Boolean, modifier: Modifier = Modifier, art: StateArt? = 
  * what a bot is, alike. A task keeps a bot's room, so switching moves nothing.
  * Every change goes to [onChange] as it is made, a kind change with a tick.
  * Return in the name goes on to the composer ([onReturn]). Fixed once its
- * first message is in.
+ * first message is in. Where people make no bots ([NewWork.bots], Happy
+ * Cloud) there is no choice: only a task's note.
  */
 @Composable
 fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: () -> Unit) {
@@ -238,6 +239,19 @@ fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: 
     val enabled = !work.locked
     // Typed here and handed on, so the field never waits on the chat to echo it.
     var name by rememberSaveable { mutableStateOf(work.choice.name) }
+    if (!work.bots) {
+        // Nothing to choose: a task, said as its note.
+        Column(Modifier.fillMaxWidth().testTag(NewWorkTags.PANEL), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                stringResource(R.string.new_work_task_note),
+                style = NewWorkSpec.note,
+                color = colors.textSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().testTag(NewWorkTags.NOTE),
+            )
+        }
+        return
+    }
     Column(Modifier.fillMaxWidth().testTag(NewWorkTags.PANEL), horizontalAlignment = Alignment.CenterHorizontally) {
         NewWorkSegments(
             labels = listOf(stringResource(R.string.new_work_task), stringResource(R.string.new_work_bot)),

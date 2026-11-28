@@ -31,6 +31,21 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         /// A run of tool calls drawn as one line (Group tool calls),
         /// placed by `ToolSections`.
         case section(Section)
+        /// A message that doesn't match the protocol schema
+        /// (`AgentWire.Message.unreadable`): one line saying so, and a way
+        /// to report it.
+        case unreadable(Unreadable)
+    }
+
+    /// The message that failed and why, for its bug report.
+    public struct Unreadable: Equatable, Sendable {
+        public var messageId: String
+        public var problem: String
+
+        public init(messageId: String, problem: String) {
+            self.messageId = messageId
+            self.problem = problem
+        }
     }
 
     public enum Delivery: Equatable, Sendable {
@@ -421,7 +436,23 @@ public actor Conversation {
         var slashCommands: [AgentWire.SlashCommand]?
         /// When the computer's history was last read in full, in ms; absent in what was kept before it was.
         var syncedAt: Double?
+        /// `KeptConversation.schema` when it was kept. Kept by a build
+        /// before messages were checked against the schema (absent), its
+        /// history is read again in full once (`refreshesInFull`).
+        var schema: Int?
+
+        static let schema = 1
+
+        /// Its messages as they were kept, placeholders included, unchecked.
+        static func decode(_ data: Data) throws -> KeptConversation {
+            let decoder = JSONDecoder()
+            decoder.userInfo[AgentWire.Message.stored] = true
+            return try decoder.decode(KeptConversation.self, from: data)
+        }
     }
+    /// What was kept came from a build that read history unchecked: the
+    /// next read is the newest page alone, nothing kept beside it.
+    private var refreshesInFull = false
     private var agentId: String { didSet { itemContext += 1 } }
     private let continuation: AsyncStream<ChatSnapshot>.Continuation
     public nonisolated let updates: AsyncStream<ChatSnapshot>
@@ -793,7 +824,7 @@ public actor Conversation {
         anchoring = false
         reading = Task {
             var failures = 0
-            var anchored = anchors
+            var anchored = anchors && !refreshesInFull
             while true {
                 if heldEvents == nil { heldEvents = [] }
                 let after = anchored ? anchor() : nil
@@ -834,19 +865,25 @@ public actor Conversation {
         reads += 1
         snapshot.synced = false
         snapshot.error = Store.describe(error)
-        Happenings.errorShown(.conversationLoad, error)
         snapshot.loaded = true
         let held = heldEvents ?? []
         heldEvents = nil
         for event in held { receive(event, publishes: false) }
+        // Kept rows show over a failed read, which is asked again by
+        // itself; only an empty chat on screen is one seen to fail.
+        if visible, transcript.runs.isEmpty, transcript.pending.isEmpty, outgoing.isEmpty {
+            Happenings.errorShown(.conversationLoad, error)
+        }
         publish()
     }
 
     /// The newest run held here that has finished, and its last message,
-    /// which a read after brings every run since.
+    /// which a read after brings every run since. A placeholder's own ID
+    /// (`AgentWire.Message.isLocal`) is unknown to the server: such a run
+    /// is passed over.
     private func anchor() -> (run: String, message: String)? {
         for run in transcript.runs.reversed() where transcript.times[run.id]?.endedAt != nil {
-            if let last = run.messageIds.last { return (run.id, last) }
+            if let last = run.messageIds.last, !AgentWire.Message.isLocal(last) { return (run.id, last) }
         }
         return nil
     }
@@ -869,7 +906,9 @@ public actor Conversation {
         var runs: [Transcript.Run] = []
         var messages: [String: AgentWire.Message] = [:]
         var times = transcript.times
-        if let since, let index = transcript.runs.firstIndex(where: { $0.id == since }) {
+        if refreshesInFull {
+            refreshesInFull = false
+        } else if let since, let index = transcript.runs.firstIndex(where: { $0.id == since }) {
             runs = transcript.runs[...index].filter { !refreshed.contains($0.id) }
         } else if persistence != nil && history.hasMore {
             runs = transcript.runs.filter { !refreshed.contains($0.id) }
@@ -982,7 +1021,7 @@ public actor Conversation {
         let payload = event["payload"] ?? .null
         switch type {
         case "message.created", "message.updated":
-            guard let message = payload["message"].flatMap(Self.decodeMessage) else { return }
+            guard let message = payload["message"].flatMap({ Self.decodeMessage($0, cursor: event["cursor"]?.stringValue) }) else { return }
             transcript.set(message)
             behind[message.id] = nil
             attachmentCleanup.insert(message.id)
@@ -1110,9 +1149,12 @@ public actor Conversation {
         if publishes { publish() }
     }
 
-    static func decodeMessage(_ value: JSONValue) -> AgentWire.Message? {
-        guard let data = try? JSONEncoder().encode(value) else { return nil }
-        return try? JSONDecoder().decode(AgentWire.Message.self, from: data)
+    /// An event's message; a placeholder without an ID of its own is named
+    /// by the event's `cursor`, or a fresh one without.
+    static func decodeMessage(_ value: JSONValue, cursor: String? = nil) -> AgentWire.Message? {
+        guard let data = try? JSONEncoder().encode(value),
+              let message = try? JSONDecoder().decode(AgentWire.Message.self, from: data) else { return nil }
+        return AgentWire.Message.localIds([message], at: "event:\(cursor ?? UUID().uuidString)")[0]
     }
 
     /// `message.delta` applied exactly as the API says, or nil where the
@@ -1437,7 +1479,8 @@ public actor Conversation {
 
     private func restoreConversation() async {
         guard let persistence, let value = try? await persistence.keptConversation("conversation:\(agentId)"),
-              let kept = try? JSONDecoder().decode(KeptConversation.self, from: value) else { return }
+              let kept = try? KeptConversation.decode(value) else { return }
+        refreshesInFull = kept.schema != KeptConversation.schema
         transcript.replace(runs: kept.runs.map { .init(id: $0.id, messageIds: $0.messageIds) }, messages: kept.messages, pending: kept.pending,
                            times: Dictionary(kept.runs.compactMap { run in run.time.map { (run.id, $0) } }, uniquingKeysWith: { _, last in last }))
         forgetUnheld()
@@ -1515,7 +1558,8 @@ public actor Conversation {
         let window = Self.kept(runs: transcript.runs.map { ($0.id, $0.messageIds) }, messages: transcript.messages, pending: transcript.pending)
         let kept = KeptConversation(runs: window.runs.map { .init(id: $0.id, messageIds: $0.messageIds, time: transcript.times[$0.id]) }, messages: window.messages, pending: transcript.pending,
             outgoing: outgoing.filter({ held[$0.id] == nil }).map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id], files: outgoingFiles[$0.id], at: outgoingTimes[$0.id],
-                toolRequest: outgoingTools[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed, slashCommands: snapshot.slashCommands, syncedAt: snapshot.syncedAt)
+                toolRequest: outgoingTools[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed, slashCommands: snapshot.slashCommands, syncedAt: snapshot.syncedAt,
+            schema: KeptConversation.schema)
         // When it was last read rides along with what changed, never a write of its own.
         var compared = kept
         compared.syncedAt = lastKept?.syncedAt
@@ -1845,7 +1889,9 @@ public actor Conversation {
     /// `mode` moved to that model and continued there. The card shows what
     /// was done at once; the continued run comes as events.
     public func resolveFailure(_ messageId: String, switchTo mode: AgentWire.Mode? = nil) async throws {
-        let message = try await client.resolveFailure(agentId, messageId: messageId, switchTo: mode, mutationId: ClientID.make())
+        guard !AgentWire.Message.isLocal(messageId) else { return }
+        let answered = try await client.resolveFailure(agentId, messageId: messageId, switchTo: mode, mutationId: ClientID.make())
+        let message = AgentWire.Message.localIds([answered], at: "failure:\(UUID().uuidString)")[0]
         transcript.set(message)
         // Moved there: the next message goes with it too, here and where
         // the draft is read again.
@@ -2317,6 +2363,10 @@ public actor Conversation {
     /// word arriving makes again only the row it lands in.
     private func items(_ message: AgentWire.Message, old: MadeMessage?, made: inout MadeMessage, shown: inout [String: Media]) {
         let turn = made.turn
+        if let problem = message.unreadable {
+            made.items = [ChatItem(id: message.id, role: .unreadable(ChatItem.Unreadable(messageId: message.id, problem: problem)), pieces: [], delivery: .sent, turn: turn).stamped()]
+            return
+        }
         if message.role == "service" {
             // A compaction is a step of its run, as desktop's projection
             // makes it a `compact` call.

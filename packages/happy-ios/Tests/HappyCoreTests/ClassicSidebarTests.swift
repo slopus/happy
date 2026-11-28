@@ -41,7 +41,7 @@ final class ClassicSidebarTests: XCTestCase {
 
     func testDesktopsSectionsAndOrder() throws {
         XCTAssertEqual(labels(try rows()), [
-            "Artifacts", "Todos", "Notes", "Groceries",
+            "Artifacts", "Documents", "TODOs",
             "—", "Happy", "Sub one", "Sub two", "Research", "Release",
             "—", "Three", "One", "Two",
             "—", "App", "Root chat", "Feature", "Fix", "Docs",
@@ -57,6 +57,7 @@ final class ClassicSidebarTests: XCTestCase {
     }
 
     func testATaskWearsItsGlyph() throws {
-        XCTAssertEqual(try rows().first { $0.label == "Groceries" }?.mark, .glyph("tasks"))
+        let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: Data(Self.fixture.utf8))
+        XCTAssertEqual(SidebarRows.sectioned(desktop).first { $0.label == "Groceries" }?.mark, .glyph("tasks"))
     }
 }

@@ -13,6 +13,10 @@ public final class AccountSession: Sendable {
     /// The account's own `files/` directory (copied attachments). Accounts
     /// without a store directory (in-memory, tests) get a temporary one.
     public let filesDirectory: URL
+    /// What this account's voice calls said, for its next call
+    /// (`FileCallHistoryStore`), beside `files/`; nil for an account with
+    /// no folder of its own, which keeps none.
+    public let callHistoryFile: URL?
     public let sync: LegacySyncEngine
     public let archiveVisibilityWriter: ArchiveVisibilityWriter
     /// The New Session draft's last height, for reopening it in this account.
@@ -115,6 +119,7 @@ public final class AccountSession: Sendable {
         self.credentials = credentials
         self.keys = try AccountKeys(secret: secret)
         self.store = store
+        self.callHistoryFile = filesDirectory.map { $0.deletingLastPathComponent().appendingPathComponent("call-history.json") }
         self.filesDirectory = filesDirectory ?? FileManager.default.temporaryDirectory
             .appendingPathComponent("happy-files-\(keys.anonID)", isDirectory: true)
         self.fileCache = SessionFileCache(directory: fileCacheDirectory)

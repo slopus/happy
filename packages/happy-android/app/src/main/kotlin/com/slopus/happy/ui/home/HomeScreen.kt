@@ -126,6 +126,8 @@ class HomeScreenActions(
     /** The migration card's screen, and its ×. */
     val onMigration: (MigrationPath) -> Unit = {},
     val onCloseMigration: (MigrationPath) -> Unit = {},
+    /** A voice call on this account, beside compose; null: no voice button. */
+    val onVoice: (() -> Unit)? = null,
 )
 
 /**
@@ -173,10 +175,7 @@ fun HomeScreen(
         // Only the list runs under the bar; the other states are held below its foot, with no feather over them.
         feathered = listed,
         bar = {
-            Column {
-                HomeHeader(link, accounts, actions, settings = sidebar == null)
-                com.slopus.happy.ui.voice.VoiceStatusBar()
-            }
+            HomeHeader(link, accounts, actions, settings = sidebar == null)
         },
     ) { top ->
         Box(modifier = Modifier.fillMaxSize()) {
@@ -222,9 +221,9 @@ fun HomeScreen(
             // With no computer there is nothing to start work on.
             val canStart = state != null && state.emptyState != HomeEmptyState.Link
             if (sidebar != null) {
-                SidebarFootBar(if (canStart) stringResource(R.string.sidebar_new_session) else null, actions.onSettings, actions.onCompose)
+                SidebarFootBar(if (canStart) stringResource(R.string.sidebar_new_session) else null, actions.onSettings, actions.onCompose, onVoice = actions.onVoice.takeIf { canStart })
             } else if (canStart) {
-                ComposeFab(actions.onCompose, HomeTags.COMPOSE)
+                ComposeFab(actions.onCompose, HomeTags.COMPOSE, onVoice = actions.onVoice)
             }
         }
     }

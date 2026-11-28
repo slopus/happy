@@ -1,5 +1,4 @@
 <resources>
-    <string name="todo_new">Nuovo</string>
     <string name="todo_create_failed_title">Non creato</string>
     <string name="todo_create_failed">Impossibile creare. %1$s</string>
     <string name="todo_empty">Qui non c’è ancora nulla. Cosa c’è da fare?</string>
@@ -37,12 +36,14 @@
     <string name="todo_history_restored">Ripristinato</string>
     <string name="todo_history_moved">Spostato</string>
     <string name="todo_history_changed_and">Modificato e %1$s</string>
-    <string name="todo_lists">Elenchi di cose da fare</string>
     <string name="todo_new_list">Nuovo elenco di cose da fare</string>
     <string name="todo_new_document">Nuovo documento</string>
     <string name="todo_no_lists">Non ci sono ancora elenchi. Tocca + per crearne uno.</string>
     <string name="todo_loading_lists">Caricamento degli elenchi…</string>
     <string name="todo_unsupported">Questo Happy Agent non supporta gli elenchi di cose da fare.</string>
-    <string name="todo_nothing">Nulla da fare</string>
-    <plurals name="todo_outstanding"><item quantity="one">%1$d da fare</item><item quantity="many">%1$d da fare</item><item quantity="other">%1$d da fare</item></plurals>
+    <string name="surface_lists_documents">Documenti</string>
+    <string name="surface_lists_todos">Attività</string>
+    <string name="document_lists_empty">Non ci sono ancora documenti. Tocca + per crearne uno.</string>
+    <string name="document_lists_loading">Caricamento dei documenti…</string>
+    <string name="document_lists_unsupported">Questo Happy Agent non supporta i documenti.</string>
 </resources>

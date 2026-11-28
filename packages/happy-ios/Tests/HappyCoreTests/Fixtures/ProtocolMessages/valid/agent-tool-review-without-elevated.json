@@ -1,0 +1,28 @@
+{
+    "description": "A reviewed tool call with `review` but no `elevated`, as Happy Cloud history written before its fix carries it (hc-agent worker/drive.rs left `elevated` unset; history.rs added the verdict without it). Valid, though the protocol requires both or neither; elevation is unknown and the call is not shown as elevated.",
+    "message": {
+        "id": "msgreviewnoelevated000001",
+        "role": "agent",
+        "createdAt": 1764100000000,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolreviewnoelevated00001",
+                "name": "exec_command",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "review": {
+                    "outcome": "allowed",
+                    "reason": "The person asked for it.",
+                    "risk": "medium",
+                    "userAuthorization": "high"
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

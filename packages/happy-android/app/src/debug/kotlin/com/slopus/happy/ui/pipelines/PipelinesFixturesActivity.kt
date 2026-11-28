@@ -1,6 +1,20 @@
 package com.slopus.happy.ui.pipelines
 
 import android.os.Bundle
+import android.content.Intent
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import com.slopus.happy.agent.AgentClient
+import com.slopus.happy.agent.ClusterFeatures
+import com.slopus.happy.agent.Feature
+import com.slopus.happy.agent.FeaturesSource
+import com.slopus.happy.plugins.ClusterPlugins
+import com.slopus.happy.plugins.PluginsSource
+import com.slopus.happy.ui.plugins.PagePlugins
+import com.slopus.happy.ui.plugins.PluginsRoute
+import com.slopus.happy.ui.plugins.pluginRoutes
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -96,9 +110,27 @@ import kotlinx.serialization.json.put
  * p-deploy` a pipeline, with `--ei pipelines.version 2` one of its versions, and
  * with `--es pipelines.node triage` too one of that version's nodes; `--ez pipelines.chat true`
  * a chat told how its runs ended, and with `--ez pipelines.chat.before true` as it drew before).
+ *
+ * The Pipelines feature plugin ([FeaturePluginsServer], read by the real
+ * plugin and feature clients): home's Pipelines row shows while the person
+ * has it installed, its Plugins row opens the real Plugins pages, where a
+ * member installs and uninstalls it, and every pipeline page leaves when it
+ * goes ([PipelinesOffEffect]). Another of the person's apps doing it is
+ * `adb shell am start -f 0x20000000 -n …/.ui.pipelines.PipelinesFixturesActivity --es pipelines.feature off|on`,
+ * which journals `plugins.changed` and `features.updated`; with `--ez pipelines.feature.quiet true`
+ * the events don't come, so the next pipeline read is refused `403 feature_not_installed`.
  */
 class PipelinesFixturesActivity : ComponentActivity() {
     @Serializable private data object FixtureHomeRoute
+
+    /** What another of the person's apps did to the Pipelines plugin: `--es pipelines.feature off|on`, delivered on top. */
+    private val elsewhere = MutableSharedFlow<Pair<Boolean, Boolean>>(extraBufferCapacity = 8)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val feature = intent.getStringExtra("pipelines.feature") ?: return
+        elsewhere.tryEmit((feature == "on") to intent.getBooleanExtra("pipelines.feature.quiet", false))
+    }
 
     /** A chat where the agent was told how its runs ended; [before] draws its own messages as this app did before it told them apart. */
     @Serializable private data class FixtureChatRoute(val before: Boolean)
@@ -117,15 +149,30 @@ class PipelinesFixturesActivity : ComponentActivity() {
             HappyTheme {
                 val nav = rememberNavController()
                 val events = remember { MutableSharedFlow<AgentEvent>(extraBufferCapacity = 64) }
-                val backend = remember { FakePipelines(System.currentTimeMillis()) { type, data -> events.tryEmit(AgentEvent(null, type, data)) } }
-                LaunchedEffect(Unit) { backend.play() }
+                val pipelinesBackend = remember { FakePipelines(System.currentTimeMillis()) { type, data -> events.tryEmit(AgentEvent(null, type, data)) } }
+                LaunchedEffect(Unit) { pipelinesBackend.play() }
+                // The person's feature plugins and what they make available, followed as a session follows them.
+                val scope = rememberCoroutineScope()
+                val server = remember { FeaturePluginsServer { events.tryEmit(it) } }
+                val client = remember { AgentClient(server, "fixture", cloud = true) }
+                val features = remember { FeaturesSource(ClusterFeatures(client), events, MutableStateFlow(true), { null }, {}, scope) }
+                val turnedOff = remember { features.unavailable(Feature.PIPELINES) }
+                val off by turnedOff.collectAsState()
+                LaunchedEffect(Unit) {
+                    // As a connect: the hello reads what is available.
+                    events.emit(AgentEvent(null, AgentEvent.HELLO, JsonObject(emptyMap())))
+                    elsewhere.collect { (enabled, quiet) -> server.change(enabled, quiet) }
+                }
+                val backend = remember { FeatureGatedPipelines(pipelinesBackend, server) { features.note(Feature.PIPELINES, available = false) } }
+                // A member: integrations are the managers', Pipelines theirs to install.
+                val plugins = remember { PluginsSource(ClusterPlugins(client) { false }, events, scope) }
                 val agents = AgentNames { mapOf("a-chief" to "Happy", "a-release" to "Release bot")[it] }
                 val people = PeopleNames { mapOf("u-steve" to "Steve", "u-kirill" to "Kirill")[it] }
                 val start: Any = when {
                     chat -> FixtureChatRoute(before)
                     pipeline != null && version > 0 && node != null -> PipelineVersionNodeRoute("fixture", pipeline, version, node)
-                    pipeline != null && version > 0 -> PipelineVersionRoute("fixture", pipeline, version, backend.nameOf(pipeline))
-                    pipeline != null -> PipelineRoute("fixture", pipeline, backend.nameOf(pipeline))
+                    pipeline != null && version > 0 -> PipelineVersionRoute("fixture", pipeline, version, pipelinesBackend.nameOf(pipeline))
+                    pipeline != null -> PipelineRoute("fixture", pipeline, pipelinesBackend.nameOf(pipeline))
                     run != null && node != null -> PipelineNodeRoute("fixture", run, node)
                     run != null -> PipelineRunRoute("fixture", run)
                     open -> PipelinesRoute("fixture")
@@ -136,17 +183,18 @@ class PipelinesFixturesActivity : ComponentActivity() {
                         page<FixtureHomeRoute> {
                             Screen(header = { StackHeader("Acme", onBack = ::finish) }) {
                                 AgentHomeList(
-                                    items = listOf(
+                                    items = listOfNotNull(
                                         AgentHomeItem.Gap(AgentFeedSection.Places, first = true),
                                         AgentHomeItem.Row(AgentFeedRow.Artifacts, first = true, last = false),
                                         AgentHomeItem.Row(AgentFeedRow.Plugins, first = false, last = false),
-                                        AgentHomeItem.Row(AgentFeedRow.Pipelines, first = false, last = false),
+                                        AgentHomeItem.Row(AgentFeedRow.Pipelines, first = false, last = false).takeIf { !off },
                                         AgentHomeItem.Row(AgentFeedRow.Todos, first = false, last = true),
                                     ),
                                     state = rememberLazyListState(),
                                     onOpen = {},
                                     contentPadding = PaddingValues(),
                                     onOpenPipelines = { nav.navigate(PipelinesRoute("fixture")) },
+                                    onOpenPlugins = { nav.navigate(PluginsRoute("fixture")) },
                                 )
                             }
                         }
@@ -156,7 +204,9 @@ class PipelinesFixturesActivity : ComponentActivity() {
                             }
                         }
                         pipelineRoutes(nav) { PagePipelines(backend, events, agents, people) }
+                        pluginRoutes(nav) { PagePlugins(plugins, null) { id, available -> features.note(id, available) } }
                     }
+                    PipelinesOffEffect(turnedOff, nav)
                 }
             }
         }

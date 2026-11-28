@@ -24,4 +24,5 @@
     <!-- The tablet's sidebar button, as iPadOS names it (happy-ios Strings.Tablet). -->
     <string name="tablet_hide_sidebar">Hide Sidebar</string>
     <string name="tablet_show_sidebar">Show Sidebar</string>
+    <string name="drawer_open">Open menu</string>
 </resources>

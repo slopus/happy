@@ -16,6 +16,8 @@ import com.slopus.happy.feed.FeedSubject
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.viewers.ViewersSlot
+import com.slopus.happy.viewers.ViewerTarget
 
 /**
  * The screen each kind of Surface opens on the phone (iOS's
@@ -51,10 +53,14 @@ fun SurfaceScreens(graph: AppGraph, route: SurfaceRoute, onBack: () -> Unit, ope
         SurfaceType.ARTIFACT, SurfaceType.BOT, SurfaceType.TASK -> {
             val agentCatalog by session.catalog.collectAsStateWithLifecycle()
             SurfaceReference(name, surface.type, surfaceTarget(session.connectionId, surface, agentCatalog), surface.target?.name, onBack, open) {
+                ViewersSlot(session, ViewerTarget.surface(route.surfaceId))
                 SurfaceMenu(session, route.surfaceId, onBack, open = open)
             }
         }
-        else -> SurfaceElsewhere(name, onBack) { SurfaceMenu(session, route.surfaceId, onBack, open = open) }
+        else -> SurfaceElsewhere(name, onBack) {
+            ViewersSlot(session, ViewerTarget.surface(route.surfaceId))
+            SurfaceMenu(session, route.surfaceId, onBack, open = open)
+        }
     }
     JoinRefusal(session, route.surfaceId, name)
 }

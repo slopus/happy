@@ -1,0 +1,35 @@
+{
+    "description": "Tool calls whose `result` is a string, as old Happy Cloud history stores it (hc-agent tools/agents.rs, tools/core.rs; stored as-is in history.rs). Valid: a client reads a non-object `result` as opaque JSON.",
+    "message": {
+        "id": "msgtoolresultstring000001",
+        "role": "agent",
+        "createdAt": 1764100000026,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolresultstring000000001",
+                "name": "send_agent_message",
+                "status": "completed",
+                "arguments": {
+                    "agentId": "agentother0000000000000001",
+                    "text": "Done."
+                },
+                "result": "Message delivered."
+            },
+            {
+                "type": "tool_call",
+                "id": "toolresultstring000000002",
+                "name": "update_plan",
+                "status": "completed",
+                "arguments": {
+                    "plan": []
+                },
+                "result": "Plan updated."
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

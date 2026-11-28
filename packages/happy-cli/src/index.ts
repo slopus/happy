@@ -584,8 +584,11 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       await startDaemon()
       process.exit(0)
     } else if (daemonSubcommand === 'stop') {
-      await stopDaemon()
-      process.exit(0)
+      try { await stopDaemon() } catch (error) {
+        console.error(error instanceof Error ? error.message : 'Could not stop daemon')
+        process.exitCode = 1
+      }
+      return
     } else if (daemonSubcommand === 'status') {
       await runDoctorDaemon()
       process.exit(0)

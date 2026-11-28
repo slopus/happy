@@ -87,6 +87,45 @@ class AgentSessionTest {
         withTimeout(10_000) { while (!check(read())) kotlinx.coroutines.delay(20) }
     }
 
+    /**
+     * A daemon draining to restart says so on the stream: the headers say
+     * restarting through the drop as the old process goes, and the new
+     * process's hello clears it. Another process's `daemon.draining`,
+     * replayed from a journal kept across a restart, doesn't bring it back.
+     */
+    @Test
+    fun aDrainingDaemonIsRestartingUntilANewProcessSaysHello() = runBlocking {
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        assertFalse(session.draining.value)
+        agent.frames.send(Wire.frame("c1", "daemon.draining", buildJsonObject { put("daemonId", "d1"); put("draining", true) }))
+        eventually({ session.draining.value }) { it }
+        assertEquals(LinkState.Restarting, session.status.value.linkState(syncing = false, network = true, draining = session.draining.value))
+        assertEquals(LinkState.WaitingForNetwork, session.status.value.linkState(syncing = false, network = false, draining = true))
+        // The old process goes: the stream drops and is opened again, still restarting.
+        var dropped = agent.frames
+        agent.frames = Channel(Channel.UNLIMITED)
+        dropped.close()
+        eventually({ agent.streamCursors.size }) { it == 2 }
+        assertTrue("said through the reconnect", session.draining.value)
+        assertEquals(LinkState.Restarting, session.status.value.linkState(syncing = false, network = true, draining = session.draining.value))
+        // A new process says hello, not draining.
+        agent.frames.send("event: hello\ndata: {\"cursor\":\"c1\",\"gap\":false,\"resumed\":true,\"daemonId\":\"d2\",\"draining\":false}\n\n")
+        eventually({ session.draining.value }) { !it }
+        agent.frames.send(Wire.frame("c2", "daemon.draining", buildJsonObject { put("daemonId", "d1"); put("draining", true) }))
+        agent.frames.send(Wire.frame("c3", "agent.updated", Wire.updated("agentId", "at1", "01", "02", buildJsonObject { put("status", "thinking") })))
+        eventually({ session.catalog.value.cursor }) { it == "c3" }
+        assertFalse("an older process's drain, replayed", session.draining.value)
+        // A hello that says it is draining.
+        dropped = agent.frames
+        agent.frames = Channel(Channel.UNLIMITED)
+        dropped.close()
+        eventually({ agent.streamCursors.size }) { it == 3 }
+        agent.frames.send("event: hello\ndata: {\"cursor\":\"c3\",\"gap\":false,\"resumed\":true,\"daemonId\":\"d2\",\"draining\":true}\n\n")
+        eventually({ session.draining.value }) { it }
+    }
+
     @Test
     fun cursorResumesBeforeThirtySecondsAndStartsFreshAtThirtySeconds() = runBlocking {
         val session = sessions().session(id)!!
@@ -908,6 +947,61 @@ class AgentSessionTest {
         assertEquals(1, agent.calls.count { it == "GET /v0/bootstrap/desktop" })
     }
 
+    /**
+     * Pipelines follow the person's Pipelines plugin (happy-cluster API.md,
+     * "Feature plugins"): what is available is read once health says the
+     * server has feature plugins, uninstalling elsewhere hides home's row
+     * live through the event, and the next connect reads it again.
+     */
+    @Test
+    fun pipelinesFollowTheFeaturePluginLive() = runBlocking {
+        fun features(available: Boolean) = buildJsonObject {
+            put("features", kotlinx.serialization.json.JsonArray(listOf(buildJsonObject { put("id", "pipelines"); put("available", available) })))
+        }
+        agent.bootstrap = agent.bootstrap.with("health", buildJsonObject {
+            put("ready", true); put("version", buildJsonObject { put("protocol", 30) })
+            put("capabilities", buildJsonObject { put("pipelines", true); put("features", true) })
+        })
+        agent.resources["/v0/features"] = features(true)
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ agent.calls.count { it == "GET /v0/features" } }) { it == 1 }
+        eventually({ AgentFeedRow.Pipelines in session.feed.value.rows }) { it }
+        agent.frames.send(Wire.frame("c1", Feature.UPDATED, features(false)))
+        eventually({ AgentFeedRow.Pipelines in session.feed.value.rows }) { !it }
+        assertTrue(session.pipelinesTurnedOff.value)
+        assertEquals(1, agent.calls.count { it == "GET /v0/features" })
+        // Installed again elsewhere while the stream was down: the next connect reads it.
+        agent.resources["/v0/features"] = features(true)
+        val dropped = agent.frames
+        agent.frames = Channel(Channel.UNLIMITED)
+        dropped.close()
+        eventually({ agent.streamCursors.size }) { it == 2 }
+        agent.frames.send(Wire.hello("c1"))
+        eventually({ AgentFeedRow.Pipelines in session.feed.value.rows }) { it }
+        assertEquals(2, agent.calls.count { it == "GET /v0/features" })
+    }
+
+    /** A server whose health doesn't say `capabilities.features` has every feature available, and is never asked. */
+    @Test
+    fun withoutFeaturePluginsPipelinesAreAlwaysAvailable() = runBlocking {
+        agent.bootstrap = agent.bootstrap.with("health", buildJsonObject {
+            put("ready", true); put("version", buildJsonObject { put("protocol", 30) })
+            put("capabilities", buildJsonObject { put("pipelines", true) })
+        })
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ AgentFeedRow.Pipelines in session.feed.value.rows }) { it }
+        agent.frames.send(Wire.frame("c1", Feature.UPDATED, buildJsonObject {
+            put("features", kotlinx.serialization.json.JsonArray(listOf(buildJsonObject { put("id", "pipelines"); put("available", false) })))
+        }))
+        agent.frames.send(Wire.frame("c2", "agent.updated", Wire.updated("agentId", "at1", "01", "02", buildJsonObject { put("status", "thinking") })))
+        eventually({ session.catalog.value.cursor }) { it == "c2" }
+        assertTrue(AgentFeedRow.Pipelines in session.feed.value.rows)
+        assertFalse(session.pipelinesTurnedOff.value)
+        assertEquals(0, agent.calls.count { it == "GET /v0/features" })
+    }
+
     @Test
     fun aClosedConnectionOrBackgroundAppHoldsNoLink() = runBlocking {
         foreground.value = false
@@ -1185,6 +1279,43 @@ class AgentSessionTest {
         eventually({ session.feed.value.conversations.map { it.agentId } }) { "at9" in it }
     }
 
+    /**
+     * Viewers ride the stream its hello names: what is viewed goes to
+     * `PUT /v0/viewers/streams/:streamId`, and `viewers.updated` frames land
+     * on the answer.
+     */
+    @Test
+    fun viewersFollowTheStreamItsHelloNames(): Unit = runBlocking {
+        val chat = com.slopus.happy.viewers.ViewerTarget.agent("at1")
+        agent.resources["/v0/viewers/streams/st1"] = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"targets":[{"target":{"type":"agent","id":"at1"},"viewers":[{"userId":"kirill","here":true,"lastSeenAt":5000}]}]}""",
+        ) as kotlinx.serialization.json.JsonObject
+        val session = sessions().session(id)!!
+        agent.frames.send("event: hello\ndata: {\"cursor\":\"c0\",\"gap\":false,\"resumed\":false,\"daemonId\":\"d1\",\"streamId\":\"st1\"}\n\n")
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        val viewing = scope.launch { session.viewers.view(chat) }
+        eventually({ session.viewers.lists.value[chat] }) { it == listOf(com.slopus.happy.viewers.Viewer("kirill", true, 5_000)) }
+        assertEquals(com.slopus.happy.viewers.ViewersAvailability.Served, session.viewers.availability.value)
+        assertTrue(agent.calls.contains("PUT /v0/viewers/streams/st1"))
+        agent.frames.send("event: viewers.updated\ndata: {\"target\":{\"type\":\"agent\",\"id\":\"at1\"},\"viewer\":{\"userId\":\"kirill\",\"here\":false,\"lastSeenAt\":6000}}\n\n")
+        eventually({ session.viewers.lists.value[chat] }) { it == listOf(com.slopus.happy.viewers.Viewer("kirill", false, 6_000)) }
+        viewing.cancel()
+    }
+
+    /** A computer without viewers (standalone, older) answers 404: the slot stays hidden and nothing more is asked. */
+    @Test
+    fun aComputerWithoutViewersIsAskedOnce(): Unit = runBlocking {
+        val session = sessions().session(id)!!
+        agent.frames.send("event: hello\ndata: {\"cursor\":\"c0\",\"gap\":false,\"resumed\":false,\"daemonId\":\"d1\",\"streamId\":\"st1\"}\n\n")
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        val viewing = scope.launch { session.viewers.view(com.slopus.happy.viewers.ViewerTarget.surface("s1")) }
+        eventually({ session.viewers.availability.value }) { it == com.slopus.happy.viewers.ViewersAvailability.Refused }
+        val more = scope.launch { session.viewers.view(com.slopus.happy.viewers.ViewerTarget.surface("s2")) }
+        kotlinx.coroutines.delay(800)
+        assertEquals(1, agent.calls.count { it.startsWith("PUT /v0/viewers/") })
+        viewing.cancel(); more.cancel()
+    }
+
     /** A session whose `POST /v0/surfaces/:id/leave` waits for [gate], then answers [status] with [error]. */
     private fun leavingSession(gate: CompletableDeferred<Unit>, status: Int, error: String? = null, bodies: MutableList<String> = mutableListOf()): AgentSession {
         agent.bootstrap = Wire.bootstrap(
@@ -1205,7 +1336,8 @@ class AgentSessionTest {
         }.session(id)!!
     }
 
-    private fun surfaces(session: AgentSession) = session.feed.value.rows.filterIsInstance<AgentFeedRow.Surface>().map { it.id }
+    /** The joined Surfaces home holds: its rows', then the documents and todo lists under Documents and TODOs. */
+    private fun surfaces(session: AgentSession) = session.feed.value.let { feed -> feed.rows.filterIsInstance<AgentFeedRow.Surface>() + feed.lists }.map { it.id }
 
     @Test
     fun refreshingSurfacesMergesVersionsAndRetainsAccessibleUnjoinedInstances() = runBlocking {

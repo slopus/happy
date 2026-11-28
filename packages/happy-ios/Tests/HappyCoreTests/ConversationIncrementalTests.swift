@@ -261,7 +261,10 @@ private actor TruthServer: AgentTransport {
     }
 
     private func encode(_ message: AgentWire.Message) -> JSONValue {
-        (try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(message))) ?? .null
+        let encoded = (try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(message))) ?? .null
+        // A person's message has the fields the schema asks of one.
+        guard message.role == "user", case .object(let object) = encoded else { return encoded }
+        return .object(object.merging(TurnServer.userFields) { kept, _ in kept })
     }
 
     private func event(_ type: String, _ payload: [String: JSONValue]) -> JSONValue {

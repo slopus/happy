@@ -8,6 +8,8 @@ import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.net.HappyJson
 import com.slopus.happy.testing.FakeHappyServer
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +45,7 @@ class AccountHarness(
     var now: Long = 1_000_000L,
     reconnectDelayMs: Long = 50,
     network: Flow<Boolean> = flowOf(true),
+    io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     val database = HappyDatabase(ApplicationProvider.getApplicationContext(), name = null)
     val store = HappyStore(database)
@@ -61,6 +64,7 @@ class AccountHarness(
         clock = { now },
         reconnectDelayMs = { reconnectDelayMs },
         network = network,
+        io = io,
     )
 
     fun startAndSync(): AccountHarness {

@@ -34,15 +34,16 @@
     <string name="todo_history_restored">Restored</string>
     <string name="todo_history_moved">Moved</string>
     <string name="todo_history_changed_and">Changed and %1$s</string>
-    <string name="todo_lists">Todo lists</string>
     <string name="todo_new_list">New todo list</string>
-    <string name="todo_new">New</string>
     <string name="todo_create_failed_title">Not made</string>
     <string name="todo_create_failed">It couldn’t be made. %1$s</string>
     <string name="todo_new_document">New document</string>
     <string name="todo_no_lists">No todo lists yet. Tap + to make one.</string>
     <string name="todo_loading_lists">Loading todo lists…</string>
     <string name="todo_unsupported">This Happy Agent doesn’t keep todo lists.</string>
-    <string name="todo_nothing">Nothing to do</string>
-    <plurals name="todo_outstanding"><item quantity="one">%1$d to do</item><item quantity="other">%1$d to do</item></plurals>
+    <string name="surface_lists_documents">Documents</string>
+    <string name="surface_lists_todos">TODOs</string>
+    <string name="document_lists_empty">No documents yet. Tap + to make one.</string>
+    <string name="document_lists_loading">Loading documents…</string>
+    <string name="document_lists_unsupported">This Happy Agent doesn’t keep documents.</string>
 </resources>

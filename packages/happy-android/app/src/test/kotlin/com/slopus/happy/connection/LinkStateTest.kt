@@ -147,13 +147,17 @@ class LinkStateTest {
         for (away in listOf(AgentLinkStatus.Revoked, AgentLinkStatus.UpdateRequired, AgentLinkStatus.SignInRequired)) {
             assertEquals(away.name, Connecting, away.linkState(syncing = false, network = true))
         }
+        // A daemon draining to restart: said over every other state but no network, through the reconnect too.
+        assertEquals(LinkState.Restarting, AgentLinkStatus.Connected.linkState(syncing = true, network = true, draining = true))
+        assertEquals(LinkState.Restarting, AgentLinkStatus.Connecting.linkState(syncing = false, network = true, draining = true))
+        assertEquals(WaitingForNetwork, AgentLinkStatus.Connected.linkState(syncing = false, network = false, draining = true))
     }
 
     @Test fun thereIsNoOffline() {
-        assertEquals(listOf(Online, Syncing, Connecting, WaitingForNetwork), LinkState.entries)
+        assertEquals(listOf(Online, Syncing, Connecting, WaitingForNetwork, LinkState.Restarting), LinkState.entries)
     }
 
     @Test fun onlyTheLinkOnItsWaySpins() {
-        assertEquals(listOf(Syncing, Connecting, WaitingForNetwork), LinkState.entries.filter { it.spins })
+        assertEquals(listOf(Syncing, Connecting, WaitingForNetwork, LinkState.Restarting), LinkState.entries.filter { it.spins })
     }
 }

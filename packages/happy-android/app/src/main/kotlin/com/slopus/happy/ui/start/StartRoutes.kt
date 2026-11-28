@@ -20,8 +20,8 @@ import kotlinx.serialization.Serializable
 
 /**
  * The first screen: Start opens [InstallDesktopRoute], and Use Happy Cloud
- * opens Happy Cloud's welcome where the build offers it. The other ways in
- * are the next screen's ⋮.
+ * opens Happy Cloud's welcome while Happy Cloud is offered (Settings'
+ * switch). The other ways in are the next screen's ⋮.
  */
 @Composable
 @Suppress("UNUSED_PARAMETER")

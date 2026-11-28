@@ -1,6 +1,7 @@
 # Agent connection voice calls
 
-The voice button on a Happy Agent connection's home (iOS, Android) starts a
+The voice button on a Happy Agent connection's home (iOS, Android), and on a
+Happy account's (see [Happy CLI sessions](#happy-cli-sessions)), starts a
 call with a hosted ElevenLabs agent. The audio, the system prompt, the
 context the agent reads and its four client tools all live on the phone. This is separate from the
 relay's voice (`docs/voice-architecture.md`) and from GPT-Live on desktop:
@@ -133,16 +134,17 @@ covers every connection on the device and survives sign-out.
 - There is no cap on the number of calls and no other cap.
 
 With the subscription (RevenueCat's `pro` entitlement, from any product
-that grants it) the limit is 2 hours a month instead, counted by the same
-ledger. The ledger keeps calls for at least 62 days and never forgets one
-from inside the running paid month. Both limits are local. The server checks
-no subscription; it only caps every account's Happy-managed voice at 2 hours
-per 30 days as a cost safety net.
+that grants it) the limit is 2 hours in each paid month instead (the month
+runs from the purchase's day of the month), counted by the same ledger. iOS's
+preview build has 10 hours (`AppVariant.monthlyVoiceHours`). The ledger keeps
+calls for at least 62 days and never forgets one from inside the running
+paid month. Both limits are local: no server checks the subscription or
+counts call time, since a call goes from the phone straight to ElevenLabs.
 
-Voice in Happy (relay) sessions is switched off in both apps: a session's
-chat has no voice button and nothing reaches ElevenLabs from it (Android
-`VoiceEngine(enabled = false)`; iOS `LegacyVoice`, which debug runs can turn
-back on with `HAPPY_RELAY_VOICE=1`). Voice is the agent connection's call.
+A Happy account's sessions use this same call and the same ledger (see
+[Happy CLI sessions](#happy-cli-sessions)). The relay's old voice (its
+composer microphone, server grant, usage and client tools) is deleted in
+both apps.
 
 ### The subscription
 
@@ -254,9 +256,9 @@ rather than over the shell.
 Test runs drive both without a call or a microphone (debug builds,
 `CallController.applyTestEnvironment`): `HAPPY_CALL_INTRO=due` shows the
 welcome again (`seen`: never), `HAPPY_CALL_USED=1` spends the free time,
-and `HAPPY_CALL_STEPS=tap,subscribe,session,close,dismiss,…` presses the
-voice button, the sheet's buttons and an alert's one step every 3 s,
-logging each (`[call-steps]`). Android takes the same as launch extras
+and `HAPPY_CALL_STEPS=tap,subscribe,session,close,dismiss,mute,end,…` presses the
+voice button, the sheet's buttons, an alert's and the bar's mute and end
+one step every 3 s (any other word waits), logging each (`[call-steps]`). Android takes the same as launch extras
 (`happy.call.intro`, `happy.call.used`, `happy.call.offer` with the price,
 `happy.call.steps` of `tap`, `session` and `close`; log tag `call-steps`).
 
@@ -271,6 +273,98 @@ The old relay endpoint's quota had two bugs: no rolling window and a
 100-conversation page cap. These were fixed in source on 2026-10-21 (commits
 `541a22d03` for the rolling window and `1a643badd` for pagination). Whether
 the fix is deployed has not been checked. None of that endpoint is used here.
+
+## Happy CLI sessions
+
+A Happy account (the relay: Happy CLI sessions, and Happy Agent's over the
+relay) has the same call: the same button, bar, hosted v3 agent, system
+prompt, four client tools, free time, cues and analytics. Only where its
+conversations come from differs. The call knows it as `CallAccount.happyCLI`
+(Android names it the same), and says so only where the relay can't do what
+an agent connection does. A call uses none of the Happy server's voice
+routes: no token from it, and no usage read from it or written to it.
+
+- **Button.** It is on the account's home, in the header left of Settings,
+  where an agent connection's home has it, once a computer is linked. A
+  chat and the composer have none, as on an agent connection. Settings'
+  Voice row, between Language and Agents, opens the same Voice page.
+- **Directory.** It lists home's sessions that aren't archived. A Happy CLI
+  session that stopped is archived; a Happy Agent session that is offline is
+  not, and it stays readable. Side chats and retired tasks are left out.
+  Happy Agent publishes no subtasks to the relay, so the call lists none.
+  Bots and tasks come first. Every other session sits under its project's
+  heading (`kind: project`), and a worktree's sessions sit under the
+  worktree's heading too (`kind: workspace`), the project's own checkout
+  first. The order is stable: newest created first, headings by their
+  newest session. A reply never moves anything. A session the agent hasn't
+  named reads "New chat", as its row on home does.
+- **Status.** A session is `running` while it thinks and `needsInput`
+  while a permission or a question waits for the person. Otherwise it is
+  `idle`, and a stopped session is too.
+- **Reading.** A read holds the person's messages and the agent's words,
+  never its thinking or tools. Each of the person's messages starts an
+  exchange, and the exchange's reply is the agent's last words before the
+  next one. The newest exchange stays open while the agent works on it, or
+  while nothing of the agent's has come after it. Happy Agent's failed run
+  ends its exchange in an error. iOS reads the failure from the service
+  message Happy Agent sends, "The run failed: …" under `<eventId>:failure`,
+  because the relay's turn end never reaches iOS's chat. On a team, each
+  message says who wrote it, and the reader's own say "the person".
+- **Sending.** A message goes through the session's composer outbox, marked
+  `source: voice`, and shows in the chat as a typed message would. Only a
+  session that runs on its computer takes one. A stopped or offline session
+  reads but refuses: "That conversation can't take a message now." One
+  waiting for the person refuses as an agent connection's does. The checks
+  run again after a model switch, and once more on the session's stored
+  row in the transaction that keeps the message (`enqueueAcceptedSend`'s
+  `admitting`), so an archive or a question already on the phone stops it. The
+  account's link needn't be up: like the composer's, the outbox sends the
+  message once it is. A send is held under its message ID from the
+  moment it begins, so the same words again (a retry after "uncertain")
+  share it and never go twice; a refused one can be tried again.
+- **Model and effort.** These are the composer's chips (`ComposerModes`),
+  model IDs as the composer keys them. A switch goes as the chips send it
+  (`sessionSetAgentModes`), before the message. If the session's computer
+  locks the model or reasoning (`RigCatalog`), the call refuses: "This
+  session's model can't be changed (it's locked on the computer). Nothing
+  was sent."
+- **New work.** `new-task` and `new-bot:<name>` start Happy Agent work as
+  compose does (`NewSessionLaunch.resolve`, `SessionStarter`). The work
+  starts on the computer compose has picked if its Happy Agent makes that
+  kind and answers, otherwise on the only computer that does. The new
+  work's ref stands for the session until the relay names it. Each voice
+  start has its own spawn-request slot under the account's (never
+  compose's), so no start takes another's session, and opening the new
+  chat adopts it as it would any start. A start that passes the tool's
+  10-second deadline answers "uncertain" and goes on. End and the first
+  message's keeping race through one gate (`VoiceStartGate`), decided in
+  the outbox's transaction: ended first, the message is refused and the
+  start put down; kept first, the session stays. The
+  call refuses, with these reasons:
+  - "A new bot needs a name here; ask what to call it." (a bot needs a name)
+  - "More than one computer can start it; start it in the app."
+  - "New work can't be started by voice on Happy CLI; start a session in the
+    app." (no computer can)
+
+  Tasks and bots are checked one at a time. When neither can start, the
+  first context's new-work block is one line instead: "New work: can't be started by voice on Happy CLI;
+  the person starts sessions in the app."
+- **Moving between screens.** navigate pushes the session's chat, and back
+  and home are the stack's own, as on an agent connection.
+- **Earlier calls.** The account keeps them in `call-history.json` beside
+  its files. The file is readable only while the phone is unlocked, never
+  backed up, and gone with the account's data. A call is bound to its
+  account (`happy:<account>`): switching accounts ends it.
+
+iOS: `HappyCore/Call/LegacyCallTarget.swift` (the directory, a read and
+where new work starts, pure and tested in `CallHappyCLITests`),
+`HappyUI/Call/LegacyCallTargets.swift` (the account's home feed, chats,
+outbox, composer state and `SessionStarter`) and `HappyUI/Call/CallScreens.swift`
+(placing and leaving screens, shared with the agent connection's
+`SessionCallTargets`). `CallController.start(account:from:)` starts it from
+`LegacyHomeViewController`.
+
+Android: the same call (`CallController.startCli`) on the open Happy account. The tools run over `LegacyCallTargets`, and `AppGraph`'s `LegacyCallAccount` gives them home's sessions (`HomeServices`), each chat as `ChatFeed` reduces it, the composer's sender marked `voice` and its model/effort chips (`ComposerModeResolver`), and Happy Agent's spawn (`MachineOps.spawnSession`). The button sits left of compose on the relay home (`ComposeFab(onVoice)`, plus the tablet's `SidebarFootBar(onVoice)`). Settings' Voice row opens the same Voice page (`AgentVoiceRoute`). The old relay voice (`voice/`, `ui/voice/`, `VoiceEngine`) is deleted. A failed turn-end is `AgentEvent.TurnFailed` → `ChatSnapshot.failedTurns`.
 
 ## What the call puts in the agent's context
 
@@ -424,7 +518,8 @@ Updates name a conversation by its `title` and the titles of what it sits
 under (`parents`, outermost first, headings included), never by an ID.
 They carry its reference too (`"ref":"s3"`) when that leaves it unclear
 (another conversation has the same title under the same parents, or it has
-no name of its own yet: "New Task", "New Bot", "Untitled"), or the agent
+no name of its own yet: "New Task", "New Bot", "Untitled", a Happy
+account's "New chat"), or the agent
 has no reference for it yet. No message IDs, block indexes or the
 computer's IDs reach the agent, but for one thing: a read gives each turn
 a reference (`t:3f`, below), the end of its ID, to page with, which never
@@ -1256,6 +1351,15 @@ that answers marked `refreshing`, what is new following as a
 `conversation_update` line of context. On a
 phone, a relative `-callLive` directory is in the app's Documents
 (`devicectl device copy to`), and the microphone is granted once by hand.
+
+iOS, in the app itself (debug builds, a simulator or a phone):
+`HAPPY_CALL_TAP=1` with `HAPPY_CALL_TYPE=first|second|…` types the
+person's turns into the live call (`CallProbe.type`), each once the agent
+has answered the one before, logging them and the agent's answers as
+`[call-type]`; `HAPPY_CALL_STEPS` presses mute and end. A typed call is
+silent, as `CallLiveCheck` is (LiveKit's manual rendering: no microphone,
+no speaker), and a run that can't be silent calls no one. This is how a
+Happy account's call was checked end to end.
 
 Android: `CallLiveDeviceCheck` on an emulator, with the ID passed to the
 build as `HAPPY_CALL_AGENT_V3_ID`. The person's turns are typed

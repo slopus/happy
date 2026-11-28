@@ -20,8 +20,7 @@ import com.slopus.happy.ui.settings.AgentsRoute
 import com.slopus.happy.ui.settings.AppearanceRoute
 import com.slopus.happy.ui.settings.ChangelogRoute
 import com.slopus.happy.ui.settings.LanguageRoute
-import com.slopus.happy.ui.voice.VoiceSettingsRoute
-import com.slopus.happy.ui.voice.VoiceLanguageRoute
+import com.slopus.happy.ui.connection.AgentVoiceTags
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -175,8 +174,7 @@ class DeepLinksTest {
             "happy://settings/appearance" to screen(AppearanceRoute),
             "happy://settings/agents" to screen(AgentsRoute),
             "happy://settings/language" to screen(LanguageRoute()),
-            "happy://settings/voice" to screen(VoiceSettingsRoute()),
-            "happy://settings/voice/language" to screen(VoiceLanguageRoute),
+            "happy://settings/voice" to screen(SettingsRoute(reveal = AgentVoiceTags.ROW)),
             "happy://server" to signedOut(ServerRoute),
             "happy://restore" to signedOut(RestoreRoute),
             "happy://restore/manual" to signedOut(RestoreManualRoute),
@@ -186,6 +184,8 @@ class DeepLinksTest {
         ).forEach { (link, route) -> assertEquals(link, route, parseDeepLink(link)) }
         // The old Connect Claude page is gone; its link opens Home.
         assertEquals(DeepLink.Home, parseDeepLink("https://app.happy.engineering/settings/connect/claude"))
+        // So is the old relay voice's language page.
+        assertEquals(DeepLink.Home, parseDeepLink("happy://settings/voice/language"))
     }
 
     @Test

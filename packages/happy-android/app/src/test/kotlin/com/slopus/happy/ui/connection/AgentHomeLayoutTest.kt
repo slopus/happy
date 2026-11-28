@@ -76,6 +76,7 @@ class AgentHomeLayoutTest {
     private var settings = 0
     private val settingsRows = mutableListOf<AgentSettingsRow>()
     private var artifacts = 0
+    private var documents = 0
     private var todos = 0
     private val surfaces = mutableListOf<AgentFeedRow.Surface>()
     private val actions = AgentHomeActions(
@@ -87,6 +88,7 @@ class AgentHomeLayoutTest {
         onSwitchAccount = {},
         onAdd = {},
         onOpenArtifacts = { artifacts++ },
+        onOpenDocuments = { documents++ },
         onOpenTodos = { todos++ },
         onOpenSurface = { surfaces += it },
         onOpenArtifact = { openedArtifacts += it.id },
@@ -100,12 +102,13 @@ class AgentHomeLayoutTest {
         fun catalog(bootstrap: JsonObject) =
             AgentCatalog().withBootstrap(AgentClient.json.decodeFromJsonElement(WireDesktopBootstrap.serializer(), bootstrap))
 
-        /** A fixture: two Surfaces, a bot with a subtask, three tasks, and a project with a worktree. */
+        /** A fixture: four Surfaces, a bot with a subtask, three tasks, and a project with a worktree. */
         val sample = Wire.bootstrap(
             surfaces = listOf(
                 Wire.surface("s2", "Groceries", "todo", mapOf(Wire.USER to "2")),
                 Wire.surface("s1", "Launch plan", "document", mapOf(Wire.USER to "1")),
                 Wire.surface("s3", "Someone else's", "todo", mapOf("u2" to "1")),
+                Wire.surface("s4", "Week", "calendar", mapOf(Wire.USER to "3")),
             ),
             bots = listOf(
                 Wire.bot("b1", "Happy", Wire.agent("ab1", updatedAt = NOW - 20 * 60_000, subtasks = listOf(Wire.agent("as1", title = "Review the PR", subtask = true, parent = "ab1", updatedAt = NOW - 5 * 60_000)))),
@@ -261,20 +264,24 @@ class AgentHomeLayoutTest {
     }
 
     @Test
-    fun artifactsAndTheJoinedSurfacesOpenTheFirstCard() {
+    fun artifactsDocumentsTodosAndTheOtherJoinedSurfacesOpenTheFirstCard() {
         show(feed())
-        val rows = listOf("artifacts", "todos", "surface-s1", "surface-s2").map { rule.node(AgentHomeTags.row(it)).bounds }
+        val rows = listOf("artifacts", "documents", "todos", "surface-s4").map { rule.node(AgentHomeTags.row(it)).bounds }
         rows.zipWithNext().forEach { (a, b) -> assertDp("rows touch", a.bottom, b.top) }
         assertDp("the bots' card follows", rows.last().bottom, rule.node(AgentHomeTags.row("section-bots")).bounds.top)
-        // Only the Surfaces the person joined, in their own order.
-        rule.onAllNodesWithTag(AgentHomeTags.row("surface-s3"), useUnmergedTree = true).assertCountEquals(0)
+        // A document or a todo list is under its row, never a row of its own (desktop's sections).
+        listOf("surface-s1", "surface-s2", "surface-s3").forEach { rule.onAllNodesWithTag(AgentHomeTags.row(it), useUnmergedTree = true).assertCountEquals(0) }
         rule.onNodeWithText("Artifacts", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Documents", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("TODOs", useUnmergedTree = true).assertExists()
         rule.node(AgentHomeTags.row("artifacts")).performClick()
+        rule.node(AgentHomeTags.row("documents")).performClick()
         rule.node(AgentHomeTags.row("todos")).performClick()
-        rule.node(AgentHomeTags.row("surface-s2")).performClick()
+        rule.node(AgentHomeTags.row("surface-s4")).performClick()
         assertEquals(1, artifacts)
+        assertEquals(1, documents)
         assertEquals(1, todos)
-        assertEquals(listOf(AgentFeedRow.Surface("s2", "Groceries", "todo")), surfaces)
+        assertEquals(listOf(AgentFeedRow.Surface("s4", "Week", "calendar")), surfaces)
         assertTrue(opened.isEmpty())
     }
 
@@ -382,8 +389,8 @@ class AgentHomeLayoutTest {
         }
         rule.waitForIdle()
         assertEquals(listOf("/v0/bots/b1/avatar"), read)
-        // Artifacts, Todos and the two bots.
-        rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(4)
+        // Artifacts, Documents, TODOs and the two bots.
+        rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(5)
     }
 
     /** A bot without a picture, a task and a project without one wear the placeholder their own ids pick, as on happy-ios. */

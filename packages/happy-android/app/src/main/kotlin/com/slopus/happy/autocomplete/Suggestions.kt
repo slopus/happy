@@ -1,5 +1,6 @@
 package com.slopus.happy.autocomplete
 
+import com.slopus.happy.agent.TeamUser
 import com.slopus.happy.conversation.SlashCommand
 import com.slopus.happy.model.SessionMetadata
 import kotlinx.coroutines.CancellationException
@@ -27,6 +28,11 @@ sealed interface Suggestion {
     data class FileMention(val fileName: String, val filePath: String, val fullPath: String, val fileType: FileItem.FileType) : Suggestion {
         override val key get() = "file-$fullPath"
         override val text get() = "@$fullPath"
+    }
+
+    /** Someone on the team; picking them writes their mention ([mentionMarkdown]), which the composer shows as "@Name". */
+    data class Person(val user: TeamUser, override val text: String) : Suggestion {
+        override val key get() = "user-${user.id}"
     }
 }
 

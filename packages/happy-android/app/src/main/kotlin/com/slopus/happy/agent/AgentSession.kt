@@ -11,12 +11,15 @@ import com.slopus.happy.conversation.HeldConversations
 import com.slopus.happy.conversation.Mode
 import com.slopus.happy.conversation.ModelPreferences
 import com.slopus.happy.conversation.NewSessionStart
+import com.slopus.happy.conversation.ScrollPlace
 import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.data.DiskThread
 import com.slopus.happy.diagnostics.Timing
 import com.slopus.happy.diagnostics.traced
 import com.slopus.happy.documents.DocumentLibrary
 import com.slopus.happy.documents.DocumentStreams
+import com.slopus.happy.viewers.AgentViewersBackend
+import com.slopus.happy.viewers.Viewers
 import com.slopus.happy.feed.AgentFeedRoutes
 import com.slopus.happy.feed.FeedLibrary
 import com.slopus.happy.feed.FeedCovers
@@ -154,6 +157,15 @@ class AgentSession internal constructor(
     private var healthStopped = false
     private var healthClosed = false
     val phase: StateFlow<SyncPhase> = phaseState.asStateFlow()
+    private val drainingState = MutableStateFlow(false)
+    /**
+     * The daemon said it is draining to restart (its hello's `draining`, or
+     * `daemon.draining`): writes are refused until a new process says hello.
+     * Kept through the reconnect in between (iOS's `HomeSnapshot.draining`).
+     */
+    val draining: StateFlow<Boolean> = drainingState.asStateFlow()
+    /** The process the last hello came from: a `daemon.draining` replayed from the one before isn't this one's. */
+    @Volatile private var helloDaemon: String? = null
     /** Home's P0 only; later resource refreshes never keep its title updating. */
     val homeUpdating: StateFlow<Boolean> = phase.map { it == SyncPhase.P0Connecting || it == SyncPhase.P0Live }
         .stateIn(scope, SharingStarted.Eagerly, false)
@@ -356,9 +368,38 @@ class AgentSession internal constructor(
     private val pluginsAvailability = keptCapability(com.slopus.happy.plugins.PluginsAvailability.RESOURCE)
     val pluginsAvailable: StateFlow<Boolean> get() = pluginsAvailability.available
 
-    /** Whether home lists Pipelines: bootstrap health's `capabilities.pipelines`, never probed. */
+    /** Whether the server runs pipelines: bootstrap health's `capabilities.pipelines`, never probed. */
     private val pipelinesAvailability = keptCapability(PIPELINES_AVAILABLE)
-    val pipelinesAvailable: StateFlow<Boolean> get() = pipelinesAvailability.available
+
+    /** Whether the server has feature plugins: bootstrap health's `capabilities.features`, never probed. */
+    private val featuresAvailability = keptCapability(FEATURES_AVAILABLE)
+
+    /**
+     * Which of Happy's features are available to the person here
+     * (happy-cluster API.md, "Feature plugins"): whether their account has
+     * each feature plugin installed. Without health's flag, every one is.
+     */
+    val features = FeaturesSource(
+        ClusterFeatures(client), events, served = featuresAvailability.available,
+        kept = { withContext(Dispatchers.IO) { cachedResource(FeaturesSource.RESOURCE) } },
+        keep = { value -> withContext(Dispatchers.IO) { keepResource(FeaturesSource.RESOURCE, value) } },
+        scope = scope,
+    )
+
+    /** The person uninstalled the Pipelines plugin: every way to Pipelines hides, and a pipeline page open leaves. */
+    val pipelinesTurnedOff: StateFlow<Boolean> = features.unavailable(Feature.PIPELINES)
+
+    /** Whether home lists Pipelines: the server runs them and the person has the Pipelines plugin installed. */
+    val pipelinesAvailable: StateFlow<Boolean> = combine(pipelinesAvailability.available, pipelinesTurnedOff) { served, off -> served && !off }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, false)
+
+    /** Whether Settings lists Inference (the agent's accounts): bootstrap health's `capabilities.providerSignIn`, never probed. */
+    private val providerSignInAvailability = keptCapability(PROVIDER_SIGN_IN_AVAILABLE)
+    val providerSignInAvailable: StateFlow<Boolean> get() = providerSignInAvailability.available
+
+    /** The provider accounts' sign-ins (Settings › Inference), made when a page first asks. */
+    val providerAccounts: ProviderAccounts by lazy { ProviderAccounts(AgentProviderSignIns(client), events, scope) }
 
     /** A capability kept in the connection's resources under [resource], so home's row doesn't come and go on each start. */
     private fun keptCapability(resource: String) = CapabilityAvailability(
@@ -546,6 +587,9 @@ class AgentSession internal constructor(
      * `<connection>.documents/`; their live frames come off this session's stream.
      */
     val documents = DocumentLibrary(client, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".documents") }, scope)
+
+    /** Who else is on the conversations and Surfaces this phone shows. */
+    val viewers = Viewers(scope, AgentViewersBackend(client))
 
     val artifacts = com.slopus.happy.artifacts.ArtifactCatalogFeed(
         scope, fetch = { cursor -> ArtifactClient(client).catalog(cursor) },
@@ -787,7 +831,13 @@ class AgentSession internal constructor(
         return true
     }
 
-    /** A bot as `POST /v0/bots` answered: home lists it before `bot.created` comes. */
+    /**
+     * Whether people make bots here: not on Happy Cloud, where bots come
+     * from its admin bot, nor anywhere a bot carries a kind ([BotKind]).
+     */
+    val makesBots: Boolean get() = !client.cloud && catalog.value.bots.values.none(BotKind::carried)
+
+    /** A bot as `POST /v0/bots` or a change to it answered: home lists it before `bot.created` or `bot.updated` comes. */
     fun upsertBot(bot: JsonObject) {
         catalogState.update { it.withResource("bot", bot) }
     }
@@ -801,6 +851,9 @@ class AgentSession internal constructor(
 
     /** Each agent's one conversation, for whoever shows or follows it ([HeldConversations]). */
     val conversations = HeldConversations(scope)
+
+    /** Where the reader left each agent's conversation, to open on again; read and kept on the main thread. */
+    val scrollPlaces = HashMap<String, ScrollPlace>()
 
     init {
         scope.coroutineContext[Job]!!.invokeOnCompletion { stopHealth(closing = true) }
@@ -1059,6 +1112,8 @@ class AgentSession internal constructor(
         client.noteHealth(bootstrap.health ?: JsonObject(emptyMap()))
         pluginsAvailability.noteHealth(info.plugins)
         pipelinesAvailability.noteHealth(info.pipelines)
+        featuresAvailability.noteHealth(info.features)
+        providerSignInAvailability.noteHealth(info.providerSignIn)
         avatarHash = info.thumbhash?.takeIf { it != known?.thumbhash || known.avatarFile == null }
         if (known != null) {
             val hasNode = bootstrap.config?.get("node") is JsonObject
@@ -1103,16 +1158,23 @@ class AgentSession internal constructor(
                         documents.frame(frame.event, frame.data)
                         continue
                     }
+                    if (frame.event == Viewers.FRAME) {
+                        viewers.frame(frame.data)
+                        continue
+                    }
                     val event = frame.toAgentEvent() ?: continue
                     if (event.type == AgentEvent.HELLO) {
                         Timing.mark("link.hello")
                         documents.streams.opened(event.data)
                         feedLibrary.hello()
                         val wasVerified = phaseState.value == SyncPhase.Verified
+                        val hello = AgentHello.of(event)
+                        helloDaemon = hello.daemonId
+                        drainingState.value = hello.draining
                         statusState.value = AgentLinkStatus.Connected
                         phaseState.value = SyncPhase.P0Live
+                        viewers.opened(event.data.string("streamId"))
                         snapshot.await()
-                        val hello = AgentHello.of(event)
                         if (hello.gap && (resumed || wasVerified)) readSnapshot()
                         resumeAllowed = true
                         phaseState.value = SyncPhase.Verified
@@ -1131,6 +1193,10 @@ class AgentSession internal constructor(
                         }
                         onConnected()
                     } else {
+                        if (event.type == "daemon.draining" && event.data["draining"]?.toString() != "false") {
+                            val from = event.data.string("daemonId")
+                            if (from == null || helloDaemon == null || from == helloDaemon) drainingState.value = true
+                        }
                         snapshot.await()
                         if (event.type == "config.updated") bootstrapConfig = null
                         if (event.type == "git.updated") {
@@ -1150,6 +1216,7 @@ class AgentSession internal constructor(
         } finally {
             secondary?.cancel()
             documents.closed()
+            viewers.closed()
             feedLibrary.disconnected()
             stream.close()
         }
@@ -1404,6 +1471,9 @@ class AgentSession internal constructor(
     private companion object {
         /** Where the connection keeps whether it has pipelines. */
         const val PIPELINES_AVAILABLE = "pipelines-available"
+        const val FEATURES_AVAILABLE = "features-available"
+        /** Where the connection keeps whether its accounts sign in here. */
+        const val PROVIDER_SIGN_IN_AVAILABLE = "provider-sign-in-available"
 
         /** Surface events that come together read the snapshot once. */
         const val SNAPSHOT_COALESCE = 300L

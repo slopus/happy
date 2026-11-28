@@ -16,6 +16,8 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.AppGraph
+import com.slopus.happy.R
+import com.slopus.happy.analytics.SignInError
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.crypto.Base64Variant
 import com.slopus.happy.crypto.SecretKeyBackup
@@ -118,5 +120,34 @@ class AppFlowTest {
         rule.onNodeWithText("Restore").performClick()
         rule.waitUntilAtLeastOneExists(hasText("Invalid secret key. Please check and try again."), 5_000)
         assertEquals(AuthState.SignedOut, graph.auth.state.value)
+    }
+
+    /** A right key that can't reach the server says so, not that the key is wrong. */
+    @Test
+    fun aRestoreThatCannotReachTheServerSaysSoNotThatTheKeyIsWrong() {
+        rule.onNodeWithText("Start").performClick()
+        rule.onNodeWithContentDescription("More").performClick()
+        rule.onNodeWithText("Restore Happy CLI account").performClick()
+        rule.onNodeWithText("Use a secret key instead").performClick()
+        rule.onNodeWithTag(RestoreTags.KEY_INPUT)
+            .performTextReplacement(SecretKeyBackup.format(encodeBase64(server.secret, Base64Variant.Url)))
+        server.close()
+        rule.onNodeWithText("Restore").performClick()
+        rule.waitUntilAtLeastOneExists(hasText("Network error occurred"), 10_000)
+        rule.onNodeWithText("Invalid secret key. Please check and try again.").assertDoesNotExist()
+        assertEquals(AuthState.SignedOut, graph.auth.state.value)
+    }
+
+    /** Only a key that isn't one, or one the server refused, says to check the key. */
+    @Test
+    fun aFailedRestoreSaysWhichStepFailed() {
+        assertEquals(R.string.connect_invalid_secret_key, restoreFailureMessage(SignInError.InvalidToken))
+        assertEquals(R.string.connect_invalid_secret_key, restoreFailureMessage(SignInError.Rejected))
+        assertEquals(R.string.errors_network_error, restoreFailureMessage(SignInError.Unreachable))
+        assertEquals(R.string.errors_server_error, restoreFailureMessage(SignInError.ServerError))
+        assertEquals(R.string.errors_server_error, restoreFailureMessage(SignInError.RateLimited))
+        assertEquals(R.string.errors_server_error, restoreFailureMessage(SignInError.InvalidResponse))
+        assertEquals(R.string.errors_token_storage_failed, restoreFailureMessage(SignInError.StorageFailed))
+        assertEquals(R.string.errors_unknown_error, restoreFailureMessage(SignInError.Unknown))
     }
 }

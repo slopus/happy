@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -51,6 +52,10 @@ import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.surfaces.SurfaceMenu
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import com.slopus.happy.ui.viewers.ViewersEditor
+import com.slopus.happy.ui.viewers.ViewersSlot
+import com.slopus.happy.viewers.ViewerTarget
+import com.slopus.happy.viewers.ViewersAvailability
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,6 +98,7 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit,
     val save by holder.save.collectAsStateWithLifecycle()
     val notice by holder.notice.collectAsStateWithLifecycle()
     val peers by holder.peers.collectAsStateWithLifecycle()
+    val viewersAvailability by session.viewers.availability.collectAsStateWithLifecycle()
     // A role that reads but doesn't write sees the document as it is: no cursor, no keyboard, no renaming.
     val writes = session.permissions.collectAsStateWithLifecycle().value.canWrite
     LaunchedEffect(writes) { holder.controller?.editable = writes }
@@ -124,7 +130,9 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit,
         active = active,
         onBack = onBack,
         actions = {
-            DocumentPeers(peers)
+            // One indicator: viewers' faces, editors listed with their cursor colour on a tap; the peers stand in where the computer serves no viewers.
+            ViewersSlot(session, ViewerTarget.surface(surfaceId), editors = remember(peers) { peers.map { ViewersEditor(it.name, Color(peerColorInt(it.color))) } })
+            if (viewersAvailability != ViewersAvailability.Served) DocumentPeers(peers)
             SurfaceMenu(session, surfaceId, onBack, open) { close ->
                 if (writes) HappyMenuItem(stringResource(R.string.common_rename), onClick = { close(); renaming = true })
                 HappyMenuItem(stringResource(R.string.document_history), onClick = { close(); onHistory() })

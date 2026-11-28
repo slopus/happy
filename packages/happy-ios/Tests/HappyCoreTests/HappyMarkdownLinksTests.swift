@@ -231,4 +231,25 @@ final class HappyMarkdownLinksTests: XCTestCase {
         XCTAssertEqual(LinkedFiles.outcome(AgentClientError.status(500, code: nil, message: nil)), .failed(nil))
         XCTAssertEqual(LinkedFiles.outcome(URLError(.notConnectedToInternet)), .failed(nil))
     }
+
+    func testPicturesAndRecordingsAreShownNotCalledBinary() {
+        for name in ["a.png", "dir/B.JPG", "c.jpeg", "d.gif", "e.webp", "f.heic", "g.avif", "h.bmp", "i.tiff", "j.ico"] {
+            XCTAssertEqual(FileViewer.mediaKind(name), .image, name)
+        }
+        for name in ["a.mp4", "dir/B.MOV", "c.m4v"] {
+            XCTAssertEqual(FileViewer.mediaKind(name), .video, name)
+        }
+        // SVG is text; WebM and Matroska don't play here; a dotfile has no extension.
+        for name in ["a.svg", "a.webm", "a.mkv", "a.txt", "png", "dir.png/README", ".png", "a.png.md"] {
+            XCTAssertNil(FileViewer.mediaKind(name), name)
+        }
+    }
+
+    func testAPictureLinkReadsAsItsBytes() {
+        let bytes = Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0x01])
+        XCTAssertEqual(LinkedFiles.read(bytes.base64EncodedString(), path: "shots/one.png"), .media(.image, bytes))
+        XCTAssertEqual(LinkedFiles.read(bytes.base64EncodedString(), path: "clip.mov"), .media(.video, bytes))
+        XCTAssertEqual(LinkedFiles.read(Data("hi\n".utf8).base64EncodedString(), path: "notes.txt"), .file(FileViewer.Content(content: "hi\n", isBinary: false)))
+        XCTAssertEqual(LinkedFiles.read(bytes.base64EncodedString(), path: "blob.bin"), .file(FileViewer.Content(content: "", isBinary: true)))
+    }
 }

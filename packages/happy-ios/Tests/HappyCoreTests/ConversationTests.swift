@@ -122,7 +122,7 @@ final class ConversationTests: XCTestCase {
         await conversation.setReadsNewest(false)
         await engine.spaces.externalEvent(finished)
         await engine.spaces.externalEvent(.object(["type": .string("message.created"), "payload": .object(["agentId": .string("long"), "runId": .string("r249"),
-            "message": .object(["id": .string("again"), "role": .string("user"), "createdAt": .number(250), "metadata": .object([:]),
+            "message": .object(["id": .string("again"), "role": .string("user"), "createdAt": .number(250), "metadata": .object([:]), "status": .string("accepted"), "delivery": .string("queue"), "runId": .string("r"), "mode": TurnServer.userFields["mode"]!, 
                                 "content": .array([.object(["type": .string("text"), "text": .string("asked again")])])])])]))
         // Seen after the run's end: every run is still there.
         let unfollowed = await asked(251)
@@ -171,7 +171,7 @@ final class ConversationTests: XCTestCase {
     }
 
     func testAMessageWithoutAPictureBytesStillDecodes() throws {
-        let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"},{"type":"image","mimeType":"image/png"}],"metadata":{}}"#
+        let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"},{"type":"image","mimeType":"image/png"}],"status":"accepted","delivery":"queue","runId":"r","mode":{"providerId":"p","modelId":"m","effort":"low","serviceTier":null,"permissionMode":"auto"},"metadata":{}}"#
         let decoded = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))
         XCTAssertEqual(decoded.content, [.text("hi"), .unknown("image")])
     }
@@ -234,7 +234,7 @@ private actor StreamingServer: AgentTransport {
         let value: JSONValue
         if path.contains("/messages?") {
             reads += 1
-            let user: JSONValue = .object(["id": .string("u"), "role": .string("user"), "createdAt": .number(0), "metadata": .object([:]),
+            let user: JSONValue = .object(["id": .string("u"), "role": .string("user"), "createdAt": .number(0), "metadata": .object([:]), "status": .string("accepted"), "delivery": .string("queue"), "runId": .string("r"), "mode": TurnServer.userFields["mode"]!, 
                                            "content": .array([.object(["type": .string("text"), "text": .string("go")])])])
             value = .object(["hasMore": .bool(false), "runs": .array([.object([
                 "id": .string("r0"), "status": .string("running"), "startedAt": .number(0),
@@ -371,7 +371,7 @@ private actor LongHistoryServer: AgentTransport {
         if path.contains("/messages?") {
             value = .object(["hasMore": .bool(false), "runs": .array((0..<runs).map { index in
                 .object(["id": .string("r\(index)"), "status": .string("completed"), "startedAt": .number(Double(index)), "messages": .array([
-                    .object(["id": .string("u\(index)"), "role": .string("user"), "createdAt": .number(Double(index)), "metadata": .object([:]),
+                    .object(["id": .string("u\(index)"), "role": .string("user"), "createdAt": .number(Double(index)), "metadata": .object([:]), "status": .string("accepted"), "delivery": .string("queue"), "runId": .string("r"), "mode": TurnServer.userFields["mode"]!, 
                              "content": .array([.object(["type": .string("text"), "text": .string("asked \(index)")])])]),
                 ])])
             })])

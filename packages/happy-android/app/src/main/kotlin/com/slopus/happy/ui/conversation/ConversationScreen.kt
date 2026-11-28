@@ -42,6 +42,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.derivedStateOf
@@ -76,6 +77,7 @@ import com.slopus.happy.conversation.ConversationViewing
 import com.slopus.happy.conversation.MediaRef
 import com.slopus.happy.conversation.Mode
 import com.slopus.happy.conversation.NewWork
+import com.slopus.happy.conversation.ScrollPlace
 import com.slopus.happy.conversation.WorkChoice
 import com.slopus.happy.ui.chat.NewWorkChoicePanel
 import com.slopus.happy.ui.chat.NewWorkRoom
@@ -214,6 +216,8 @@ class ConversationScreenActions(
     val onOpenPipelineRun: ((com.slopus.happy.pipelines.PipelineRunNotice) -> Unit)? = null,
     /** How a workspace's folders read, for naming one of its files from the attach sheet; null where they can't. */
     val workspace: ((workspaceId: String) -> com.slopus.happy.ui.files.WorkspaceSource)? = null,
+    /** Reports a message that couldn't be shown as a bug. */
+    val onReportUndisplayable: ((com.slopus.happy.conversation.ConversationRow.Undisplayable) -> Unit)? = null,
 )
 
 /**
@@ -252,10 +256,20 @@ fun ConversationScreen(
     roleCanSend: Boolean = true,
     /** The person's role starts new work: the header's compose shows. */
     roleCanCompose: Boolean = true,
+    /** Where the reader left this conversation, to open there again; null keeps nothing. */
+    place: TranscriptPlace? = null,
+    /** Who else is on the chat, at the head of the bar's actions ([com.slopus.happy.ui.viewers.ViewersSlot]). */
+    viewers: @Composable () -> Unit = {},
+    /** The team, in name order, whom an `@` in the composer can mention; [self], the reader, is never offered. */
+    people: List<com.slopus.happy.agent.TeamUser> = emptyList(),
+    self: String? = null,
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
     val listState = rememberLazyListState()
+    // Left within the hour, it opens where the reader was; left, it keeps where they are.
+    val jumpThreshold = with(LocalDensity.current) { ConversationJumpSpec.threshold.toPx() }
+    DisposableEffect(place) { onDispose { place?.leave(listState, jumpThreshold) } }
     // The composer's text: this screen's while typing; a draft from elsewhere replaces it.
     var text by rememberSaveable { mutableStateOf(state.draft) }
     var arrivals by rememberSaveable { mutableStateOf(state.draftArrivals) }
@@ -269,7 +283,12 @@ fun ConversationScreen(
     // "/" opens the agent's commands over the composer, as desktop's palette does; a new chat's, the computer's skills.
     val commands by rememberUpdatedState(state.commands)
     val onCommand by rememberUpdatedState(actions.onCommand)
-    val commandSource = remember(state.agent?.id) { ConversationCommands(state.agent?.id, { commands }) { command -> onCommand(command.name, null) } }
+    // "@" offers the team, as desktop's mention list does, in a new chat as in one under way.
+    val team by rememberUpdatedState(people)
+    val reader by rememberUpdatedState(self)
+    val commandSource = remember(state.agent?.id) {
+        ConversationCommands(state.agent?.id, { commands }, { team }, { reader }) { command -> onCommand(command.name, null) }
+    }
     val autocomplete = com.slopus.happy.ui.autocomplete.rememberComposerAutocomplete(
         text,
         onTextChange = {
@@ -326,6 +345,7 @@ fun ConversationScreen(
             pages = actions.pages,
             genUi = actions.genUi,
             onOpenPipelineRun = actions.onOpenPipelineRun,
+            onReportUndisplayable = actions.onReportUndisplayable,
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
@@ -480,6 +500,7 @@ fun ConversationScreen(
                             }
                         },
                         actions = {
+                            if (state.created) viewers()
                             ConversationHeaderActions(state, actions, composes = roleCanCompose)
                         },
                         // On the content column, so back and the actions' glyphs sit on the messages' keyline.
@@ -516,7 +537,7 @@ fun ConversationScreen(
                             } else {
                                 Box(Modifier.fillMaxSize())
                             }
-                            TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass, keyboard, flight, folds)
+                            TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass, keyboard, flight, folds, place)
                         }
                     }
                     // New work: Task or Bot and a name under the kind's picture, centred between the bar and the
@@ -596,6 +617,7 @@ fun ConversationScreen(
                                 text = text,
                                 onTextChange = onComposerText,
                                 onSend = { words, attachments ->
+                                    place?.cancel()
                                     // "/name" and what follows runs that command; its words are never a message. A new chat's
                                     // first skill is its first message, drawn as one while the agent is made (Conversation.send).
                                     val invoked = if (attachments.isEmpty() && state.created) SlashCommands.invocation(words.trim(), state.commands) else null
@@ -613,6 +635,7 @@ fun ConversationScreen(
                                     answered || actions.onSend(words, attachments)
                                 },
                                 onSendPending = { words, attachments, pending ->
+                                    place?.cancel()
                                     flight.grounded = false
                                     actions.onSendPending(words, attachments, pending)
                                 },
@@ -670,6 +693,7 @@ private fun Transcript(
     keyboard: KeyboardLift,
     flight: SendFlight,
     folds: FoldHold,
+    place: TranscriptPlace?,
 ) {
     val nearOldest by remember {
         derivedStateOf {
@@ -687,7 +711,7 @@ private fun Transcript(
     flight.atNewest = { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 }
     // Code blocks offer desktop's quiet copy icon here, not the relay chat's pill.
     CompositionLocalProvider(LocalRevealHost provides reveal, LocalSendFlight provides flight, LocalCodeCopy provides CodeCopy.Icon) {
-        TranscriptList(state, listState, bubble, actions, onLoadOlder, bar, dock, glass, keyboard, reveal, flight, folds)
+        TranscriptList(state, listState, bubble, actions, onLoadOlder, bar, dock, glass, keyboard, reveal, flight, folds, place)
     }
 }
 
@@ -705,8 +729,10 @@ private fun TranscriptList(
     reveal: ListReveal,
     flight: SendFlight,
     folds: FoldHold,
+    place: TranscriptPlace?,
 ) {
     val density = LocalDensity.current
+    place?.apply(state.rows, listState)
     folds.apply(state.rows)
     // Rows arriving at the newest end come in as Telegram's do; with Reduce Motion they just appear.
     val motion = remember(listState) { TranscriptMotion(listState) }
@@ -795,6 +821,39 @@ internal class FoldHold(private val list: androidx.compose.foundation.lazy.LazyL
         // Past the rows is the list's own "older" item.
         val index = rows.indexOfFirst { it.key == held.key }.takeIf { it >= 0 } ?: rows.size.takeIf { held.key == OLDER_KEY } ?: return
         list.requestScrollToItem(index, -held.offset)
+    }
+}
+
+/**
+ * Where the reader left [agentId]'s conversation ([ScrollPlace]): opened
+ * again while the app runs, its first rows shown open on that row, scrolled
+ * as far into it, or on the newest row as before if it isn't among them. A
+ * send before they show lets the place go; the jump and a drag come only
+ * with them. Left with the jump hidden, at or near the newest message, it
+ * keeps nothing, so it opens there and follows what arrives.
+ */
+class TranscriptPlace(private val places: MutableMap<String, ScrollPlace>, private val agentId: String) {
+    /** Where the list is to open, until its first rows are composed. */
+    private var opensAt = places[agentId]
+
+    /** The rows composed now: the first of them are put on the place before they are laid out. */
+    fun apply(rows: List<ConversationRow>, list: androidx.compose.foundation.lazy.LazyListState) {
+        val place = opensAt?.takeIf { rows.isNotEmpty() } ?: return
+        opensAt = null
+        val index = rows.indexOfFirst { it.key == place.key }
+        if (index >= 0) list.requestScrollToItem(index, place.offset)
+    }
+
+    /** The person sent before the rows showed: it opens on the newest row. */
+    fun cancel() {
+        opensAt = null
+    }
+
+    /** The screen goes: where [list] is, more than [threshold] from the newest row, or the place it never opened on. */
+    fun leave(list: androidx.compose.foundation.lazy.LazyListState, threshold: Float) {
+        val shown = (list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == list.firstVisibleItemIndex }?.key as? String)?.takeIf { it != OLDER_KEY }
+        val place = opensAt ?: shown?.takeIf { distanceFromNewest(list) > threshold }?.let { ScrollPlace(it, list.firstVisibleItemScrollOffset) }
+        if (place == null) places.remove(agentId) else places[agentId] = place
     }
 }
 

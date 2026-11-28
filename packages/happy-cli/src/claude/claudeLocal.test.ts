@@ -315,4 +315,36 @@ describe('claudeLocal --continue handling', () => {
         const spawnedArgs = mockSpawn.mock.calls[0][1];
         expect(spawnedArgs).not.toContain('--dangerously-skip-permissions');
     });
+    it('passes happy --model on to the interactive Claude', async () => {
+        mockClaudeFindLastSession.mockReturnValue(null);
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            model: 'claude-sonnet-5-5',
+        });
+
+        const spawnArgs: string[] = mockSpawn.mock.calls[0][1];
+        expect(spawnArgs.slice(spawnArgs.indexOf('--model'), spawnArgs.indexOf('--model') + 2)).toEqual(['--model', 'claude-sonnet-5-5']);
+    });
+
+    it('leaves a --model already in the Claude arguments alone', async () => {
+        mockClaudeFindLastSession.mockReturnValue(null);
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            model: 'claude-sonnet-5-5',
+            claudeArgs: ['--model', 'claude-haiku-5-5'],
+        });
+
+        const spawnArgs: string[] = mockSpawn.mock.calls[0][1];
+        expect(spawnArgs.filter(arg => arg === '--model')).toHaveLength(1);
+        expect(spawnArgs).toContain('claude-haiku-5-5');
+        expect(spawnArgs).not.toContain('claude-sonnet-5-5');
+    });
 });

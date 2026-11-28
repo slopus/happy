@@ -192,6 +192,7 @@ class ConversationTest {
         route: AttachmentRoute = AttachmentRoute().apply { markMissing() },
         kept: MutableMap<String, java.io.File> = HashMap(),
         grouped: MutableStateFlow<Boolean>? = null,
+        makesBots: Boolean = true,
         created: (JsonObject) -> Unit = {},
     ) = Conversation(
         api = ConversationApi(null, agent.request, fileRequest = agent.fileRequest),
@@ -201,6 +202,7 @@ class ConversationTest {
         agentId = newTask?.agentId ?: "a1",
         newTask = newTask,
         initialChoice = choice,
+        makesBots = makesBots,
         onTaskCreated = created,
         lane = StandardTestDispatcher(testScheduler),
         io = StandardTestDispatcher(testScheduler),
@@ -302,10 +304,10 @@ class ConversationTest {
         val agent = FakeAgent()
         agent.page = """{"runs":[
           {"id":"r1","status":"completed","startedAt":1,"endedAt":3,"messages":[
-            {"id":"u1","role":"user","createdAt":1,"content":[{"type":"text","text":"First question"}],"metadata":{}},
+            {"id":"u1","role":"user","createdAt":1,"content":[{"type":"text","text":"First question"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null},
             {"id":"a1","role":"agent","createdAt":2,"content":[{"type":"text","text":"First answer"}],"metadata":{}}]},
           {"id":"r2","status":"completed","startedAt":4,"endedAt":6,"messages":[
-            {"id":"u2","role":"user","createdAt":4,"content":[{"type":"text","text":"Second question"}],"metadata":{}},
+            {"id":"u2","role":"user","createdAt":4,"content":[{"type":"text","text":"Second question"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null},
             {"id":"a2","role":"agent","createdAt":5,"content":[{"type":"text","text":"Second answer"}],"metadata":{}}]}
         ],"hasMore":false}"""
         val chat = conversation(agent)
@@ -323,7 +325,7 @@ class ConversationTest {
         assertEquals(listOf("First question", "First answer", "Second question", "Second answer"), read.messages.map { it.text })
         assertEquals(listOf(null, "r1", null, "r2"), read.messages.map { it.turn })
         // The person's next message, taken but not answered yet, is the one waiting.
-        agent.bootstrap = agent.bootstrap.replace("\"pending\":[]", """"pending":[{"id":"u3","role":"user","status":"pending","createdAt":7,"content":[{"type":"text","text":"Third question"}],"metadata":{}}]""")
+        agent.bootstrap = agent.bootstrap.replace("\"pending\":[]", """"pending":[{"id":"u3","role":"user","status":"pending","createdAt":7,"content":[{"type":"text","text":"Third question"}],"metadata":{},"delivery":"queue","mode":${FakeAgent.MODE},"runId":null}]""")
         val waiting = conversation(agent)
         advanceUntilIdle()
         val later = com.slopus.happy.call.CallTargetState.from(waiting.state.value, target)
@@ -343,7 +345,7 @@ class ConversationTest {
                 else """{"type":"text","text":"$part"}"""
             }
             val messages = listOfNotNull(
-                user?.let { """{"id":"u-$id","role":"user","createdAt":1,"content":[{"type":"text","text":"$it"}],"metadata":{}}""" },
+                user?.let { """{"id":"u-$id","role":"user","createdAt":1,"content":[{"type":"text","text":"$it"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null}""" },
                 """{"id":"m-$id","role":"agent","createdAt":2,"content":[${blocks.joinToString(",")}],"metadata":{}}""",
             )
             val status = when (reason) { null -> "running"; "steering" -> "aborted"; "error" -> "failed"; else -> "completed" }
@@ -372,8 +374,8 @@ class ConversationTest {
     @Test fun `grouping tool calls keeps a text-only history visible`() = runTest {
         val agent = FakeAgent().apply {
             page = """{"runs":[{"id":"r1","status":"completed","startedAt":1,"endedAt":3,"messages":[
-                {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}]},
-                {"id":"m2","role":"agent","createdAt":2,"content":[{"type":"text","text":"Done"}]}
+                {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null},
+                {"id":"m2","role":"agent","createdAt":2,"content":[{"type":"text","text":"Done"}],"metadata":{}}
             ]}],"hasMore":false}"""
         }
         val chat = conversation(agent, grouped = MutableStateFlow(true))
@@ -389,10 +391,10 @@ class ConversationTest {
     @Test fun `reads history and pending messages in run order`() = runTest {
         val agent = FakeAgent()
         agent.page = """{"runs":[{"id":"r1","status":"completed","messages":[
-            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{}},
+            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null},
             {"id":"m2","role":"agent","createdAt":2,"content":[{"type":"reasoning","text":"hmm"},{"type":"tool_call","id":"c1","name":"Bash","status":"completed","presentation":{"type":"exec_command","command":"ls"}},{"type":"text","text":"Done"}],"metadata":{}}
         ]}],"hasMore":true}"""
-        agent.bootstrap = agent.bootstrap.replace("\"pending\":[]", """"pending":[{"id":"m3","role":"user","status":"pending","createdAt":3,"content":[{"type":"text","text":"Next"}],"metadata":{}}]""")
+        agent.bootstrap = agent.bootstrap.replace("\"pending\":[]", """"pending":[{"id":"m3","role":"user","status":"pending","createdAt":3,"content":[{"type":"text","text":"Next"}],"metadata":{},"delivery":"queue","mode":${FakeAgent.MODE},"runId":null}]""")
         val chat = conversation(agent)
         advanceUntilIdle()
         val state = chat.state.value
@@ -408,9 +410,9 @@ class ConversationTest {
     @Test fun `a person's message opens whole and is cut back by its key, pending or in a run`() = runTest {
         val agent = FakeAgent()
         agent.page = """{"runs":[{"id":"r1","status":"completed","messages":[
-            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{}}
+            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null}
         ]}],"hasMore":false}"""
-        agent.bootstrap = agent.bootstrap.replace("\"pending\":[]", """"pending":[{"id":"m3","role":"user","status":"pending","createdAt":3,"content":[{"type":"text","text":"Next"}],"metadata":{}}]""")
+        agent.bootstrap = agent.bootstrap.replace("\"pending\":[]", """"pending":[{"id":"m3","role":"user","status":"pending","createdAt":3,"content":[{"type":"text","text":"Next"}],"metadata":{},"delivery":"queue","mode":${FakeAgent.MODE},"runId":null}]""")
         val chat = conversation(agent)
         advanceUntilIdle()
         fun opened() = chat.state.value.rows.filterIsInstance<ConversationRow.User>().filter { it.opened }.map { it.key }
@@ -463,6 +465,62 @@ class ConversationTest {
         assertEquals(reads + 1, agent.paths("GET").count { it.endsWith("/bootstrap") })
     }
 
+    /** The cluster's cancelled question card (`messages/fixtures.json`): `answers: null` and a `status` the protocol has no place for. */
+    private val cancelledCard: String = Json.parseToJsonElement(javaClass.classLoader!!.getResource("messages/fixtures.json")!!.readText())
+        .jsonObject["invalid"]!!.jsonArray.first { it.jsonObject["name"]!!.jsonPrimitive.content == "cancelled question card from the cluster" }
+        .jsonObject["message"].toString()
+
+    private fun userMessage(id: String, text: String, runId: String) =
+        """{"id":"$id","role":"user","createdAt":1,"content":[{"type":"text","text":"$text"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":"$runId"}"""
+
+    @Test fun `a message the protocol doesn't allow is one placeholder where it was, and its neighbours read`() = runTest {
+        val agent = FakeAgent()
+        agent.page = """{"runs":[{"id":"r1","status":"completed","startedAt":1,"endedAt":3,"messages":[
+            ${userMessage("u1", "Who reviews?", "r1")},
+            $cancelledCard,
+            {"id":"m2","role":"agent","createdAt":3,"content":[{"type":"text","text":"Asking Kirill."}],"metadata":{}}
+        ]}],"hasMore":false}"""
+        val chat = conversation(agent, grouped = MutableStateFlow(false))
+        advanceUntilIdle()
+        val state = chat.state.value
+        assertTrue(state.loaded)
+        assertNull(state.error)
+        // Newest first; folded, the finished turn still shows the placeholder.
+        val keys = state.rows.map { it.key }
+        assertTrue(keys.toString(), keys.containsAll(listOf("m2:0", "bad1:undisplayable", "u1:user")))
+        assertTrue(keys.toString(), keys.indexOf("m2:0") < keys.indexOf("bad1:undisplayable"))
+        assertTrue(keys.toString(), keys.indexOf("bad1:undisplayable") < keys.indexOf("u1:user"))
+        val placeholder = state.rows.filterIsInstance<ConversationRow.Undisplayable>().single()
+        assertEquals("/content/0/presentation/answers: expected an object, got null", placeholder.problem)
+        assertEquals(listOf("Asking Kirill."), state.rows.filterIsInstance<ConversationRow.Text>().map { it.text })
+        assertEquals(listOf("Who reviews?"), state.rows.filterIsInstance<ConversationRow.User>().map { it.text })
+    }
+
+    @Test fun `a live message the protocol doesn't allow is its placeholder until it is put right, and the stream goes on`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        signals.emit(event("run.started", """{"agentId":"a1","run":{"id":"r1","status":"running","startedAt":5},"acceptedMessageIds":[]}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":$cancelledCard}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"m2","role":"agent","createdAt":6,"content":[{"type":"text","text":"Go"}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        assertEquals(listOf("m2:0", "bad1:undisplayable"), chat.state.value.rows.map { it.key })
+        // A placeholder has nothing to grow: its words wait for the message's update, with no read of history.
+        val reads = agent.requests.size
+        signals.emit(event("message.delta", """{"agentId":"a1","runId":"r1","messageId":"bad1","blockIndex":0,"offset":0,"append":"x"}"""))
+        signals.emit(event("message.delta", """{"agentId":"a1","runId":"r1","messageId":"m2","blockIndex":0,"offset":2,"append":"!"}"""))
+        advanceUntilIdle()
+        assertEquals(reads, agent.requests.size)
+        assertEquals("Go!", (chat.state.value.rows.first() as ConversationRow.Text).current)
+        // Put right, it reads as any message.
+        val fixed = cancelledCard.replace(""""status":"canceled","answers":null""", """"answers":{"reviewer":["Kirill"]}""")
+        signals.emit(event("message.updated", """{"agentId":"a1","runId":"r1","message":$fixed}"""))
+        advanceUntilIdle()
+        val rows = chat.state.value.rows
+        assertTrue(rows.none { it is ConversationRow.Undisplayable })
+        assertEquals(mapOf("reviewer" to listOf("Kirill")), rows.filterIsInstance<ConversationRow.Ask>().single().question.answers)
+    }
+
     @Test fun `a delta goes to its streaming row alone, and the end of the run gives the rows the final words`() = runTest {
         val agent = FakeAgent()
         val chat = conversation(agent)
@@ -505,7 +563,7 @@ class ConversationTest {
 
     @Test fun `a failed older page waits for Retry`() = runTest {
         val agent = FakeAgent()
-        agent.page = """{"runs":[{"id":"r2","status":"completed","messages":[{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{}}]}],"hasMore":true}"""
+        agent.page = """{"runs":[{"id":"r2","status":"completed","messages":[{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null}]}],"hasMore":true}"""
         agent.failOlder = true
         val chat = conversation(agent)
         advanceUntilIdle()
@@ -517,7 +575,7 @@ class ConversationTest {
         advanceUntilIdle()
         assertEquals(asked, agent.requests.count { "before=" in it.second })
         agent.failOlder = false
-        agent.page = """{"runs":[{"id":"r1","status":"completed","messages":[{"id":"o","role":"user","createdAt":0,"content":[{"type":"text","text":"Older"}],"metadata":{}}]}],"hasMore":false}"""
+        agent.page = """{"runs":[{"id":"r1","status":"completed","messages":[{"id":"o","role":"user","createdAt":0,"content":[{"type":"text","text":"Older"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null}]}],"hasMore":false}"""
         chat.loadOlder(retry = true)
         advanceUntilIdle()
         assertFalse(chat.state.value.olderFailed)
@@ -555,7 +613,7 @@ class ConversationTest {
         // agent's own copy takes its place rather than arriving beside it:
         // the list keeps its anchor and nothing jumps.
         assertEquals("$id:user", row.key)
-        signals.emit(event("message.created", """{"agentId":"a1","runId":null,"message":{"id":"$id","role":"user","status":"pending","createdAt":5,"content":[{"type":"text","text":"Hello"}],"metadata":{}}}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":null,"message":{"id":"$id","role":"user","status":"pending","createdAt":5,"content":[{"type":"text","text":"Hello"}],"metadata":{},"delivery":"queue","mode":${FakeAgent.MODE},"runId":null}}"""))
         signals.emit(event("run.started", """{"agentId":"a1","run":{"id":"r1","status":"running","startedAt":5},"acceptedMessageIds":["$id"]}"""))
         advanceUntilIdle()
         assertEquals(listOf("$id:user"), chat.state.value.rows.map { it.key })
@@ -596,6 +654,34 @@ class ConversationTest {
         advanceUntilIdle()
         assertEquals(3, agent.requests.count { it.second.endsWith("/send") })
         assertEquals(Delivery.Pending, (chat.state.value.rows.single() as ConversationRow.User).delivery)
+    }
+
+    /**
+     * A daemon draining to restart answers every send 503: after its tries
+     * the message shows failed, and it goes again on its own, under the
+     * same id, once the stream is back. One the computer refused stays failed.
+     */
+    @Test fun `a send refused for now goes again once the stream is back`() = runTest {
+        val agent = FakeAgent()
+        agent.failSends = 3
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.send("While draining")
+        advanceUntilIdle()
+        assertTrue((chat.state.value.rows.single() as ConversationRow.User).delivery is Delivery.Failed)
+        assertEquals(3, agent.requests.count { it.second.endsWith("/send") })
+        signals.emit(ConversationSignal.Resync)
+        advanceUntilIdle()
+        val ids = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!!["id"] }
+        assertEquals(4, ids.size)
+        assertEquals("the same send", 1, ids.toSet().size)
+        assertEquals(Delivery.Pending, (chat.state.value.rows.single() as ConversationRow.User).delivery)
+        agent.sendStatus = 400
+        chat.send("Refused")
+        advanceUntilIdle()
+        signals.emit(ConversationSignal.Resync)
+        advanceUntilIdle()
+        assertEquals("a refusal isn't sent again", 5, agent.requests.count { it.second.endsWith("/send") })
     }
 
     @Test fun `a new chat makes its task on the first send, then becomes the real chat in place`() = runTest {
@@ -716,6 +802,20 @@ class ConversationTest {
         advanceUntilIdle()
         assertNull(chat.state.value.newWork)
         assertEquals(listOf("Ship it"), chat.state.value.rows.map { (it as ConversationRow.User).text })
+    }
+
+    @Test fun `where people make no bots new work is a task whatever was picked or kept`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"), WorkChoice(WorkKind.Bot, "Kept"), makesBots = false)
+        assertEquals(NewWork(WorkChoice(), bots = false), chat.state.value.newWork)
+        advanceUntilIdle()
+        chat.setChoice(WorkChoice(WorkKind.Bot, "Asked"))
+        advanceUntilIdle()
+        assertEquals(NewWork(WorkChoice(), bots = false), chat.state.value.newWork)
+        chat.send("Ship it")
+        advanceUntilIdle()
+        assertTrue(agent.paths("POST").none { it.startsWith("/v0/bots") })
+        assertTrue(agent.paths("POST").contains("/v0/tasks"))
     }
 
     @Test fun `a refused new work leaves its first message failed and Retry asks again under the same ids`() = runTest {
@@ -1081,7 +1181,7 @@ class ConversationTest {
 
     @Test fun `what an agent sent itself is never the person's words`() {
         fun message(status: String = "accepted", metadata: String) =
-            Message.parse(Json.parseToJsonElement("""{"id":"m","role":"user","status":"$status","createdAt":1,"content":[{"type":"text","text":"Pipeline Deploy (version 3) run r1 ended: failed."}],"metadata":$metadata}"""))!!
+            Message.parse(Json.parseToJsonElement("""{"id":"m","role":"user","status":"$status","createdAt":1,"content":[{"type":"text","text":"Pipeline Deploy (version 3) run r1 ended: failed."}],"metadata":$metadata,"delivery":"queue","mode":${FakeAgent.MODE},"runId":null}"""))!!
         fun row(message: Message) = ConversationRowBuilder.build(message, "a1", "p", false)
         val run = """{"runId":"r1","pipelineId":"p1","pipelineName":"Deploy","state":"failed","summary":"build: exception; test: timeout","version":3}"""
         val notice = message(metadata = """{"senderAgentId":"a1","senderAgentExplanation":"Pipeline Deploy failed","pipelineRun":$run}""")
@@ -1332,7 +1432,7 @@ class ConversationTest {
     }
 
     @Test fun `a sent message's attachments read as media under its words`() {
-        val message = Message.parse(Json.parseToJsonElement("""{"id":"m1","role":"user","status":"completed","createdAt":1,"content":[{"type":"text","text":"Look"},{"type":"file","attachment":"abc","name":"notes.pdf","mimeType":"application/pdf","size":2},{"type":"file","attachment":"def","name":"IMG.jpg","mimeType":"image/jpeg","size":2000000,"kind":"image","width":4032,"height":3024,"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"},{"type":"file","attachment":"fed","name":"a.bin","mimeType":"application/octet-stream","size":1,"kind":"hologram"}]}"""))!!
+        val message = Message.parse(Json.parseToJsonElement("""{"id":"m1","role":"user","status":"completed","createdAt":1,"content":[{"type":"text","text":"Look"},{"type":"file","attachment":"abc","name":"notes.pdf","mimeType":"application/pdf","size":2},{"type":"file","attachment":"def","name":"IMG.jpg","mimeType":"image/jpeg","size":2000000,"kind":"image","width":4032,"height":3024,"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"},{"type":"file","attachment":"fed","name":"a.bin","mimeType":"application/octet-stream","size":1,"kind":"hologram"}],"metadata":{},"delivery":"queue","mode":${FakeAgent.MODE},"runId":null}"""))!!
         assertEquals(Block.File("abc", "notes.pdf", "application/pdf", 2), message.content[1])
         assertEquals(Block.File("def", "IMG.jpg", "image/jpeg", 2000000, "image", 4032.0, 3024.0, "1QcSHQRnh493V4dIh4eXh1h4kJUI"), message.content[2])
         val row = ConversationRowBuilder().rows(message, "a1", null, false).single() as ConversationRow.User
@@ -1607,7 +1707,7 @@ class ConversationTest {
     /** The screen and a call hold the agent's one conversation: made once, by whichever came first, with what it was made with. */
     @Test fun `two holders share one conversation made once, laid out as the screen's`() = runTest {
         val agent = FakeAgent().apply { page = """{"runs":[{"id":"r1","status":"completed","messages":[
-            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{}},
+            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null},
             {"id":"m2","role":"agent","createdAt":2,"content":[{"type":"text","text":"Done"}],"metadata":{}}
         ]}],"hasMore":false}""" }
         val typeset = ArrayList<List<ConversationRow>>()
@@ -1864,13 +1964,13 @@ class ConversationTest {
     }
 
     private fun message(id: String, role: String, text: String) =
-        """{"id":"$id","role":"$role","createdAt":1,"content":[{"type":"text","text":"$text"}],"metadata":{}}"""
+        """{"id":"$id","role":"$role","createdAt":1,"content":[{"type":"text","text":"$text"}],"metadata":{}${if (role == "user") ""","status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null""" else ""}}"""
 
     private fun run(id: String, status: String, vararg messages: String) =
         """{"id":"$id","status":"$status","startedAt":1,"messages":[${messages.joinToString(",")}]}"""
 
-    private fun kept(hasMore: Boolean, vararg runs: String): JsonObject =
-        Json.parseToJsonElement("""{"version":3,"hasMore":$hasMore,"pending":[],"runs":[${runs.joinToString(",")}]}""").jsonObject
+    private fun kept(hasMore: Boolean, vararg runs: String, version: Int = 4): JsonObject =
+        Json.parseToJsonElement("""{"version":$version,"hasMore":$hasMore,"pending":[],"runs":[${runs.joinToString(",")}]}""").jsonObject
 
     private val keptTwoRuns get() = kept(
         true,
@@ -1906,6 +2006,54 @@ class ConversationTest {
         // And what it shows now is kept for next time.
         assertTrue(keeper.writes > 0)
         assertEquals(listOf("r1", "r2", "r3"), KeptConversation.parse(keeper.value)!!.runs.map { it.id })
+    }
+
+    @Test fun `a chat whose last entry came without an ID reopens catching up from the last real one`() = runTest {
+        val agent = FakeAgent()
+        // The run's last entry has no ID: its placeholder is "r1:2" on this phone alone.
+        agent.page = """{"runs":[${run("r1", "completed", message("m1", "user", "Hi"), message("m2", "agent", "Hello"), """{"role":"agent","createdAt":2,"content":[],"metadata":{}}""")}],"hasMore":false}"""
+        val keeper = MemoryKeeper()
+        conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        val kept = KeptConversation.parse(keeper.value)!!.runs.single().messages
+        assertEquals(listOf("m1", "m2", "r1:2"), kept.map { it.id })
+        assertEquals(listOf("m1", "m2", null), kept.map { it.serverId })
+
+        agent.requests.clear()
+        agent.afterPage = """{"runs":[${run("r1", "completed", message("m1", "user", "Hi"), message("m2", "agent", "Hello"), """{"role":"agent","createdAt":2,"content":[],"metadata":{}}""")}, ${run("r2", "completed", message("m3", "user", "More"))}],"hasMore":false}"""
+        val reopened = conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        val reads = agent.requests.map { it.second }.filter { "/messages" in it }
+        assertEquals(reads.toString(), 1, reads.size)
+        assertTrue(reads.single(), "after=m2" in reads.single())
+        assertTrue(reads.none { "r1" in it })
+        assertNull(reopened.state.value.error)
+        assertEquals(listOf("m3:user", "r1:2:undisplayable", "m2:0", "m1:user"), reopened.state.value.rows.filter { it !is ConversationRow.TurnEnd && it !is ConversationRow.Trace }.map { it.key })
+    }
+
+    @Test fun `a chat kept before messages were checked shows from disk, then is read whole once`() = runTest {
+        val agent = FakeAgent().apply { gate = CompletableDeferred() }
+        // The old build kept the cluster's card as an answered question; it is the computer's copy that is checked.
+        val keeper = MemoryKeeper(kept(true, run("r1", "completed", message("m1", "user", "Hi"), message("m2", "agent", "Hello")), version = 3))
+        agent.page = """{"runs":[${run("r1", "completed", message("m1", "user", "Hi"), message("m2", "agent", "Hello"))}, ${run("r2", "completed", message("m3", "agent", "Later"))}],"hasMore":false}"""
+        val chat = conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        // Offline, the old copy shows.
+        assertEquals(listOf("m2:0", "m1:user"), chat.state.value.rows.map { it.key })
+        agent.gate!!.complete(Unit)
+        advanceUntilIdle()
+        val reads = agent.requests.map { it.second }.filter { "/messages" in it }
+        assertEquals(reads.toString(), 1, reads.size)
+        assertTrue(reads.single(), "after=" !in reads.single())
+        assertEquals(listOf("m3:0", "m2:0", "m1:user"), chat.state.value.rows.map { it.key })
+        assertTrue(KeptConversation.parse(keeper.value)!!.checked)
+
+        // Kept checked now: the next open catches up from where it was.
+        agent.requests.clear()
+        agent.gate = null
+        conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        assertTrue(agent.requests.map { it.second }.single { "/messages" in it }.contains("after=m3"))
     }
 
     @Test fun `a newest run that was still going is read again whole`() = runTest {
@@ -1976,7 +2124,7 @@ class ConversationTest {
 
     @Test fun `history kept before file blocks kept their kind is read again`() {
         // Version 1 wrote a picture's file block as a name only, so it would stay a file card.
-        val old = """{"version":1,"hasMore":false,"pending":[],"runs":[${run("r1", "completed", """{"id":"m1","role":"user","createdAt":1,"content":[{"type":"file","attachment":"def","name":"IMG.jpg","mimeType":"image/jpeg","size":2}],"metadata":{}}""")}]}"""
+        val old = """{"version":1,"hasMore":false,"pending":[],"runs":[${run("r1", "completed", """{"id":"m1","role":"user","createdAt":1,"content":[{"type":"file","attachment":"def","name":"IMG.jpg","mimeType":"image/jpeg","size":2}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null}""")}]}"""
         assertNull(KeptConversation.parse(Json.parseToJsonElement(old).jsonObject))
     }
 
@@ -2108,7 +2256,7 @@ class ConversationTest {
             override fun write(value: JsonObject) { kept = value }
         }
         val history = FakeAgent().withCommands().apply {
-            page = """{"runs":[{"id":"r1","status":"completed","messages":[{"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"}]}]}],"hasMore":false}"""
+            page = """{"runs":[{"id":"r1","status":"completed","messages":[{"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null}]}],"hasMore":false}"""
         }
         val first = conversation(history, keeper = store)
         advanceUntilIdle()
@@ -2245,11 +2393,11 @@ class ConversationTest {
 
 
     private val endedTurn = """{"runs":[{"id":"r1","status":"completed","startedAt":1000,"endedAt":13000,"reason":"completed","messages":[
-        {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Fix it"}],"metadata":{}},
+        {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Fix it"}],"metadata":{},"status":"accepted","delivery":"queue","mode":${FakeAgent.MODE},"runId":null},
         {"id":"m2","role":"agent","createdAt":2,"content":[
             {"type":"reasoning","text":"Look first."},
             {"type":"tool_call","id":"c1","name":"exec_command","status":"completed","presentation":{"type":"exec_command","command":"ls"}},
-            {"type":"tool_call","id":"c2","name":"apply_patch","status":"completed","presentation":{"type":"file_diff","files":[{"path":"src/a.ts","kind":"update","added":3,"deleted":1}]}},
+            {"type":"tool_call","id":"c2","name":"apply_patch","status":"completed","presentation":{"type":"file_diff","files":[{"path":"src/a.ts","kind":"update","added":3,"deleted":1,"hunks":[]}]}},
             {"type":"text","text":"Done"}
         ],"metadata":{}}
     ]}],"hasMore":false}"""
@@ -2358,7 +2506,7 @@ class ConversationTest {
         // Taken: all there until the agent's own copy comes back.
         assertEquals(UploadPhase.Done, chat.uploads.phase(UploadBoard.pictureKey(id, 1)))
         assertEquals(Delivery.Pending, chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().delivery)
-        signals.emit(event("message.created", """{"agentId":"a1","runId":null,"message":{"id":"$id","role":"user","status":"pending","createdAt":5,"content":[{"type":"text","text":"Look"}],"metadata":{}}}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":null,"message":{"id":"$id","role":"user","status":"pending","createdAt":5,"content":[{"type":"text","text":"Look"}],"metadata":{},"delivery":"queue","mode":${FakeAgent.MODE},"runId":null}}"""))
         advanceUntilIdle()
         assertEquals(null, chat.uploads.phase(UploadBoard.pictureKey(id, 0)))
     }

@@ -3,7 +3,8 @@
  * Provides endpoints for listing sessions, stopping sessions, and daemon shutdown
  */
 
-import fastify, { FastifyInstance } from 'fastify';
+import fastify from 'fastify';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { logger } from '@/ui/logger';
@@ -12,7 +13,7 @@ import { decodeBase64 } from '@/api/encryption';
 import { TrackedSession, SessionEncryptionData } from './types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 
-export function startDaemonControlServer({
+export function createDaemonControlServer({
   getChildren,
   stopSession,
   spawnSession,
@@ -26,11 +27,17 @@ export function startDaemonControlServer({
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata, encryption?: SessionEncryptionData) => void;
   getConnectionStatus?: () => { machineId: string; cliVersion: string; serverUrl: string; connected: boolean };
-}): Promise<{ port: number; stop: () => Promise<void> }> {
-  return new Promise((resolve) => {
-    const app = fastify({
-      logger: false // We use our own logger
-    });
+}) {
+  const controlToken = randomBytes(32).toString('hex');
+  const expected = Buffer.from(`Bearer ${controlToken}`);
+  const app = fastify({ logger: false });
+  app.addHook('onRequest', async (request, reply) => {
+    const provided = Buffer.from(request.headers.authorization ?? '');
+    if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+      return reply.code(401).send({ error: 'Unauthorized' });
+    }
+  });
+  app.register(async (app) => {
 
     // Set up Zod type provider
     app.setValidatorCompiler(validatorCompiler);
@@ -218,23 +225,14 @@ export function startDaemonControlServer({
       return { status: 'stopping' };
     });
 
-    app.listen({ port: 0, host: '127.0.0.1' }, (err, address) => {
-      if (err) {
-        logger.debug('[CONTROL SERVER] Failed to start:', err);
-        throw err;
-      }
-
-      const port = parseInt(address.split(':').pop()!);
-      logger.debug(`[CONTROL SERVER] Started on port ${port}`);
-
-      resolve({
-        port,
-        stop: async () => {
-          logger.debug('[CONTROL SERVER] Stopping server');
-          await app.close();
-          logger.debug('[CONTROL SERVER] Server stopped');
-        }
-      });
-    });
   });
+  return { app, controlToken };
+}
+
+export async function startDaemonControlServer(options: Parameters<typeof createDaemonControlServer>[0]) {
+  const { app, controlToken } = createDaemonControlServer(options);
+  const address = await app.listen({ port: 0, host: '127.0.0.1' });
+  const port = Number(new URL(address).port);
+  logger.debug(`[CONTROL SERVER] Started on port ${port}`);
+  return { port, controlToken, stop: () => app.close() };
 }

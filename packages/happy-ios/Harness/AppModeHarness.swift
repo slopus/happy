@@ -86,7 +86,7 @@ private actor AppModeComputer: AgentTransport {
 
     private static let runs = #"""
     {"hasMore":false,"runs":[{"id":"r1","status":"completed","startedAt":1000,"endedAt":2000,"reason":"completed","messages":[
-      {"id":"u1","role":"user","createdAt":1,"metadata":{},"content":[{"type":"text","text":"Make me a small game I can play on my phone."}]},
+      {"id":"u1","role":"user","createdAt":1,"metadata":{},"status":"accepted","delivery":"queue","runId":"r1","mode":{"providerId":"claude","modelId":"opus","effort":"medium","serviceTier":null,"permissionMode":"auto"},"content":[{"type":"text","text":"Make me a small game I can play on my phone."}]},
       {"id":"m1","role":"agent","createdAt":2,"metadata":{},"content":[{"type":"text","text":"Here it is: drag to chase the dot."},\#(call("game", title: "Dot Chase")),
         {"type":"text","text":"And the notes, as a page."},\#(call("notes", title: "Release notes"))]}
     ]}]}

@@ -152,6 +152,8 @@ public actor PipelinesFeed {
     }
 
     private func landPipelines(_ result: Result<[PipelineSummary], Error>) {
+        // Uninstalled for the account: the screen leaves, with nothing said.
+        if case .failure(let error) = result, AccountFeatures.refused(error) { pipelinesRead = Coalesced(); return }
         switch result {
         case .success(let pipelines):
             state.pipelines = pipelines
@@ -178,6 +180,7 @@ public actor PipelinesFeed {
     }
 
     private func landRuns(_ result: Result<PipelineRunPage, Error>) {
+        if case .failure(let error) = result, AccountFeatures.refused(error) { runsRead = Coalesced(); return }
         switch result {
         case .success(let page):
             state.runs.entries = PipelineRunPage.merge(state.runs.entries, page: page.runs, complete: !pagedPastFirst)
@@ -213,6 +216,7 @@ public actor PipelinesFeed {
 
     private func landMore(_ result: Result<PipelineRunPage, Error>) {
         state.runs.loadingMore = false
+        if case .failure(let error) = result, AccountFeatures.refused(error) { return }
         switch result {
         case .success(let page):
             let known = Set(state.runs.entries.map(\.id))

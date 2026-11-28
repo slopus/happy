@@ -53,6 +53,10 @@ interface PluginsBackend {
  * compiled into the server, installed for the team. Members read the
  * catalog; installations and their writes take `mcp.manage`, which
  * [canManage] answers where the installations list doesn't say itself.
+ * A feature plugin (`kind: "feature"`, "Feature plugins") is the person's
+ * own: listed with whether they have it (`installed`), its installation's
+ * ID the plugin's, installed and uninstalled by any member through the
+ * same routes.
  */
 class ClusterPlugins(
     private val client: AgentClient,
@@ -71,10 +75,12 @@ class ClusterPlugins(
             // A member without mcp.manage on a server that keeps installations to managers.
             if (e.status == 403) null else throw e
         }
-        val plugins = catalog["plugins"].arr.orEmpty().mapNotNull { it.obj?.let(::plugin) }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        val listing = catalog["plugins"].arr.orEmpty().mapNotNull { it.obj }
+        val plugins = listing.mapNotNull(::plugin).sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        val installations = listed?.get("installations").arr.orEmpty().mapNotNull { it.obj?.let(::installation) }
         return PluginsSnapshot(
             plugins = plugins,
-            installations = listed?.get("installations").arr.orEmpty().mapNotNull { it.obj?.let(::installation) },
+            installations = installations + ownFeatures(listing, installations),
             canManage = listed?.get("canManage").bool ?: canManage(),
         )
     }
@@ -134,6 +140,9 @@ class ClusterPlugins(
     internal companion object {
         const val INSTALLATIONS = "/v0/plugins/installations"
 
+        /** happy-cluster API.md, "Feature plugins": `kind` of one of Happy's own features; any other is an integration. */
+        const val FEATURE = "feature"
+
         fun image(json: JsonElement?): PluginImage? {
             val image = json.obj ?: return null
             val digest = image["digest"].str?.takeIf { it.isNotEmpty() } ?: return null
@@ -157,7 +166,23 @@ class ClusterPlugins(
                 authRequired = auth?.get("required").bool == true,
                 authMethods = auth?.get("methods").arr.orEmpty().mapNotNull { it.obj?.let(::method) },
                 installability = Installability.Installable,
-                multiInstance = true,
+                // A feature plugin is the person's own: theirs installed or not, never twice.
+                multiInstance = json["kind"].str != FEATURE,
+                feature = json["kind"].str == FEATURE,
+            )
+        }
+
+        /**
+         * The feature plugins the catalog says the person has (`installed`)
+         * that [listed] doesn't hold, as their installations: a member whose
+         * role can't read the installations still has their own.
+         */
+        fun ownFeatures(catalog: List<JsonObject>, listed: List<PluginInstallation>): List<PluginInstallation> = catalog.mapNotNull { json ->
+            val plugin = plugin(json)?.takeIf { it.feature && json["installed"].bool == true } ?: return@mapNotNull null
+            if (listed.any { it.pluginKey == plugin.key }) return@mapNotNull null
+            PluginInstallation(
+                id = plugin.id, pluginKey = plugin.key, name = plugin.name, ordinal = 1, label = null,
+                status = InstallationStatus.Active, authMethod = null, image = plugin.image, available = true, feature = true,
             )
         }
 
@@ -203,6 +228,7 @@ class ClusterPlugins(
                 authMethod = json["authMethod"].str?.takeIf { it.isNotEmpty() },
                 image = image(json["image"]),
                 available = json["available"].bool != false,
+                feature = json["kind"].str == FEATURE,
             )
         }
 

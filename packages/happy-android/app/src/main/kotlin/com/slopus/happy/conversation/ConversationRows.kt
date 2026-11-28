@@ -197,6 +197,13 @@ sealed interface ConversationRow {
         val line: Boolean = false,
     ) : ConversationRow
 
+    /**
+     * A message that couldn't be shown: the computer sent something the
+     * protocol doesn't allow, or its rows couldn't be built. [problem] is
+     * the short reason, for a bug report; nothing else of it is kept.
+     */
+    data class Undisplayable(override val key: String, val messageId: String, val problem: String) : ConversationRow
+
     /** One line of housekeeping worth showing (a compaction). */
     data class Notice(override val key: String, val kind: NoticeKind) : ConversationRow
 
@@ -232,6 +239,24 @@ sealed interface ConversationRow {
 }
 
 enum class NoticeKind { Compacting, Compacted, CompactionFailed }
+
+/** Each message that couldn't be shown, logged once a process: the agent, the message and why, never what it held. */
+object UndisplayableLog {
+    private val told = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /** Where the lines go; tests read them here. */
+    var write: (String) -> Unit = { line ->
+        try {
+            android.util.Log.w("Conversation", line)
+        } catch (_: RuntimeException) {
+            // A JVM test's android.jar has no log.
+        }
+    }
+
+    fun once(agentId: String, row: ConversationRow.Undisplayable) {
+        if (told.add("$agentId/${row.messageId}/${row.problem}")) write("Message ${UndisplayableReport.shown(row.messageId)} of agent ${UndisplayableReport.shown(agentId)} failed to display: ${row.problem}")
+    }
+}
 
 /** Where a question's answer stands. */
 @Immutable
@@ -288,7 +313,13 @@ class ConversationRowBuilder(
         val references = references
         cache[message.id]?.let { if (!streaming && !it.streaming && it.message == message && (!it.names || it.references === references)) return it.rows }
         val here = here
-        val rows = build(message, agentId, parentAgentId, streaming, if (streaming) ::live else null, references, hasPage, here)
+        // Rows that can't be built are the message's placeholder, never a broken chat.
+        val rows = try {
+            build(message, agentId, parentAgentId, streaming, if (streaming) ::live else null, references, hasPage, here)
+        } catch (e: Exception) {
+            listOf(undisplayable(message.id, "rows: ${e.javaClass.simpleName}"))
+        }
+        rows.firstOrNull { it is ConversationRow.Undisplayable }?.let { UndisplayableLog.once(agentId, it as ConversationRow.Undisplayable) }
         val shown = message.content.mapNotNull { block -> (block as? Block.ToolCall)?.presentation?.let(::inlineCandidate) }
         val names = shown.isNotEmpty() || message.content.any { it is Block.Text && References.mayHold(it.text) }
         if (names) named?.let { tell -> message.content.forEach { if (it is Block.Text) tell(HappyReferences.linkTags(it.text, here)) } }
@@ -360,6 +391,7 @@ class ConversationRowBuilder(
             here: ((String) -> Boolean)? = null,
         ): List<ConversationRow> {
             val id = message.id
+            message.undisplayable?.let { return listOf(undisplayable(id, it)) }
             if (message.role == "service") {
                 failureOf(message)?.let { return listOf(it) }
                 val compaction = message.content.filterIsInstance<Block.Compaction>().firstOrNull() ?: return emptyList()
@@ -468,6 +500,9 @@ class ConversationRowBuilder(
         /** [text] with its tags as words and everything else, links among it, as written: what is copied and read aloud. */
         internal fun plain(text: String, references: References?): String =
             if (references == null || !References.mayHold(text)) text else HappyReferences.plain(text, references)
+
+        /** Message [id]'s placeholder, and why it is one. */
+        fun undisplayable(id: String, problem: String) = ConversationRow.Undisplayable("$id:undisplayable", id, problem)
 
         /** A question's row, one key waiting at the end or settled in its turn, so it moves rather than swaps. */
         fun askKey(questionId: String): String = "ask:$questionId"

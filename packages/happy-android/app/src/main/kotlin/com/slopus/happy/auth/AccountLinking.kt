@@ -92,6 +92,25 @@ suspend fun approveAccountLink(
 const val TERMINAL_URL_PREFIX = "happy://terminal?"
 
 /**
+ * The terminal's box public key in a `happy://terminal?` link; null when
+ * [url] isn't one or its key isn't 32 bytes. Read as iOS reads it
+ * (LegacyPairingLink): base64url as the CLI and Happy Agent write it, or
+ * standard base64. A line break or space inside it, as a terminal that
+ * wraps the long line copies it, is dropped.
+ */
+fun terminalPublicKey(url: String): ByteArray? {
+    if (!url.startsWith(TERMINAL_URL_PREFIX)) return null
+    val text = url.substring(TERMINAL_URL_PREFIX.length).filterNot { it.isWhitespace() }
+        .replace('+', '-').replace('/', '_').trimEnd('=')
+    val key = try {
+        decodeBase64(text, Base64Variant.Url)
+    } catch (_: IllegalArgumentException) {
+        return null
+    }
+    return key.takeIf { it.size == Sodium.BOX_PUBLIC_KEY_BYTES }
+}
+
+/**
  * Connecting a terminal (useConnectTerminal.ts processAuthUrl with
  * authApprove.ts). The terminal waits with a box key pair; this phone seals
  * two answers to it: v1 is the account secret, v2 is `0x00 || the content
@@ -99,8 +118,9 @@ const val TERMINAL_URL_PREFIX = "happy://terminal?"
  * work without the secret. The server says which one the terminal takes. A
  * request that is already answered or gone needs nothing, and counts as done.
  *
- * Throws [InvalidLinkException] when [url] is not a terminal link, and any
- * other exception when the key is malformed or a request fails.
+ * Throws [InvalidLinkException] when [url] is not a terminal link or its
+ * key isn't one ([terminalPublicKey]), and any other exception when a
+ * request fails.
  */
 suspend fun approveTerminal(
     api: AuthApi,
@@ -109,8 +129,7 @@ suspend fun approveTerminal(
     url: String,
     random: RandomSource = SecureRandomSource,
 ) {
-    if (!url.startsWith(TERMINAL_URL_PREFIX)) throw InvalidLinkException("Not a terminal link")
-    val publicKey = decodeBase64(url.substring(TERMINAL_URL_PREFIX.length), Base64Variant.Url)
+    val publicKey = terminalPublicKey(url) ?: throw InvalidLinkException("Not a terminal link")
     val responseV1 = encryptBox(credentials.secretBytes(), publicKey, random)
     val responseV2 = encryptBox(byteArrayOf(0) + encryption.contentPublicKey, publicKey, random)
     val status = api.terminalAuthStatus(publicKey)

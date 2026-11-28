@@ -11,6 +11,10 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var allRows: [Row] = []
     /// The active tasks the person isn't in, which search finds too.
     public var unjoinedTasks: [Row] = []
+    /// The documents and todo lists the person is in, listed under the
+    /// Documents and TODOs rows rather than as rows of their own: what
+    /// search finds and counts as theirs (`SidebarRows.sectioned`).
+    public var sectionedRows: [Row] = []
     public var settings: [String: JSONValue] = [:]
     /// The person signed in as a team user; nil outside a team.
     public var userId: String?
@@ -22,8 +26,18 @@ public struct HomeSnapshot: Equatable, Sendable {
     /// its way back, "connecting…", as a Happy account's socket is, never
     /// an `error` home says. Android's `AgentSession.reconnecting`.
     public var reconnecting = false
+    /// The daemon said it is draining to restart (its hello's `draining`,
+    /// or `daemon.draining`): writes are refused until a new process says
+    /// hello. Kept through the reconnect in between.
+    public var draining = false
     /// An action the computer refused, said for a moment while it rolls back.
     public var notice: String?
+    /// What is available to the person's account (cloud only): a feature
+    /// whose plugin they uninstalled is listed nowhere, and its screens close.
+    public var features = AccountFeatures()
+    /// The bots carry a `kind` (`BotKind`): a Happy Cloud server's, whose
+    /// bots its admin bot makes, so none is made here.
+    public var botKinds = false
     public init() {}
 }
 
@@ -45,6 +59,8 @@ public actor SyncEngine {
     /// The documents open on this account and those with changes still to
     /// send; the stream's live document frames go to them.
     public nonisolated let documents: DocumentLibrary
+    /// Who else looks at the conversations and Surfaces on screen.
+    public nonisolated let viewers: ViewersStore
     /// The todo lists open on this account or with changes on their way.
     public nonisolated let todos: TodoLibrary
     /// The vaults' folders, Trash and settings open on this account, and
@@ -69,6 +85,14 @@ public actor SyncEngine {
     /// The server runs pipelines (`capabilities.pipelines`, cloud only):
     /// home lists them under Plugins. Kept beside `plugins`.
     private var pipelines = false
+    /// What is available to the person's whole account, by its feature
+    /// plugins (cloud only): read on every connect and on coming back to
+    /// the foreground, replaced by each `features.updated`, kept for the
+    /// next launch. A route that answers `403 feature_not_installed` makes
+    /// its feature unavailable here too.
+    private var features = AccountFeatures()
+    /// One read of them at a time; news meanwhile reads them once more after.
+    private var featuresRead = (reading: false, again: false)
     private var feedFollowing: Task<Void, Never>?
     /// Everything a Feed row can name (`FeedDirectory`), as last made, and
     /// what it is made from beside the bootstrap.
@@ -165,6 +189,9 @@ public actor SyncEngine {
     private var refresh: Task<Void, Never>?
     private var delivery: Task<Void, Never>?
     private var messageDelivery: Task<Void, Never>?
+    /// The wait before the next try of a send that failed, cut short once
+    /// the computer is verified again (`allowDelivery`).
+    private var messageBackoff: Task<Void, Never>?
     private var messageListeners: [UUID: (agentID: String, continuation: AsyncStream<DeliveryEvent>.Continuation)] = [:]
     private var profileListeners: [UUID: AsyncStream<Void>.Continuation] = [:]
     private var verified = false
@@ -231,6 +258,7 @@ public actor SyncEngine {
         })
         self.intents = intents
         documents = DocumentLibrary(client: client, directory: directory)
+        viewers = ViewersStore { streamId, targets in try await client.putViewers(streamId: streamId, targets: targets) }
         let spaces = Store(client: client, offline: offline, intents: intents)
         self.spaces = spaces
         let keep = EngineResources()
@@ -249,6 +277,7 @@ public actor SyncEngine {
         lookups = FeedLookups(routes: client, keep: keep)
         forward.engine = self
         keep.engine = self
+        client.featureRefusals.listen { [weak self] feature in Task { await self?.refused(feature) } }
     }
 
     public func snapshots() -> AsyncStream<HomeSnapshot> {
@@ -304,7 +333,8 @@ public actor SyncEngine {
         guard !backgrounded else { return }
         backgrounded = true
         // Only a verified stream is held: a held winner brings no hello to verify.
-        guard !stopped, runner != nil, snapshot.live, verified, eventStream != nil else { await pause(); return }
+        // Unheld, its close ends what it looked at on the server.
+        guard !stopped, runner != nil, snapshot.live, verified, eventStream != nil else { await viewers.setForeground(false); await pause(); return }
         let id = UUID()
         holdID = id
         let deadline = ContinuousClock.now + streamHoldDuration
@@ -312,11 +342,13 @@ public actor SyncEngine {
         let release = await streamHold { [weak self] in Task { await self?.expireHold(id) } }
         guard holdID == id else { await release?(); return }
         releaseHold = release
-        guard release != nil else { await expireHold(id); return }
+        guard release != nil else { await viewers.setForeground(false); await expireHold(id); return }
         holdTimer = Task {
             do { try await Task.sleep(until: deadline, clock: .continuous) } catch { return }
             await self.expireHold(id)
         }
+        // Held, the stream stays: the store says `[]` on it within the hold.
+        await viewers.setForeground(false)
         await intents.setOnline(false)
     }
 
@@ -333,6 +365,7 @@ public actor SyncEngine {
             guard await pause() else { return }
         }
         backgrounded = false
+        await viewers.setForeground(true)
         holdID = nil; holdDeadline = nil
         holdTimer?.cancel(); holdTimer = nil
         let release = releaseHold; releaseHold = nil
@@ -344,6 +377,7 @@ public actor SyncEngine {
             await eventStream.race(after: streamCursor)
         } else { start() }
         await release?()
+        readFeatures()
     }
 
     /// Whether this pause still owns the engine when done: no other pause
@@ -379,6 +413,7 @@ public actor SyncEngine {
         await intents.setOnline(false)
         guard generation == pausedGeneration else { return false }
         await documents.closed()
+        await viewers.closed()
         await spaces.pause()
         guard generation == pausedGeneration else { return false }
         if snapshot.live { streamHeard = .now }
@@ -433,6 +468,7 @@ public actor SyncEngine {
         await pause()
         await spaces.stop()
         await documents.stop()
+        await viewers.stop()
         await todos.stop()
         await vaults.stop()
         await feed.stop()
@@ -481,6 +517,9 @@ public actor SyncEngine {
             if let kept = try await database.checkpoint("capabilities") {
                 plugins = kept.value["plugins"]?.boolValue == true
                 pipelines = kept.value["pipelines"]?.boolValue == true
+            }
+            if cloud, let kept = try await database.checkpoint("features") {
+                features = AccountFeatures(AccountFeatures.read(kept.value))
             }
             if users.isEmpty, let kept = try await database.checkpoint("users"),
                let list = try? JSONDecoder().decode([Lossy<TeamUser>].self, from: JSONEncoder().encode(kept.value)) {
@@ -568,6 +607,7 @@ public actor SyncEngine {
                         // anything is delivered.
                         if resuming && !continued { await readAgain(generation) }
                         snapshot.live = true; snapshot.error = nil; snapshot.reconnecting = false; attempt = 0
+                        snapshot.draining = hello["draining"] == .bool(true)
                         snapshot.syncing = !verified
                         streamDaemon = daemon
                         // The process a read verified answering again is the
@@ -591,10 +631,12 @@ public actor SyncEngine {
                         }
                         publish()
                         profileChanged()
+                        readFeatures()
                         await feed.opened()
                         await lookups.opened()
                         // The documents on screen, as the chat on screen.
                         await documents.opened(hello)
+                        await viewers.opened(hello)
                         // Conversations and lists read again only for what they missed.
                         await spaces.externalOpened(missedBefore: continued ? nil : streamStart)
                         // Home verified before this hello came.
@@ -605,6 +647,10 @@ public actor SyncEngine {
                     }
                     if DocumentStreams.isDocumentFrame(frame.event) {
                         await documents.frame(frame.event, data: frame.data)
+                        continue
+                    }
+                    if ViewersStore.isViewersFrame(frame.event) {
+                        await viewers.frame(frame.data)
                         continue
                     }
                     guard let event = try? JSONValue.decode(Data(frame.data.utf8)) else { continue }
@@ -620,6 +666,17 @@ public actor SyncEngine {
                        gitInterest.contains(id), let value = event["payload"]?["git"],
                        let state = try? JSONDecoder().decode(WorkspaceLineChanges.self, from: JSONEncoder().encode(value)) {
                         receiveGit([id: state])
+                    }
+                    // Only this process's: a journal kept across a restart
+                    // replays the one before's.
+                    if event["type"] == .string("daemon.draining"), event["payload"]?["draining"] != .bool(false),
+                       streamDaemon == nil || event["payload"]?["daemonId"]?.stringValue.map({ $0 == streamDaemon }) != false {
+                        snapshot.draining = true
+                        publish()
+                    }
+                    if cloud, event["type"] == .string(AccountFeatures.updated), let list = AccountFeatures.read(event["payload"]) {
+                        if featuresRead.reading { featuresRead.again = true }
+                        await adopt(AccountFeatures(list))
                     }
                     if event["type"] == .string("profile.updated") {
                         profileChanged()
@@ -704,6 +761,7 @@ public actor SyncEngine {
             }
             if resetStream { await resetCarrier() }
             await documents.closed()
+            await viewers.closed()
             guard current(generation) else { return }
             snapshot.live = false
             snapshot.reconnecting = true
@@ -738,6 +796,10 @@ public actor SyncEngine {
     }
 
     private func allowDelivery(_ generation: Int) async {
+        // A send refused or unanswered before (a daemon draining for an
+        // update answers every write 503) goes again now, not when the
+        // backoff those failures built up, up to 30 seconds, comes round.
+        messageBackoff?.cancel()
         beginDelivery(generation)
         beginMessageDelivery(generation)
         await intents.setOnline(deliveryAllowed)
@@ -911,6 +973,53 @@ public actor SyncEngine {
         await wantReferences()
     }
 
+    // MARK: Account features
+
+    /// Reads what is available again, as after the person installs or
+    /// uninstalls a feature plugin, beside the event that says so.
+    public func refreshFeatures() { readFeatures() }
+
+    /// Reads what is available to the account again; a read that fails
+    /// keeps what was read, and a server without feature plugins has every
+    /// feature available.
+    private func readFeatures() {
+        guard cloud, !stopped else { return }
+        guard !featuresRead.reading else { featuresRead.again = true; return }
+        featuresRead = (true, false)
+        let client = client
+        Task {
+            let read: AccountFeatures?
+            do { read = AccountFeatures(try await client.accountFeatures()) } catch { read = nil }
+            await self.landFeatures(read)
+        }
+    }
+
+    private func landFeatures(_ read: AccountFeatures?) async {
+        let again = featuresRead.again
+        featuresRead = (false, false)
+        // News came while it was on its way: what it read may be older.
+        if again { readFeatures(); return }
+        if let read, !stopped { await adopt(read) }
+    }
+
+    private func adopt(_ next: AccountFeatures) async {
+        guard next != features else { return }
+        features = next
+        let kept: JSONValue = next.list.map { list in
+            .object(["features": .array(list.map { .object(["id": .string($0.id), "available": .bool($0.available)]) })])
+        } ?? .object([:])
+        try? await database().commit(.init(value: kept, cursor: nil), named: "features")
+        derive()
+    }
+
+    /// A route answered that `feature` is unavailable to the account: it
+    /// is here at once, and the list is read again.
+    private func refused(_ feature: String) async {
+        guard cloud, !stopped, features.available(feature) else { return }
+        await adopt(features.unavailable(feature))
+        readFeatures()
+    }
+
     // MARK: People
 
     /// Someone's name or picture changed (`profile.updated`): the signed-in
@@ -919,6 +1028,9 @@ public actor SyncEngine {
         guard let id, let desktop else { return }
         if id == desktop.profile?.userId || users[id] != nil { scheduleReconcile(generation) }
     }
+
+    /// The team's members as the newest bootstrap named them, by ID.
+    public func teammates() -> [String: TeamUser] { users }
 
     /// The bootstrap's `teammates`, kept for the next launch: names and
     /// pictures for the tasks' authors. Standalone, it sends none.
@@ -1044,8 +1156,9 @@ public actor SyncEngine {
 
     private func derive(publishing: Bool = true) {
         snapshot.loaded = desktop != nil
+        snapshot.features = features
         if let desktop {
-            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow, plugins: plugins, pipelines: pipelines))
+            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow, plugins: plugins, pipelines: pipelines && features.available(AccountFeatures.pipelines)))
             agentRows = [:]
             for index in snapshot.allRows.indices {
                 snapshot.allRows[index].lineChanges = snapshot.allRows[index].workspaceId.flatMap { gitSnapshots[$0]?.visible }
@@ -1053,6 +1166,8 @@ public actor SyncEngine {
             }
             snapshot.rows = Rows.visible(snapshot.allRows)
             snapshot.unjoinedTasks = SidebarRows.unjoinedTasks(desktop)
+            snapshot.sectionedRows = overlay.apply(SidebarRows.sectioned(desktop))
+            snapshot.botKinds = desktop.bots?.contains { $0.kind != nil } == true
             shownRows = Dictionary(snapshot.rows.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
             snapshot.userId = desktop.profile?.userId
             snapshot.profilePhoto = desktop.profile?.photo?.thumbhash
@@ -1295,6 +1410,14 @@ public actor SyncEngine {
         return try? await intents.enqueue(.archive, target: id, value: .object(["kind": .string(kind)]))
     }
 
+    /// Moves a bot or task (`move.kind`) in home's list: it stands where it
+    /// was put at once, and goes back only if the computer refuses.
+    @discardableResult
+    public func reorder(_ move: SidebarReorder.Move) async -> Intent? {
+        guard !stopped else { return nil }
+        return try? await intents.enqueue(.reorder, target: move.id, value: .object(["kind": .string(move.kind), "afterId": move.afterId.map(JSONValue.string) ?? .null]))
+    }
+
     /// Leaves a task or Surface (`kind`): out of this person's list at once.
     @discardableResult
     public func leave(kind: String, id: String) async -> Intent? {
@@ -1428,6 +1551,9 @@ public actor SyncEngine {
                 case "agent": try await client.archiveAgent(intent.target, mutationId: intent.id)
                 default: try await client.archiveTask(intent.target)
                 }
+            case .reorder:
+                let afterId = intent.value["afterId"]?.stringValue
+                if kind == "bot" { try await client.reorderBot(intent.target, after: afterId, mutationId: intent.id) } else { try await client.reorderTask(intent.target, after: afterId, mutationId: intent.id) }
             case .leave:
                 if kind == "surface" { try await client.leaveSurface(intent.target, mutationId: intent.id) } else { try await client.leaveTask(intent.target, mutationId: intent.id) }
             case .join:
@@ -1570,7 +1696,12 @@ public actor SyncEngine {
                     for listener in messageListeners.values where listener.agentID == message.agentID { listener.continuation.yield(.failed(message.id, message.failure ?? "")) }
                     continue
                 }
-                do { try await Task.sleep(for: .seconds(min(30, 1 << min(attempt, 5)))) } catch { return }
+                let delay = Duration.seconds(min(30, 1 << min(attempt, 5)))
+                let backoff = Task { _ = try? await Task.sleep(for: delay) }
+                messageBackoff = backoff
+                await withTaskCancellationHandler { await backoff.value } onCancel: { backoff.cancel() }
+                if messageBackoff == backoff { messageBackoff = nil }
+                guard !Task.isCancelled else { return }
                 attempt += 1
             }
         }

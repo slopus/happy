@@ -176,9 +176,11 @@ class AccountSwitchTest {
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.waitUntilAtLeastOneExists(hasTestTag(AgentHomeTags.BAR), 10_000)
 
-        // And back to the Happy account from the agent's Settings.
-        rule.waitUntilAtLeastOneExists(hasTestTag(AgentHomeTags.SETTINGS), 10_000)
-        rule.node(AgentHomeTags.SETTINGS).performClick()
+        // And back to the Happy account from the agent's Settings, in its drawer on a phone.
+        rule.waitUntilAtLeastOneExists(hasTestTag(com.slopus.happy.ui.tablet.MainPanelTags.DRAWER), 10_000)
+        rule.node(com.slopus.happy.ui.tablet.MainPanelTags.DRAWER).performClick()
+        rule.waitUntilAtLeastOneExists(hasTestTag(com.slopus.happy.ui.connection.AgentDrawerTags.SETTINGS), 10_000)
+        rule.node(com.slopus.happy.ui.connection.AgentDrawerTags.SETTINGS).performClick()
         rule.waitUntilAtLeastOneExists(hasTestTag(SettingsPageTags.account(happy)), 10_000)
         rule.node(SettingsPageTags.account(happy)).performClick()
         stepUntil("the Happy account's Settings") { !shows(SettingsPageTags.EDIT) && shows(SettingsPageTags.HEADER) }

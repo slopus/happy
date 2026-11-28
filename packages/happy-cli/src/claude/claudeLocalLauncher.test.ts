@@ -36,6 +36,7 @@ type QueueHandler = (message: string, mode: { permissionMode: 'default' }) => vo
 type ScannerOptions = {
     sessionId: string | null;
     workingDirectory: string;
+    env?: NodeJS.ProcessEnv;
     onMessage: (message: any) => void;
 };
 
@@ -205,6 +206,144 @@ describe('claudeLocalLauncher', () => {
 
         localRun.resolve();
         await launcher;
+    });
+
+    async function startWithMetadata(initial: Record<string, unknown>, claudeEnvVars?: Record<string, string>) {
+        const localRun = createDeferred<void>();
+        let scannerOptions: ScannerOptions | undefined;
+        const state = { metadata: initial };
+
+        mockCreateSessionScanner.mockImplementation(async (opts: ScannerOptions) => {
+            scannerOptions = opts;
+            return {
+                onNewSession: vi.fn(),
+                cleanup: vi.fn(async () => {}),
+            };
+        });
+        mockClaudeLocal.mockImplementation(async () => {
+            await localRun.promise;
+        });
+
+        const updateMetadata = vi.fn((handler: (m: Record<string, unknown>) => Record<string, unknown>) => {
+            state.metadata = handler(state.metadata);
+        });
+        const session = {
+            sessionId: 'claude-session-1',
+            path: '/tmp/project',
+            client: {
+                sendClaudeSessionMessage: vi.fn(),
+                sendClaudeSessionMessageFromLocalTranscript: vi.fn(async () => {}),
+                closeClaudeSessionTurn: vi.fn(),
+                updateMetadata,
+                rpcHandlerManager: {
+                    registerHandler: vi.fn(),
+                },
+            },
+            queue: {
+                reset: vi.fn(),
+                setOnMessage: vi.fn(),
+                size: vi.fn(() => 0),
+            },
+            addSessionFoundCallback: vi.fn(),
+            removeSessionFoundCallback: vi.fn(),
+            onAbort: vi.fn(),
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            consumeOneTimeFlags: vi.fn(),
+            claudeEnvVars,
+            claudeArgs: undefined,
+            mcpServers: {},
+            allowedTools: [],
+            hookSettingsPath: '/tmp/hook-settings.json',
+            sandboxConfig: undefined,
+        };
+
+        const launcher = claudeLocalLauncher(session as any);
+        await vi.waitFor(() => {
+            expect(scannerOptions).toBeDefined();
+        });
+        return {
+            state,
+            scannerOptions: scannerOptions!,
+            forwarded: session.client.sendClaudeSessionMessageFromLocalTranscript,
+            updateMetadata,
+            send: (message: Record<string, unknown>) => scannerOptions!.onMessage(message),
+            assistant: (uuid: string, model: string, extra: Record<string, unknown> = {}) =>
+                scannerOptions!.onMessage({
+                    type: 'assistant',
+                    uuid,
+                    timestamp: new Date().toISOString(),
+                    message: { model, content: [] },
+                    ...extra,
+                }),
+            finish: async () => {
+                localRun.resolve();
+                await launcher;
+            },
+        };
+    }
+
+    it('publishes the model local turns run, so a terminal /model switch reaches the app', async () => {
+        // Started as `happy --model claude-sonnet-5-5`.
+        const run = await startWithMetadata({ currentModelCode: 'claude-sonnet-5-5' });
+
+        run.assistant('a1', 'claude-sonnet-5-5');
+        expect(run.state.metadata.currentModelCode).toBe('claude-sonnet-5-5');
+
+        // `/model opus` in the terminal: the next turn runs Opus, and the app must see it.
+        run.assistant('a2', 'claude-opus-5-5');
+        expect(run.state.metadata.currentModelCode).toBe('claude-opus-5-5');
+
+        // Subagents, API error placeholders and user turns don't name the session's model.
+        run.assistant('a3', 'claude-haiku-4-5', { isSidechain: true });
+        run.assistant('a4', '<synthetic>');
+        run.send({ type: 'user', uuid: 'u1', message: { content: 'hi' } });
+        expect(run.state.metadata.currentModelCode).toBe('claude-opus-5-5');
+
+        // Repeats of the published model don't rewrite metadata.
+        const writes = run.updateMetadata.mock.calls.length;
+        run.assistant('a5', 'claude-opus-5-5');
+        expect(run.updateMetadata.mock.calls.length).toBe(writes);
+
+        await run.finish();
+    });
+
+    it('keeps a published [1m] model while local turns run its base model', async () => {
+        // Transcripts name the base model; the 1M context variant must survive.
+        const run = await startWithMetadata({ currentModelCode: 'claude-opus-5-5[1m]' });
+
+        run.assistant('a1', 'claude-opus-5-5');
+        expect(run.state.metadata.currentModelCode).toBe('claude-opus-5-5[1m]');
+
+        run.assistant('a2', 'claude-sonnet-5-5');
+        expect(run.state.metadata.currentModelCode).toBe('claude-sonnet-5-5');
+
+        await run.finish();
+    });
+
+    it('keeps replayed history out of the published model but still forwards it', async () => {
+        // `happy --continue --model claude-opus-5-5` on a transcript whose earlier turns ran Sonnet.
+        const run = await startWithMetadata({ currentModelCode: 'claude-opus-5-5' });
+
+        run.assistant('old', 'claude-sonnet-5-5', { timestamp: new Date(Date.now() - 60_000).toISOString() });
+        run.assistant('untimed', 'claude-sonnet-5-5', { timestamp: undefined });
+        expect(run.state.metadata.currentModelCode).toBe('claude-opus-5-5');
+        expect(run.updateMetadata).not.toHaveBeenCalled();
+        await vi.waitFor(() => {
+            expect(run.forwarded).toHaveBeenCalledWith(expect.objectContaining({ uuid: 'old' }));
+        });
+
+        run.assistant('live', 'claude-opus-5-5');
+        run.assistant('switched', 'claude-haiku-5-5');
+        expect(run.state.metadata.currentModelCode).toBe('claude-haiku-5-5');
+
+        await run.finish();
+    });
+
+    it('scans transcripts under the CLAUDE_CONFIG_DIR Claude is given', async () => {
+        const run = await startWithMetadata({}, { CLAUDE_CONFIG_DIR: '/other/claude' });
+        expect(run.scannerOptions.env?.CLAUDE_CONFIG_DIR).toBe('/other/claude');
+        await run.finish();
     });
 
     it('reports the underlying error when a launch throws, instead of a bare notice', async () => {

@@ -92,6 +92,12 @@ class ChatNormalizerTest {
         assertEquals("env-6", end.id)
         assertEquals(Body.Event(AgentEvent.Ready), end.body)
         assertEquals("turn-5", end.turn)
+        // A failed one ends its turn too, marked failed; a cancelled one is an ordinary end.
+        val failed = envelope("""{"id":"env-7","time":1,"role":"agent","turn":"turn-6","ev":{"t":"turn-end","status":"failed"}}""")!!
+        assertEquals(Body.Event(AgentEvent.TurnFailed), failed.body)
+        assertEquals("turn-6", failed.turn)
+        val cancelled = envelope("""{"id":"env-8","time":1,"role":"agent","turn":"turn-7","ev":{"t":"turn-end","status":"cancelled"}}""")!!
+        assertEquals(Body.Event(AgentEvent.Ready), cancelled.body)
     }
 
     @Test fun `file events become a completed file tool`() {

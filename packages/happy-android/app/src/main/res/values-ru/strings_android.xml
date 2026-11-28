@@ -20,7 +20,6 @@
     <string name="settings_appearance_file_diffs_sidebar">Боковая панель изменений файлов</string>
     <string name="settings_appearance_file_diffs_sidebar_description">Показывать изменения git рядом с чатом на компьютере</string>
     <string name="chat_scroll_to_bottom">Прокрутить вниз</string>
-    <string name="voice_clear_search">Очистить поиск</string>
     <string name="scan_unavailable">QR-сканер недоступен на этом устройстве. Вставьте ссылку вместо этого.</string>
     <string name="scan_not_happy_code">Это не QR-код Happy.</string>
     <string name="scan_terminal_code_elsewhere">Этот код подключает терминал. Отсканируйте его в «Настройки › Отсканируйте QR-код для авторизации».</string>
@@ -34,7 +33,4 @@
     <string name="state_animation_replay">Воспроизвести снова</string>
     <string name="scan_no_camera">На этом устройстве нет камеры. Вставьте ссылку.</string>
     <string name="scan_camera_failed">Не удалось запустить камеру. Попробуйте снова или вставьте ссылку.</string>
-    <string name="voice_microphone_title">Нужен доступ к микрофону</string>
-    <string name="voice_microphone_ask">Happy нужен доступ к микрофону для голосового чата. Разрешите его, когда появится запрос.</string>
-    <string name="voice_microphone_settings">Happy нужен доступ к микрофону для голосового чата. Включите доступ к микрофону в настройках устройства.</string>
 </resources>

@@ -1,0 +1,16 @@
+    typed.post("/stop", {
+      schema: {
+        response: {
+          200: z.object({
+            status: z.string()
+          })
+        }
+      }
+    }, async () => {
+      logger.debug("[CONTROL SERVER] Stop daemon request received");
+      setTimeout(() => {
+        logger.debug("[CONTROL SERVER] Triggering daemon shutdown");
+        requestShutdown();
+      }, 50);
+      return { status: "stopping" };
+    });

@@ -35,6 +35,8 @@ public final class AgentClient: Sendable {
     /// Chat history reads on their way: what waits for home waits for them
     /// (`SyncEngine`'s P2 stages, a picture's bytes).
     public let chatReads = ChatReads()
+    /// Routes of a feature the person turned off for their account.
+    public let featureRefusals = FeatureRefusals()
 
     init(transport: any AgentTransport, token: String, signsIn: Bool = false) {
         self.transport = transport
@@ -70,6 +72,7 @@ public final class AgentClient: Sendable {
             // An upload whose progress is heard.
             response = try await transport.send(method: method, path: path, credential: token, body: body, category: category, sent: sent)
             if response.status == 401 { throw AgentClientError.revoked }
+            featureRefusals.heard(response)
             return try Self.checked(response)
         }
         if let sent, let body {
@@ -78,6 +81,7 @@ public final class AgentClient: Sendable {
             response = try await transport.request(method: method, path: path, credential: token, body: body, headers: headers, category: category)
         }
         if response.status == 401 { throw AgentClientError.revoked }
+        featureRefusals.heard(response)
         return try Self.checked(response)
     }
 
@@ -273,6 +277,28 @@ public final class AgentClient: Sendable {
     /// A subtask's conversation (`POST /v0/agents/:agentId/archive`).
     public func archiveAgent(_ agentId: String, mutationId: String = ClientID.make()) async throws {
         _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/archive", json: .object(["mutationId": .string(mutationId)]))
+    }
+
+    /// Moves a task in the person's own list, after `afterId` (nil: first).
+    public func reorderTask(_ taskId: String, after afterId: String?, mutationId: String = ClientID.make()) async throws {
+        _ = try await send("POST", "/v0/tasks/\(Self.escape(taskId))/reorder", json: .object(["afterId": afterId.map(JSONValue.string) ?? .null, "mutationId": .string(mutationId)]))
+    }
+
+    /// Moves a bot among the bots, after `afterId` (nil: first). It names
+    /// the version it moves (`If-Match`); one that lost a race reads the
+    /// newer version and moves that.
+    public func reorderBot(_ botId: String, after afterId: String?, mutationId: String = ClientID.make()) async throws {
+        let path = "/v0/bots/\(Self.escape(botId))"
+        let body: JSONValue = .object(["afterId": afterId.map(JSONValue.string) ?? .null, "mutationId": .string(mutationId)])
+        for attempt in 0..<2 {
+            guard let version = try await decode(JSONValue.self, "GET", path)["bot"]?["version"]?.stringValue else { throw AgentClientError.invalidResponse }
+            do {
+                _ = try await send("POST", path + "/reorder", json: body, headers: ["If-Match": version])
+                return
+            } catch AgentClientError.status(409, _, _) where attempt == 0 {
+                continue
+            }
+        }
     }
 
     /// Archival names the version it archives (`If-Match`).

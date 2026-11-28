@@ -91,6 +91,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.serialization.Serializable
+import com.slopus.happy.ui.viewers.ViewersSlot
+import com.slopus.happy.viewers.ViewerTarget
 
 /**
  * One conversation of the agent connection [connectionId]; [agentId] null
@@ -143,6 +145,9 @@ fun NavGraphBuilder.conversationRoutes(graph: AppGraph, nav: NavHostController) 
     page<WorkspaceChangesRoute> { entry ->
         val route = entry.toRoute<WorkspaceChangesRoute>()
         WorkspaceChangesEntry(graph, nav, route)
+    }
+    page<com.slopus.happy.ui.bots.BotSettingsRoute> { entry ->
+        com.slopus.happy.ui.bots.BotSettingsEntry(graph, nav, entry.toRoute())
     }
 }
 
@@ -283,6 +288,7 @@ internal fun AgentSession.makeConversation(
     // The row that was tapped already had a name: the bar has it from the first frame.
     knownTitle = feed.value.title(agentId),
     initialChoice = initialChoice,
+    makesBots = makesBots,
     onTaskCreated = { answer ->
         created()
         answer["task"].obj?.let { upsertTask(it, answer["membership"].obj) }
@@ -441,17 +447,20 @@ private fun failureShown(row: ConversationRow.Failure, address: ChatAddress) {
  * connecting, whatever kept it away (a computer that didn't answer, a
  * pairing to redo: home says those in words of its own). Hello ends
  * connecting; each screen's P0 then decides whether it is catching up.
+ * A [draining] daemon is restarting, through the reconnect as its process
+ * goes, until a new hello says otherwise ([AgentSession.draining][com.slopus.happy.agent.AgentSession.draining]).
  */
-internal fun AgentLinkStatus?.linkState(syncing: Boolean, network: Boolean): LinkState = when {
+internal fun AgentLinkStatus?.linkState(syncing: Boolean, network: Boolean, draining: Boolean = false): LinkState = when {
     !network -> LinkState.WaitingForNetwork
+    draining -> LinkState.Restarting
     this != null && this != AgentLinkStatus.Connected -> LinkState.Connecting
     syncing -> LinkState.Syncing
     else -> LinkState.Online
 }
 
 /** A chat finishes P0 when its own history lands, independently of home's bootstrap or P2. */
-internal fun AgentLinkStatus?.conversationLinkState(state: ConversationState, network: Boolean): LinkState =
-    linkState(syncing = state.syncing || (state.created && !state.loaded), network = network)
+internal fun AgentLinkStatus?.conversationLinkState(state: ConversationState, network: Boolean, draining: Boolean = false): LinkState =
+    linkState(syncing = state.syncing || (state.created && !state.loaded), network = network, draining = draining)
 
 @Composable
 private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: ConversationRoute) {
@@ -483,12 +492,14 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     }
     val usage by session.usage.usage.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
+    val draining by session.draining.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     DisposableEffect(holder) { onDispose { holder.hold.show(false) } }
     // A link in this chat browses through this chat's agent's workspace (iOS's openBrowser(session:agentID:)).
     val context = LocalContext.current
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val network by remember(context) { context.networkPath() }.collectAsStateWithLifecycle(initialValue = true)
-    val link = rememberShownLinkState(status.conversationLinkState(state, network))
+    val link = rememberShownLinkState(status.conversationLinkState(state, network, draining))
     val computer = computerName(graph, route.connectionId)
     // A name a message wrote, or a Happy URL, opens what it names here.
     val happyLinks = com.slopus.happy.ui.connection.LocalHappyLinks.current
@@ -503,6 +514,11 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
         session.catalog.map { ChatAddress.of(it, conversation.agentId).chiefOfStaff }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(false)
     val roleCanSend = permissions.allows(if (chief) Permission.BOTS_MANAGE else Permission.CONTENT_WRITE)
+    // Whom "@" can mention: the bootstrap's teammates (Happy Agent in team mode, Happy Cloud), kept offline.
+    val people by remember(session) { session.team.users.map { it.values.toList() } }.collectAsStateWithLifecycle(session.team.users.value.values.toList())
+    val self by remember(session) { session.catalog.map { it.userId }.distinctUntilChanged() }.collectAsStateWithLifecycle(session.catalog.value.userId)
+    // Pipelines uninstalled for the account: a run's card is only read, opening nothing.
+    val pipelinesOff by session.pipelinesTurnedOff.collectAsStateWithLifecycle()
     // A command's artwork is read and kept as the agent's other pictures are.
     ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) { com.slopus.happy.ui.references.ProvideBusyLinks(references, session.references) {
         ConversationScreen(
@@ -510,11 +526,15 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             opensAttach = route.attach,
             roleCanSend = roleCanSend,
             roleCanCompose = permissions.canWrite,
+            place = remember(conversation) { TranscriptPlace(session.scrollPlaces, conversation.agentId) },
+            viewers = { ViewersSlot(session, ViewerTarget.agent(conversation.agentId)) },
+            people = people,
+            self = self,
             link = link,
             usage = usage,
             onRefreshUsage = session.usage::refresh,
             bubbleColor = settings.userMessageBubbleColor,
-            actions = remember(conversation, nav, kept) {
+            actions = remember(conversation, nav, kept, pipelinesOff) {
                 ConversationScreenActions(
                     onBack = { nav.popBackStack() },
                     onCompose = { nav.composeConversation(route.connectionId) },
@@ -564,8 +584,13 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onToggleTurn = conversation::toggleTurn,
                     onToggleMessage = conversation::toggleMessage,
                     onOpenTool = { callId -> nav.navigate(ToolCallRoute(route.connectionId, conversation.agentId, callId)) },
-                    onOpenPipelineRun = { notice -> nav.navigate(PipelineRunRoute(route.connectionId, notice.runId, notice.pipelineName)) },
+                    onOpenPipelineRun = if (pipelinesOff) null else ({ notice -> nav.navigate(PipelineRunRoute(route.connectionId, notice.runId, notice.pipelineName)) }),
                     workspace = if (session.client.cloud) null else session::workspaceSource,
+                    // Settings' Report an Issue, prefilled with where the message was and why it failed.
+                    onReportUndisplayable = { row ->
+                        val url = com.slopus.happy.conversation.UndisplayableReport.url(session.server, conversation.agentId, row, com.slopus.happy.BuildConfig.VERSION_NAME)
+                        com.slopus.happy.ui.settings.openExternalUrl(uriHandler, url)
+                    },
                     // The values typed into a secret go in this one request to the computer and nowhere else.
                     secrets = SecretRequestActions(
                         secrets = { ConversationApi(session.conversationRequest()).secrets() },

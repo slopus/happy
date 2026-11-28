@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bot_settings_title">機器人設定</string>
+    <string name="bot_settings_instructions">指示</string>
+    <string name="bot_settings_instructions_placeholder">這個機器人的用途和工作方式</string>
+    <string name="bot_settings_instructions_footer">儲存的變更會在下一輪生效，適用於每個人與這個機器人的對話。</string>
+    <string name="bot_settings_name_blank">機器人需要一個名稱。</string>
+    <string name="bot_settings_name_too_long">名稱最多 %1$d 個字元。</string>
+    <string name="bot_settings_name_control">名稱不能包含控制字元。</string>
+    <string name="bot_settings_could_not_save">無法儲存機器人</string>
+</resources>

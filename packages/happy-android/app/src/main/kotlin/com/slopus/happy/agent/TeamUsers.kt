@@ -12,17 +12,17 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** A member from the desktop bootstrap's teammates. */
+/** A member from the desktop bootstrap's teammates; [role] is what they do ("Billing engineer"), when set. */
 @Immutable
 @Serializable
-data class TeamUser(val id: String, val name: String = "", val photo: String? = null) {
+data class TeamUser(val id: String, val name: String = "", val photo: String? = null, val role: String? = null) {
     companion object {
         fun photoPath(id: String) = "/v0/users/${AgentClient.escape(id)}/photo"
 
         fun parse(users: JsonArray?): List<TeamUser> = users.orEmpty().mapNotNull { element ->
             val user = element as? JsonObject ?: return@mapNotNull null
             val id = user.string("id") ?: return@mapNotNull null
-            TeamUser(id, user.string("name").orEmpty(), (user["photo"] as? JsonObject)?.string("thumbhash"))
+            TeamUser(id, user.string("name").orEmpty(), (user["photo"] as? JsonObject)?.string("thumbhash"), user.string("role")?.takeIf(String::isNotBlank))
         }
     }
 }
@@ -54,6 +54,7 @@ class TeamDirectory(
                 put("id", user.id)
                 put("name", user.name)
                 user.photo?.let { hash -> put("photo", buildJsonObject { put("thumbhash", hash) }) }
+                user.role?.let { put("role", it) }
             }
         })) })
     }

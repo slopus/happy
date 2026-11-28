@@ -74,7 +74,7 @@ final class HostedAttachedFileTests: XCTestCase {
         let pdf = Self.pdf()
         let run: JSONValue = .object(["id": .string("r"), "status": .string("completed"), "startedAt": .number(1_000), "endedAt": .number(2_000), "reason": .string("completed"),
             "messages": .array([.object([
-                "id": .string("u"), "role": .string("user"), "createdAt": .number(1_000), "metadata": .object([:]),
+                "id": .string("u"), "role": .string("user"), "createdAt": .number(1_000), "metadata": .object([:]), "status": .string("accepted"), "delivery": .string("queue"), "runId": .string("r1"), "mode": .object(["providerId": .string("claude"), "modelId": .string("opus"), "effort": .string("medium"), "serviceTier": .null, "permissionMode": .string("auto")]),
                 "content": .array([
                     .object(["type": .string("text"), "text": .string("Here are the numbers")]),
                     Self.file(Self.pdfID, "report.pdf", mimeType: "application/pdf", size: pdf.count),
