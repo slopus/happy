@@ -1,29 +1,36 @@
 import Foundation
 
-/// `GET /v0/permissions` on a Happy Cloud server: what the person's role
-/// lets them do. Only `granted` decides anything; the role's name is shown
-/// at most. A role changed at the accounts service lands with the next
-/// server token (within 15 minutes), so it is read again on every
-/// reconnect as well as on `role.*`.
+/// `GET /v0/permissions` on a Happy Cloud server: what the person's teams
+/// let them do (happy-cluster docs/teams.md). Only `granted` decides
+/// anything; whether they are an owner and which teams they are in are
+/// shown at most, and an owner is granted everything anyway. It is read
+/// again on every reconnect, on `team.*` and `member.*`, and on `role.*`
+/// from a server before teams.
 public struct Permissions: Decodable, Equatable, Sendable {
-    public var role: String?
+    public var owner: Bool
+    /// Every team they are in, `members` and nested ones included.
+    public var teams: [String]
     public var granted: Set<String>
     /// Every permission the server has (`permissions`, its catalog),
     /// granted or not: what it serves. Empty where it doesn't say.
     public var known: Set<String>
 
-    public init(role: String? = nil, granted: Set<String>, known: Set<String> = []) {
-        self.role = role
+    public init(owner: Bool = false, teams: [String] = [], granted: Set<String>, known: Set<String> = []) {
+        self.owner = owner
+        self.teams = teams
         self.granted = granted
         self.known = known
     }
 
-    enum CodingKeys: String, CodingKey { case role, granted, permissions }
+    enum CodingKeys: String, CodingKey { case owner, teams, role, granted, permissions }
     private struct Known: Decodable { var id: String }
 
+    /// A server from before teams says only `role`: `owner` is an owner.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        role = try? container.decodeIfPresent(String.self, forKey: .role)
+        let role = (try? container.decodeIfPresent(String.self, forKey: .role)) ?? nil
+        owner = ((try? container.decodeIfPresent(Bool.self, forKey: .owner)) ?? nil) ?? (role == "owner")
+        teams = ((try? container.decodeIfPresent([Lossy<String>].self, forKey: .teams)) ?? nil)?.compactMap(\.value) ?? []
         granted = Set(try container.decode([String].self, forKey: .granted))
         known = Set(((try? container.decodeIfPresent([Lossy<Known>].self, forKey: .permissions)) ?? []).compactMap(\.value?.id))
     }
@@ -42,7 +49,7 @@ public struct Permissions: Decodable, Equatable, Sendable {
         case botsManage = "bots.manage"
         /// The server's own settings, its name among them.
         case configManage = "config.manage"
-        /// The team's inference providers; the person's own take `providers.own`.
+        /// The server's inference providers; the person's own take `providers.own`.
         case providersManage = "providers.manage"
         case providersOwn = "providers.own"
         /// Reading and joining machines, and adding a private one of one's own.
@@ -53,7 +60,7 @@ public struct Permissions: Decodable, Equatable, Sendable {
         case policyEdit = "policy.edit"
     }
 
-    public static let refreshEvents = ["role.", "member.updated", "member.removed"]
+    public static let refreshEvents = ["team.", "member.updated", "member.removed", "role."]
 }
 
 /// What a connection lets the person do. A computer, or a server that is

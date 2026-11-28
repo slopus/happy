@@ -2,15 +2,46 @@ import Foundation
 import XCTest
 @testable import HappyCore
 
-/// A Happy Cloud server's roles: what `granted` lets the phone show, the
+/// A Happy Cloud server's teams: what `granted` lets the phone show, the
 /// vaults' access, and the Policy vault's fixed folders and documents.
 final class CloudPermissionsTests: XCTestCase {
-    func testPermissionsReadOnlyGranted() throws {
-        let json = #"{"role":"member","granted":["content.write","projects.manage"],"permissions":[{"id":"content.write","description":"Write"}]}"#
+    func testPermissionsAreReadWithTheOwnerFlagAndTeams() throws {
+        let json = #"""
+        {"owner":false,"teams":["members","design",7],"granted":["content.write","projects.manage"],"role":"design",
+         "permissions":[{"id":"content.write","description":"Write","member":true,"ownerOnly":false}]}
+        """#
         let permissions = try JSONDecoder().decode(Permissions.self, from: Data(json.utf8))
-        XCTAssertEqual(permissions.role, "member")
+        XCTAssertFalse(permissions.owner)
+        XCTAssertEqual(permissions.teams, ["members", "design"], "a team it can't read is left out")
         XCTAssertTrue(permissions.allows(.contentWrite))
         XCTAssertFalse(permissions.allows(.botsManage))
+        XCTAssertTrue(permissions.knows(.contentWrite))
+    }
+
+    /// Only `granted` decides: an owner is shown as one, but what they
+    /// may do is still what the server granted.
+    func testAnOwnerIsGrantedWhatTheServerSays() throws {
+        let json = #"{"owner":true,"teams":["members","owners"],"granted":["content.write"],"role":"owner"}"#
+        let permissions = try JSONDecoder().decode(Permissions.self, from: Data(json.utf8))
+        XCTAssertTrue(permissions.owner)
+        XCTAssertTrue(permissions.allows(.contentWrite))
+        XCTAssertFalse(permissions.allows(.policyEdit))
+    }
+
+    /// A server from before teams says only `role`.
+    func testAServerBeforeTeamsSaysTheOwnerByRole() throws {
+        let owner = try JSONDecoder().decode(Permissions.self, from: Data(#"{"role":"owner","granted":["bots.manage"]}"#.utf8))
+        XCTAssertTrue(owner.owner)
+        XCTAssertEqual(owner.teams, [])
+        let admin = try JSONDecoder().decode(Permissions.self, from: Data(#"{"role":"admin","granted":["bots.manage"]}"#.utf8))
+        XCTAssertFalse(admin.owner, "the old admin role is no owner")
+        XCTAssertTrue(admin.allows(.botsManage))
+    }
+
+    func testTeamAndMemberEventsReadThePermissionsAgain() {
+        for type in ["team.created", "team.updated", "team.removed", "member.updated", "member.removed", "role.updated"] {
+            XCTAssertTrue(Permissions.refreshEvents.contains { type == $0 || ($0.hasSuffix(".") && type.hasPrefix($0)) }, type)
+        }
     }
 
     func testAComputerGatesNothingAndACloudServerEverythingUntilRead() {
@@ -20,10 +51,10 @@ final class CloudPermissionsTests: XCTestCase {
         XCTAssertFalse(RoleGate.cloud(nil).allowsSending(toChiefOfStaff: false))
     }
 
-    func testOnlyARoleWithBotsManageWritesToTheChiefOfStaff() {
-        let viewer = RoleGate.cloud(Permissions(role: "viewer", granted: []))
-        let member = RoleGate.cloud(Permissions(role: "member", granted: ["content.write", "projects.manage"]))
-        let owner = RoleGate.cloud(Permissions(role: "owner", granted: ["content.write", "projects.manage", "bots.manage"]))
+    func testOnlyBotsManageWritesToTheChiefOfStaff() {
+        let viewer = RoleGate.cloud(Permissions(granted: []))
+        let member = RoleGate.cloud(Permissions(teams: ["members"], granted: ["content.write", "projects.manage"]))
+        let owner = RoleGate.cloud(Permissions(owner: true, teams: ["members", "owners"], granted: ["content.write", "projects.manage", "bots.manage"]))
         XCTAssertFalse(viewer.allowsSending(toChiefOfStaff: false))
         XCTAssertTrue(member.allowsSending(toChiefOfStaff: false))
         XCTAssertFalse(member.allowsSending(toChiefOfStaff: true))
