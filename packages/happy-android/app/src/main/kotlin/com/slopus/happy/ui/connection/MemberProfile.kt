@@ -45,8 +45,8 @@ import com.slopus.happy.agent.MemberProfile
 import com.slopus.happy.agent.MemberProfileSource
 import com.slopus.happy.agent.MemberProfileTask
 import com.slopus.happy.agent.MemberProfiles
+import com.slopus.happy.agent.Team
 import com.slopus.happy.agent.TeamMembers
-import com.slopus.happy.agent.TeamRole
 import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.conversation.DetailFormat
 import com.slopus.happy.ui.components.Item
@@ -96,8 +96,9 @@ object MemberProfileSpec {
 /**
  * Member [userId]'s profile (cluster profile contract,
  * `GET /v0/users/:id/profile`), only on a Happy Cloud server: read as it
- * opens, the team's role names beside it (`GET /v0/roles`, a nicety). A
- * recent task opens its conversation.
+ * opens, the server's members and teams beside it for their teams and owner
+ * flag (`GET /v0/members` and `/v0/teams`, a nicety). A recent task opens
+ * its conversation.
  */
 @Composable
 internal fun MemberProfileEntry(graph: AppGraph, nav: NavHostController, route: MemberProfileRoute) {
@@ -107,19 +108,19 @@ internal fun MemberProfileEntry(graph: AppGraph, nav: NavHostController, route: 
     val scope = rememberCoroutineScope()
     val source = remember(session, route.userId, scope) { MemberProfileSource({ MemberProfiles.read(session.client, route.userId) }, scope) }
     val state by source.profile.collectAsStateWithLifecycle()
-    val roles by produceState(emptyList<TeamRole>(), session) {
+    val members by produceState<Team?>(null, session) {
         value = try {
-            TeamMembers.roles(session.client)
+            TeamMembers.read(session.client)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            emptyList()
+            null
         }
     }
     CompositionLocalProvider(LocalAgentPictures provides session.pictures) {
         MemberProfileScreen(
             state = state,
-            roles = roles,
+            members = members,
             onOpenTask = { agentId -> nav.openConversation(route.connectionId, agentId) },
             onRetry = source::retry,
             onBack = { nav.popBackStack() },
@@ -131,7 +132,8 @@ internal fun MemberProfileEntry(graph: AppGraph, nav: NavHostController, route: 
  * A member's profile, laid out as the agent page is (iOS ProfileHeaderLayout):
  * their round 88 picture over its ThumbHash, or the placeholder their ID
  * picks, centred; their name (28/34) and, under it, their job title and
- * team role; then Usage's tiles (tasks, active tasks, active days of the
+ * what they are on the server ([memberStanding], from [members]; until those
+ * are read, the profile's own `teamRole`); then Usage's tiles (tasks, active tasks, active days of the
  * last 30, last active), Tokens' tiles (the past hour, day, week and
  * month, every provider and model summed), and Recent activity, their
  * latest tasks newest first, each opening its conversation. While it is
@@ -140,7 +142,7 @@ internal fun MemberProfileEntry(graph: AppGraph, nav: NavHostController, route: 
 @Composable
 fun MemberProfileScreen(
     state: MemberProfileSource.State,
-    roles: List<TeamRole>,
+    members: Team?,
     onOpenTask: (agentId: String) -> Unit,
     onRetry: () -> Unit,
     onBack: () -> Unit,
@@ -184,7 +186,7 @@ fun MemberProfileScreen(
             else -> Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
                 Spacer(Modifier.height(barInsetTop()))
                 Column(Modifier.contentMaxWidth(LocalWindowLayout.current)) {
-                    Page(profile, roles, onOpenTask, now)
+                    Page(profile, members, onOpenTask, now)
                 }
             }
         }
@@ -192,10 +194,14 @@ fun MemberProfileScreen(
 }
 
 @Composable
-private fun Page(profile: MemberProfile?, roles: List<TeamRole>, onOpenTask: (String) -> Unit, now: Long) {
+private fun Page(profile: MemberProfile?, members: Team?, onOpenTask: (String) -> Unit, now: Long) {
     val user = profile?.user
-    val teamRole = user?.teamRole?.let { id -> roles.firstOrNull { it.id == id }?.name ?: builtInRoleName(id) }
-    ProfileHeader(user?.name?.ifBlank { null } ?: user?.id, listOfNotNull(user?.role, teamRole).joinToString(" · ")) {
+    val member = user?.let { members?.member(it.id) }
+    val standing = when {
+        member != null && members != null -> memberStanding(member, members)
+        else -> user?.teamRole?.let { builtInRoleName(it) }
+    }
+    ProfileHeader(user?.name?.ifBlank { null } ?: user?.id, listOfNotNull(user?.role, standing).joinToString(" · ")) {
         val photo = user?.photo
         when {
             user == null -> Box(Modifier.size(ProfileHeaderSpec.mark).clip(CircleShape).background(HappyTheme.colors.surfaceHighest))

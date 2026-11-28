@@ -15,7 +15,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
-/** A Happy Cloud team's members on the server itself (members contract, `/v0/members`), as the Members page reads them. */
+/** A Happy Cloud server's members on the server itself (docs/teams.md §7, `/v0/members`), as the Members page reads them. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AgentMembersTest {
     private class Routes(val answers: Map<String, Pair<Int, String>>) : Transport {
@@ -29,18 +29,48 @@ class AgentMembersTest {
         override suspend fun close() {}
     }
 
+    private val teamed = """{"members":[
+        {"accountId":"a1","userId":"u1","name":"QA android","teams":[],"owner":true,"role":"owner","joinedAt":"2026-11-27T14:07:45Z"},
+        {"accountId":"a2","userId":"u2","name":"Bo","teams":["design","ops"],"owner":false,"role":"member","joinedAt":"2026-11-27T14:07:47Z"},
+        {"accountId":"a3","userId":null,"name":null,"teams":["design"],"owner":false,"role":"design","joinedAt":"2026-11-27T14:07:48Z"}]}"""
+    private val teams = """{"teams":[
+        {"id":"owners","kind":"owners","name":"Owners","description":"","color":"gray","image":null,"permissions":[],"people":["a1"],"teams":[],"memberCount":1,"version":"1","createdAt":0,"updatedAt":0},
+        {"id":"members","kind":"members","name":"Members","description":"","color":"gray","image":null,"permissions":["content.write"],"people":null,"teams":[],"memberCount":3,"version":"1","createdAt":0,"updatedAt":0},
+        {"id":"design","kind":"custom","name":"Design","description":"","color":"pink","image":null,"permissions":["zones.manage"],"people":["a2","a3"],"teams":[],"memberCount":2,"version":"1","createdAt":0,"updatedAt":0}]}"""
+
+    @Test
+    fun theServerReadsItsMembersTheirTeamsAndWhatItCallsThem() = runBlocking {
+        val routes = Routes(mapOf("GET /v0/members" to (200 to teamed), "GET /v0/teams" to (200 to teams)))
+        val team = TeamMembers.read(AgentClient(routes, "t"))
+        assertEquals(TeamMember("a2", "u2", "Bo", "member", "2026-11-27T14:07:47Z", listOf("design", "ops"), false), team.members[1])
+        assertTrue(team.members[0].isOwner)
+        assertFalse(team.members[1].isOwner)
+        assertEquals("Design", team.teamName("design"))
+        assertEquals(null, team.teamName("ops"))
+        assertEquals("a2", team.member("u2")?.accountId)
+        assertEquals(null, team.member("u9"))
+        // A server with teams is never asked for its roles.
+        assertFalse(routes.asked.any { it.endsWith("/v0/roles") })
+        // Teams that can't be named still list the members.
+        val bare = TeamMembers.read(AgentClient(Routes(mapOf("GET /v0/members" to (200 to teamed))), "t"))
+        assertEquals(3, bare.members.size)
+        assertEquals(emptyList<ServerTeam>(), bare.teams)
+    }
+
     private val members = """{"members":[
         {"accountId":"a1","userId":"u1","name":"QA android","role":"owner","joinedAt":"2026-11-07T14:07:45.077367Z"},
         {"accountId":"a2","userId":null,"name":null,"role":"reviewer","joinedAt":"2026-11-07T14:07:47Z"}]}"""
     private val roles = """{"roles":[{"builtIn":true,"id":"owner","name":"Owner","permissions":[]},{"builtIn":false,"id":"reviewer","name":"Reviewers","permissions":["content.write"]}]}"""
 
     @Test
-    fun theTeamReadsItsMembersAndWhatItCallsItsRoles() = runBlocking {
+    fun aServerBeforeTeamsReadsItsMembersAndWhatItCallsItsRoles() = runBlocking {
         val team = TeamMembers.read(AgentClient(Routes(mapOf("GET /v0/members" to (200 to members), "GET /v0/roles" to (200 to roles))), "t"))
         assertEquals(listOf(TeamMember("a1", "u1", "QA android", "owner", "2026-11-07T14:07:45.077367Z"), TeamMember("a2", null, null, "reviewer", "2026-11-07T14:07:47Z")), team.members)
+        assertTrue(team.members[0].isOwner)
+        assertEquals(null, team.members[1].teams)
         assertEquals("Reviewers", team.roleName("reviewer"))
         assertEquals(null, team.roleName("viewer"))
-        // A team whose roles can't be read still lists its members.
+        // A server whose roles can't be read still lists its members.
         val bare = TeamMembers.read(AgentClient(Routes(mapOf("GET /v0/members" to (200 to members), "GET /v0/roles" to (403 to """{"error":"x","code":"forbidden"}"""))), "t"))
         assertEquals(2, bare.members.size)
         assertEquals(emptyList<TeamRole>(), bare.roles)
@@ -61,7 +91,7 @@ class AgentMembersTest {
     }
 
     @Test
-    fun theTeamIsReadAgainOnEveryConnectAndMemberRoleOrNameChange() = runTest {
+    fun theMembersAreReadAgainOnEveryConnectAndMemberTeamRoleOrNameChange() = runTest {
         val events = MutableSharedFlow<AgentEvent>(extraBufferCapacity = 16)
         val answers = ArrayDeque<() -> Team>()
         var reads = 0
@@ -70,14 +100,14 @@ class AgentMembersTest {
         assertEquals(TeamSource.State.Loading, source.team.value)
         runCurrent()
         assertEquals(1, (source.team.value as TeamSource.State.Loaded).team.members.size)
-        for (type in listOf("member.updated", "member.removed", "role.updated", "profile.updated", AgentEvent.HELLO)) {
+        for (type in listOf("member.updated", "member.removed", "team.created", "team.updated", "team.removed", "role.updated", "profile.updated", AgentEvent.HELLO)) {
             answers += { Team(listOf(TeamMember("a1", role = "owner"), TeamMember("a2", role = "viewer"))) }
             events.emit(AgentEvent(null, type, JsonObject(emptyMap())))
             runCurrent()
         }
         events.emit(AgentEvent(null, "agent.updated", JsonObject(emptyMap())))
         runCurrent()
-        assertEquals(6, reads)
+        assertEquals(9, reads)
         // A failed read keeps what was shown; failing before anything was, it says so.
         answers += { throw AgentApiException(500, "internal", null) }
         source.retry()

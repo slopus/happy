@@ -318,8 +318,9 @@ class AgentSession internal constructor(
     val server: String? = connections.accounts.value.firstOrNull { it.id == connectionId }?.server
 
     /**
-     * What the person may do here: a Happy Cloud server's role, read on
-     * every connect and `role.*` event; any other server gates nothing.
+     * What the person may do here: what a Happy Cloud server's teams grant
+     * them, read on every connect and `team.*` and `member.updated` event;
+     * any other server gates nothing.
      */
     val permissions: StateFlow<ServerPermissions> =
         if (com.slopus.happy.connection.HappyCloud.isServer(server)) {

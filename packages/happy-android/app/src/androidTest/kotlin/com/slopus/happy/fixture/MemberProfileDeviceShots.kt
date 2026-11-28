@@ -29,7 +29,9 @@ import com.slopus.happy.agent.MemberProfileSource
 import com.slopus.happy.agent.MemberProfileTask
 import com.slopus.happy.agent.MemberProfileUser
 import com.slopus.happy.agent.MemberUsage
-import com.slopus.happy.agent.TeamRole
+import com.slopus.happy.agent.ServerTeam
+import com.slopus.happy.agent.Team
+import com.slopus.happy.agent.TeamMember
 import com.slopus.happy.agent.TeamUser
 import com.slopus.happy.search.SearchAnswer
 import com.slopus.happy.search.SearchHit
@@ -91,12 +93,16 @@ class MemberProfileDeviceShots {
                 MemberProfileTask("t4", "a4", "Migrate billing webhooks", now - 4 * 86_400_000, archived = true),
             ),
         )
+        val members = Team(
+            listOf(TeamMember("a-ada", userId = "u-ada", name = "Ada Lovelace", owner = true, teams = listOf("platform", "design"))),
+            listOf(ServerTeam("owners", "Owners", "owners"), ServerTeam("members", "Members", "members"), ServerTeam("platform", "Platform"), ServerTeam("design", "Design")),
+        )
         val opened = mutableListOf<String>()
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
         rule.setContent {
             CompositionLocalProvider(LocalAgentPictures provides pictures) {
                 HappyTheme {
-                    MemberProfileScreen(MemberProfileSource.State.Loaded(profile), listOf(TeamRole("owner", "Owner", builtIn = true)), { opened += it }, {}, {}, now = now)
+                    MemberProfileScreen(MemberProfileSource.State.Loaded(profile), members, { opened += it }, {}, {}, now = now)
                 }
             }
         }

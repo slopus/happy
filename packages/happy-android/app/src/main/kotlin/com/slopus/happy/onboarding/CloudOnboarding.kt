@@ -44,6 +44,8 @@ data class CloudOnboarding(
         val REFRESH_EVENTS = setOf(
             "onboarding.updated", "profile.updated", "bot.updated", "config.updated", "plugins.changed",
             "invite.created", "member.updated", "member.removed",
+            // What a person's teams grant decides which gates are theirs to complete.
+            "team.created", "team.updated", "team.removed",
         )
 
         fun parse(json: JsonObject): CloudOnboarding {

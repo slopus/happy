@@ -18,7 +18,9 @@ import com.slopus.happy.agent.MemberProfileSource
 import com.slopus.happy.agent.MemberProfileTask
 import com.slopus.happy.agent.MemberProfileUser
 import com.slopus.happy.agent.MemberUsage
-import com.slopus.happy.agent.TeamRole
+import com.slopus.happy.agent.ServerTeam
+import com.slopus.happy.agent.Team
+import com.slopus.happy.agent.TeamMember
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertDp
@@ -37,7 +39,7 @@ import org.robolectric.annotation.Config
 /**
  * A Happy Cloud member's profile on the 411 phone, laid out as the agent
  * page (iOS ProfileHeaderLayout): the 88 picture centred 12 under the
- * feather, the name and the job title with the team's name for their role,
+ * feather, the name and the job title with their teams and owner flag,
  * Usage's and Tokens' tiles two to a row, and their recent tasks, each
  * opening its conversation.
  */
@@ -51,7 +53,7 @@ class MemberProfileTest {
     private var retries = 0
 
     private val profile = MemberProfile(
-        user = MemberProfileUser("u1", "Ada Lovelace", role = "Staff engineer", teamRole = "reviewer"),
+        user = MemberProfileUser("u1", "Ada Lovelace", role = "Staff engineer", teamRole = "member"),
         totalTasks = 12,
         activeTasks = 3,
         lastActivityAt = now - 3_600_000,
@@ -63,14 +65,19 @@ class MemberProfileTest {
         ),
     )
 
-    private fun show(state: MemberProfileSource.State) {
+    private val members = Team(
+        listOf(TeamMember("a0", userId = "u0", owner = true, teams = emptyList()), TeamMember("a1", userId = "u1", role = "reviewers", owner = false, teams = listOf("reviewers"))),
+        listOf(ServerTeam("owners", "Owners", "owners"), ServerTeam("members", "Members", "members"), ServerTeam("reviewers", "Reviewers")),
+    )
+
+    private fun show(state: MemberProfileSource.State, members: Team? = this.members) {
         rule.setHappyContent {
-            MemberProfileScreen(state, listOf(TeamRole("reviewer", "Reviewers")), onOpenTask = { opened += it }, onRetry = { retries++ }, onBack = {}, now = now)
+            MemberProfileScreen(state, members, onOpenTask = { opened += it }, onRetry = { retries++ }, onBack = {}, now = now)
         }
         rule.waitForIdle()
     }
 
-    @Test fun `the picture, name and title with the team role sit centred under the feather`() {
+    @Test fun `the picture, name and title with their teams sit centred under the feather`() {
         show(MemberProfileSource.State.Loaded(profile))
         val bar = rule.node(GlassBarTags.BAR).bounds
         val mark = rule.node(ProfileHeaderTags.AVATAR).bounds
@@ -82,8 +89,16 @@ class MemberProfileTest {
         assertDp("the name is 14 under the picture", mark.bottom + 14.dp, name.top)
         // The bar's title is the name too, faded in only as it scrolls under.
         rule.node(ProfileHeaderTags.NAME).assert(hasAnyDescendant(hasText("Ada Lovelace")))
-        // A custom role reads as the team names it.
+        // Their teams read as the server names them.
         rule.onNodeWithText("Staff engineer · Reviewers").assertIsDisplayed()
+    }
+
+    @Test fun `an owner says so before their teams, and until the members are read the profile's own flag stands in`() {
+        val owner = profile.copy(user = profile.user.copy(id = "u0", teamRole = "owner"))
+        show(MemberProfileSource.State.Loaded(owner), members.copy(members = listOf(TeamMember("a0", userId = "u0", owner = true, teams = listOf("reviewers")))))
+        rule.onNodeWithText("Staff engineer · Owner, Reviewers").assertIsDisplayed()
+        show(MemberProfileSource.State.Loaded(owner), members = null)
+        rule.onNodeWithText("Staff engineer · Owner").assertIsDisplayed()
     }
 
     @Test fun `usage and tokens are tiles two to a row, tokens summed and said short`() {

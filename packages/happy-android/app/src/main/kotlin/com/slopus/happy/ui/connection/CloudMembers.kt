@@ -14,6 +14,8 @@ import androidx.navigation.NavHostController
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentApiException
+import com.slopus.happy.agent.Team
+import com.slopus.happy.agent.TeamMember
 import com.slopus.happy.agent.TeamMembers
 import com.slopus.happy.agent.TeamSource
 import com.slopus.happy.connection.HappyCloud
@@ -34,9 +36,9 @@ import kotlinx.serialization.Serializable
 
 /**
  * Who is on the Happy Cloud server [connectionId] is connected to, each with
- * their role as the team names it, and Leave server. Both ask the server
- * itself (members contract, `/v0/members`), so no account pass is needed;
- * the list follows `member.*` and `role.*` events. Leaving, after a
+ * their teams and owner flag ([memberStanding]), and Leave server. Both ask
+ * the server itself (docs/teams.md §7, `/v0/members`), so no account pass is
+ * needed; the list follows `member.*` and `team.*` events. Leaving, after a
  * confirmation, also forgets the server on this phone; its last owner is
  * told they can't.
  */
@@ -132,7 +134,7 @@ internal fun CloudMembersScreen(
                         val userId = member.userId
                         Item(
                             title = member.name?.takeIf { it.isNotBlank() } ?: member.accountId,
-                            detail = team.team.roleName(member.role) ?: builtInRoleName(member.role),
+                            detail = memberStanding(member, team.team),
                             onClick = userId?.let { { onOpenMember(it) } },
                             showChevron = userId != null,
                             modifier = Modifier.testTag(CloudTags.member(member.accountId)),
@@ -155,7 +157,21 @@ internal fun CloudMembersScreen(
     }
 }
 
-/** A built-in role's name in the app's language, for a team that didn't list its roles; any other role reads as its id. */
+/**
+ * What [member] is on the server, as Members and their profile say it: Owner
+ * and the names of the custom teams they are directly in, or Member with
+ * neither (everyone is in `members`). A server before teams sends a role
+ * alone, named as that server names it.
+ */
+@Composable
+internal fun memberStanding(member: TeamMember, team: Team): String {
+    val teams = member.teams ?: return member.role?.let { team.roleName(it) ?: builtInRoleName(it) } ?: stringResource(R.string.cloud_role_member)
+    val owner = if (member.isOwner) stringResource(R.string.cloud_role_owner) else null
+    val names = listOfNotNull(owner) + teams.map { team.teamName(it) ?: it }
+    return names.ifEmpty { listOf(stringResource(R.string.cloud_role_member)) }.joinToString(", ")
+}
+
+/** A built-in role's name in the app's language, for a server before teams that didn't list its roles; any other role reads as its id. */
 @Composable
 internal fun builtInRoleName(role: String): String = when (role) {
     "owner" -> stringResource(R.string.cloud_role_owner)

@@ -231,8 +231,8 @@ data class AgentCatalog(
             // A whole setting, not a version-chained diff: the greater version wins.
             "user_settings.updated" -> Applied((data["setting"] as? JsonObject)?.let(moved::withSetting) ?: moved)
             // Who is in a Surface and where it sits in their list come only whole, with the snapshot (as iOS reads them),
-            // and so does what a vault lets the person do, which its access rules or their role change.
-            else -> if (event.type.startsWith("surface.") || event.type == "vault.settings.updated" || event.type.startsWith("role.")) Applied(moved, listOf(Stale(Stale.SNAPSHOT, ""))) else Applied(moved)
+            // and so does what a vault lets the person do, which its access rules or their teams change (a role, before teams).
+            else -> if (event.type.startsWith("surface.") || event.type == "vault.settings.updated" || event.type.startsWith("team.") || event.type.startsWith("role.")) Applied(moved, listOf(Stale(Stale.SNAPSHOT, ""))) else Applied(moved)
         }
     }
 

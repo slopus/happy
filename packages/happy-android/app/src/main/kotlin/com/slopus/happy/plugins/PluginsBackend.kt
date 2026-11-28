@@ -133,7 +133,7 @@ class ClusterPlugins(
     }
 
     override fun changes(event: AgentEvent): Boolean = event.type == AgentEvent.HELLO || event.type == "plugins.changed" ||
-        event.type.startsWith("role.") || event.type == "member.updated"
+        event.type.startsWith("team.") || event.type.startsWith("role.") || event.type == "member.updated"
 
     private fun installation(id: String) = "$INSTALLATIONS/${AgentClient.escape(id)}"
 

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.agent.ServerTeam
 import com.slopus.happy.agent.Team
 import com.slopus.happy.agent.TeamMember
 import com.slopus.happy.agent.TeamRole
@@ -18,7 +19,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
-/** The Members page as the server lists its team: names, roles as the team calls them, a retry, and Leave with why it couldn't. */
+/** The Members page as the server lists its people: names, their teams and owner flag (or a pre-teams server's roles), a retry, and Leave with why it couldn't. */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
 class CloudMembersTest {
@@ -33,12 +34,35 @@ class CloudMembersTest {
     }
 
     @Test
-    fun membersShowTheirNameAndTheTeamsNameForTheirRole() {
+    fun membersShowTheirNameTheirTeamsAndWhetherTheyOwnTheServer() {
+        show(
+            TeamSource.State.Loaded(
+                Team(
+                    listOf(
+                        TeamMember("a1", name = "Ada", role = "owner", owner = true, teams = emptyList()),
+                        TeamMember("a2", name = "Bo", role = "design", owner = false, teams = listOf("design", "ops")),
+                        TeamMember("a3", name = "Cy", role = "member", owner = false, teams = emptyList()),
+                        TeamMember("a4", name = "Di", owner = true, teams = listOf("gone")),
+                    ),
+                    listOf(ServerTeam("owners", "Owners", "owners"), ServerTeam("members", "Members", "members"), ServerTeam("design", "Design"), ServerTeam("ops", "Ops")),
+                ),
+            ),
+        )
+        rule.onNodeWithText("Owner").assertIsDisplayed()
+        rule.onNodeWithText("Design, Ops").assertIsDisplayed()
+        // In no custom team: in members alone.
+        rule.onNodeWithText("Member").assertIsDisplayed()
+        // A team the server didn't name reads as its id.
+        rule.onNodeWithText("Owner, gone").assertIsDisplayed()
+    }
+
+    @Test
+    fun aServerBeforeTeamsShowsItsRolesAsItNamesThem() {
         show(
             TeamSource.State.Loaded(
                 Team(
                     listOf(TeamMember("a1", name = "Ada", role = "owner"), TeamMember("a2", role = "reviewer"), TeamMember("a3", name = "Vi", role = "viewer")),
-                    listOf(TeamRole("owner", "Owner", builtIn = true), TeamRole("reviewer", "Reviewers")),
+                    roles = listOf(TeamRole("owner", "Owner", builtIn = true), TeamRole("reviewer", "Reviewers")),
                 ),
             ),
         )

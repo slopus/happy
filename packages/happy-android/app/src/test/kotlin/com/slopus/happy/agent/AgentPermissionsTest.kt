@@ -33,6 +33,22 @@ class AgentPermissionsTest {
     }
 
     @Test
+    fun theOwnerFlagAndTeamsAreReadAndAServerBeforeTeamsSaysItsRole() {
+        val teamed = ServerPermissions.parse(Json.parseToJsonElement(
+            """{"owner":false,"teams":["design","members"],"granted":["zones.manage"],"role":"design","permissions":[{"id":"zones.manage","description":"","member":false,"ownerOnly":false}]}""",
+        ).jsonObject)!!
+        assertFalse(teamed.owner)
+        assertEquals(setOf("design", "members"), teamed.teams)
+        assertTrue(teamed.allows("zones.manage"))
+        assertTrue(teamed.knows("zones.manage"))
+        assertTrue(ServerPermissions.parse(Json.parseToJsonElement("""{"owner":true,"teams":["owners","members"],"granted":[]}""").jsonObject)!!.owner)
+        val before = ServerPermissions.parse(Json.parseToJsonElement("""{"role":"owner","granted":["content.write"]}""").jsonObject)!!
+        assertTrue(before.owner)
+        assertEquals(emptySet<String>(), before.teams)
+        assertFalse(ServerPermissions.parse(answer())!!.owner)
+    }
+
+    @Test
     fun readOnEveryConnectAndRoleChangeAndNothingGrantedUntilThenOrWhenReadingFails() = runTest {
         val events = MutableSharedFlow<AgentEvent>(extraBufferCapacity = 16)
         val answers = ArrayDeque<() -> JsonObject>()
@@ -50,6 +66,15 @@ class AgentPermissionsTest {
         events.emit(event("role.updated"))
         runCurrent()
         assertFalse(source.permissions.value.canWrite)
+        // What a team grants, or who is in it, changed.
+        answers += { answer("content.write") }
+        events.emit(event("team.updated"))
+        runCurrent()
+        assertTrue(source.permissions.value.canWrite)
+        answers += { answer() }
+        events.emit(event("team.removed"))
+        runCurrent()
+        assertFalse(source.permissions.value.canWrite)
         // Another role given to a member (this person, perhaps): read again.
         answers += { answer("content.write") }
         events.emit(event("member.updated"))
@@ -59,6 +84,6 @@ class AgentPermissionsTest {
         events.emit(event(AgentEvent.HELLO))
         runCurrent()
         assertEquals(ServerPermissions.Unknown, source.permissions.value)
-        assertEquals(4, reads)
+        assertEquals(6, reads)
     }
 }

@@ -14,11 +14,12 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
 /**
- * A member of a Happy Cloud team as their profile shows them (cluster
+ * A member of a Happy Cloud server as their profile shows them (cluster
  * profile contract, `ProfileUser`): [role] is their free-text job title,
- * [teamRole] their place on the team (`owner`, `member` or a custom role's
- * ID; null once they left it), [photo] their picture's ThumbHash, the bytes
- * at [TeamUser.photoPath].
+ * [teamRole] whether they own the server (`owner` or `member`; before teams
+ * also a custom role's ID; null once they left it; their teams are
+ * [TeamMember.teams]), [photo] their picture's ThumbHash, the bytes at
+ * [TeamUser.photoPath].
  */
 @Immutable
 data class MemberProfileUser(
@@ -142,7 +143,7 @@ class MemberProfileSource(private val read: suspend () -> MemberProfile, private
     sealed interface State {
         data object Loading : State
         data class Loaded(val profile: MemberProfile) : State
-        /** The server has no such member on this team (`404`). */
+        /** The server has no such member (`404`). */
         data object Unknown : State
         data object Failed : State
     }
