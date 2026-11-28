@@ -28,6 +28,21 @@ other.example {
 }
 `;
 const configure = source => configurator.configureSecondaryCanvasCaddy(source);
+// The approved secondary predates the primary site's managed OSS markers.
+const legacyFixture = fixture.replace(/    # paws-web-oss:(?:start|end)\n/g, '')
+    .replace('    @paws_web_asset path /_expo/* /assets/*\n    redir @paws_web_asset https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com{uri} 302', `    @public_session_share path /share/*
+    header @public_session_share {
+        Cache-Control "no-store"
+    }
+    handle /assets/* {
+        redir https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com{uri} 302
+    }`)
+    .replace('        reverse_proxy https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com\n', `        reverse_proxy https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com {
+            header_up Host happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com
+            header_down -Content-Disposition
+            header_down Content-Type "text/html; charset=utf-8"
+        }
+`);
 
 test('installs the secondary canvas proxy while preserving its backend and SPA routing', () => {
     const configured = configure(fixture);
@@ -72,7 +87,38 @@ test('secondary HTML policy replaces a stale direct policy and remains idempoten
         '        header >Cache-Control "no-cache"\n        rewrite *')), /Ambiguous Cache-Control/);
 });
 
-test('secondary Caddy returns exact JS CSS and fonts and cannot fall back to the SPA', {
+test('updates the historical markerless secondary SPA without changing its other handlers', () => {
+    const configured = configure(legacyFixture);
+    assert.match(configured, /handle \{\n\s+header >Cache-Control "no-store"\n\s+rewrite \* \/web\/current\/index\.html/);
+    const withoutAdditions = configured
+        .replace(/^\{\n\tgrace_period 10s\n\}\n\n/, '')
+        .replace(/    # paws-secondary-canvas:start\n[\s\S]*?    # paws-secondary-canvas:end\n/, '')
+        .replace('        header >Cache-Control "no-store"\n', '');
+    assert.equal(withoutAdditions, legacyFixture);
+    assert.doesNotMatch(configured, /paws-web-oss/);
+    assert.equal(configure(configured), configured);
+});
+
+test('markerless secondary rejects ambiguous, untrusted and nested fallback lookalikes', () => {
+    const fallback = '    handle {\n        rewrite * /web/current/index.html\n        reverse_proxy https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com\n    }\n';
+    for (const source of [
+        legacyFixture.replace('/web/current/index.html', '/web/other/index.html'),
+        legacyFixture.replace('    handle {\n', fallback + '    handle {\n'),
+        legacyFixture.replace('        reverse_proxy https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com {', '        reverse_proxy https://unowned.example {'),
+        legacyFixture.replace('        rewrite * /web/current/index.html', '        rewrite * /web/other/index.html\n        rewrite * /web/current/index.html'),
+        legacyFixture.replace('    handle {\n', '    route {\n'),
+        legacyFixture.replace('    handle {\n', '    route {\n' + fallback + '    }\n    handle {\n')
+            .replace('        rewrite * /web/current/index.html\n        reverse_proxy https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com {', '        rewrite * /web/other/index.html\n        reverse_proxy https://unowned.example {'),
+        legacyFixture.replace('    handle {\n', '    handle {\n        route {\n')
+            .replace('    }\n}\nother.example', '        }\n    }\n}\nother.example'),
+    ]) assert.throws(() => configure(source), /managed OSS (?:Web handler|SPA fallback)/i);
+    for (const marker of ['start', 'end']) {
+        assert.throws(() => configure(legacyFixture.replace('    handle {\n', `    # paws-web-oss:${marker}\n    handle {\n`)), /incomplete/);
+    }
+});
+
+for (const [variant, source] of [['managed', fixture], ['historical markerless', legacyFixture]]) {
+test(`secondary Caddy (${variant}) returns exact JS CSS and fonts and cannot fall back to the SPA`, {
     skip: spawnSync('caddy', ['version'], { stdio: 'ignore' }).status !== 0,
 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), 'paws-secondary-canvas-'));
@@ -114,7 +160,7 @@ test('secondary Caddy returns exact JS CSS and fonts and cannot fall back to the
         const reserve = http.createServer();
         const address = `http://${await listen(reserve)}`;
         await new Promise(resolve => reserve.close(resolve));
-        const configured = configure('{\n admin off\n}\n' + fixture);
+        const configured = configure('{\n admin off\n}\n' + source);
         assert.ok(configured, 'secondary canvas proxy must be installed');
         const config = configured.replace(/    tls [^\n]+\n/, '')
             .replace('121.43.32.242:8443', address).replace(/other.example \{[\s\S]*?\}\n/, '')
@@ -184,3 +230,4 @@ test('secondary Caddy returns exact JS CSS and fonts and cannot fall back to the
         await rm(directory, { recursive: true, force: true });
     }
 });
+}

@@ -268,32 +268,43 @@ export function configureProductionWebCaddy(source, siteAddress = '47.115.228.20
     return hadFinalNewline && !result.endsWith('\n') ? `${result}\n` : result;
 }
 
-// Restrict the mutable HTML policy to the existing managed SPA fallback.
+// Restrict the mutable HTML policy to the existing OSS SPA fallback. The
+// historical secondary site has no primary-site managed OSS markers.
 // A site-wide header would also disable the canvas and hashed asset caches.
 function configureSpaHtmlCachePolicy(site) {
     const range = findManagedRange(site, WEB_OSS_CADDY_BLOCK_START, WEB_OSS_CADDY_BLOCK_END);
-    if (!range
-        || site.filter(line => line.trim() === WEB_OSS_CADDY_BLOCK_START).length !== 1
-        || site.filter(line => line.trim() === WEB_OSS_CADDY_BLOCK_END).length !== 1) {
+    if (range && (site.filter(line => line.trim() === WEB_OSS_CADDY_BLOCK_START).length !== 1
+        || site.filter(line => line.trim() === WEB_OSS_CADDY_BLOCK_END).length !== 1)) {
         throw new Error('Managed OSS Web handler not found or ambiguous in the secondary site.');
     }
     const candidates = [];
-    for (let start = range.start + 1; start < range.end; start += 1) {
-        if (!/^\s*handle\s*\{\s*$/.test(site[start])) continue;
-        const end = findBlockEnd(site, start);
-        const body = site.slice(start + 1, end);
-        const rewrites = body.filter(line => /^\s*rewrite\s+/.test(line));
-        const proxies = body.filter(line => /^\s*reverse_proxy\s+/.test(line));
-        if (end < range.end && rewrites.length === 1
-            && /^\s*rewrite\s+\*\s+\/web\/current\/index\.html\s*$/.test(rewrites[0])
-            && proxies.length === 1
-            && (proxies[0].trim() === `reverse_proxy ${PRODUCTION_WEB_OSS_ORIGIN}`
-                || proxies[0].trim() === `reverse_proxy ${PRODUCTION_WEB_OSS_ORIGIN} {`)) {
-            candidates.push({ start, end });
+    let depth = 0;
+    for (let start = 0; start < site.length; start += 1) {
+        if (depth === 0 && /^\s*handle\s*\{\s*$/.test(site[start])
+            && (!range || (start > range.start && start < range.end))) {
+            const end = findBlockEnd(site, start);
+            if (!range || end < range.end) candidates.push({ start, end });
         }
+        depth += braceDelta(site[start]);
     }
     if (candidates.length !== 1) throw new Error('Expected one managed OSS SPA fallback in the secondary site.');
     const { start, end } = candidates[0];
+    const body = site.slice(start + 1, end);
+    const rewrites = body.filter(line => /^\s*rewrite\s+/.test(line));
+    const proxies = body.filter(line => /^\s*reverse_proxy\s+/.test(line));
+    const directLines = [];
+    depth = 0;
+    for (const line of body) {
+        if (depth === 0) directLines.push(line);
+        depth += braceDelta(line);
+    }
+    if (rewrites.length !== 1 || !directLines.includes(rewrites[0])
+        || !/^\s*rewrite\s+\*\s+\/web\/current\/index\.html\s*$/.test(rewrites[0])
+        || proxies.length !== 1 || !directLines.includes(proxies[0])
+        || (proxies[0].trim() !== `reverse_proxy ${PRODUCTION_WEB_OSS_ORIGIN}`
+            && proxies[0].trim() !== `reverse_proxy ${PRODUCTION_WEB_OSS_ORIGIN} {`)) {
+        throw new Error('Expected one managed OSS SPA fallback in the secondary site.');
+    }
     const existing = [];
     for (let index = start + 1; index < end; index += 1) {
         if (/^\s*header\s+>?Cache-Control(?:\s|$)/i.test(site[index])) existing.push(index);
