@@ -26,7 +26,7 @@ export type AgentMessage =
   | { type: 'model-output'; textDelta?: string; fullText?: string }
   | { type: 'status'; status: 'starting' | 'running' | 'idle' | 'stopped' | 'error'; detail?: string }
   | { type: 'tool-call'; toolName: string; title?: string; args: Record<string, unknown>; callId: ToolCallId }
-  | { type: 'tool-result'; toolName: string; result: unknown; callId: ToolCallId }
+  | { type: 'tool-result'; toolName: string; result: unknown; status?: 'completed' | 'failed' | 'cancelled'; content?: unknown; callId: ToolCallId }
   | { type: 'permission-request'; id: string; reason: string; payload: unknown }
   | { type: 'permission-response'; id: string; approved: boolean }
   | { type: 'fs-edit'; description: string; diff?: string; path?: string }

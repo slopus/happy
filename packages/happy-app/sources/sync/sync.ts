@@ -2,6 +2,7 @@ import { assertConversationSendAllowed } from './conversationSwitch';
 import { resolveConversationRootSessionId } from './conversationSession';
 import { observeRoleConfigurationRealtimeMessage, observeRoleConfigurationSavedMessages } from './roleConfigurationSavedMessages';
 import { isAgyConfigPending } from './agyConfigPending';
+import { isTaskPermissionModeSelectable } from '@/utils/taskPermissionModes';
 import { createScheduledTasksController } from './scheduledTasks';
 import { resolveComposerReferences, parseComposerDraft, composerReferenceDisplay, buildComposerReferenceExcerpt } from './composerReferences';
 import { getUserMessageDisplayText } from '@/components/messageDisplayText';
@@ -2124,6 +2125,9 @@ class Sync {
         assertConversationSendAllowed(sessionId, options?.conversationSwitchRequestId);
         if (isAgyConfigPending(sessionId)) throw new Error('Wait for the model configuration to finish before sending');
         if (isRetiredSession(storage.getState().sessions[sessionId] ?? {})) throw new Error('personal-agent-retired');
+        const permissionSession = storage.getState().sessions[sessionId];
+        const permissionMode = options?.modeMeta ?? resolveMessageModeMeta(permissionSession, storage.getState().settings);
+        if (!isTaskPermissionModeSelectable(permissionSession.metadata?.flavor, permissionMode.permissionMode)) throw new Error(t('agentInput.taskPermission.chooseSupported'));
         const userSentAt = Date.now();
         options = { ...options, userSentAt };
         const recoveryOwner = this.encryption;
@@ -2236,6 +2240,7 @@ class Sync {
         const stagedMessages: NormalizedMessage[] = [];
 
         const modeMeta = options?.modeMeta ?? resolveMessageModeMeta(modeSessionSnapshot ?? session, modeSettingsSnapshot);
+        if (!isTaskPermissionModeSelectable((modeSessionSnapshot ?? session).metadata?.flavor, modeMeta.permissionMode)) throw new Error(t('agentInput.taskPermission.chooseSupported'));
         const { editedFromMessageId, source = 'chat', attachments } = options ?? {};
         let displayText = options?.displayText;
         let annotationReview = options?.annotationReview;

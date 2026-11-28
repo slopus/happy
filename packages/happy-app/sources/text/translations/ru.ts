@@ -1780,6 +1780,7 @@ failedContinueTask: "Продолжить незавершённую задач�
             badgePlanMode: 'Режим планирования',
         },
         taskPermission: {
+            chooseSupported: 'Этот режим разрешений недоступен. Выберите запрос подтверждения или полный доступ.',
             pickerTitle: 'Как одобрять действия?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { EventEmitter } from 'node:events';
 import { createHash } from 'node:crypto';
-const state = vi.hoisted(() => ({ control: null as any, handlers: null as any, tmux: false, spawned: [] as any[], workerArgs: [] as any[], children: [] as any[], rejectGrant: false, api: null as any, bundleMtime: 1, tmuxOptions: null as any, persisted: {} as Record<string, any> }));
+const state = vi.hoisted(() => ({ control: null as any, handlers: null as any, tmux: false, spawned: [] as any[], workerArgs: [] as any[], children: [] as any[], rejectGrant: false, api: null as any, sessionRpc: null as any, bundleMtime: 1, tmuxOptions: null as any, persisted: {} as Record<string, any> }));
 vi.mock('node:fs', async importOriginal => {
   const fs = await importOriginal<typeof import('node:fs')>();
   return { ...fs, statSync: (...args: any[]) => String(args[0]).endsWith('/dist/index.mjs') ? { mtimeMs: state.bundleMtime } : (fs.statSync as any)(...args) };
@@ -32,6 +32,12 @@ vi.mock('@/utils/spawnHappyCLI', () => ({ resolveHappyCLIEntrypoint: () => '/fak
 } }));
 vi.mock('./stopDetachedCodexWorker', () => ({ stopDetachedCodexWorker: vi.fn(async () => {}) }));
 vi.mock('./nativeProcessGroup', () => ({ verifyNativeProcessGroup: vi.fn(async () => true), awaitNativeProcessGroupExit: vi.fn(async () => {}) }));
+vi.mock('./nativeProcessTree', async importOriginal => ({ ...await importOriginal<typeof import('./nativeProcessTree')>(),
+  captureNativeProcessTree: vi.fn(async (pid: number) => ({ rootPid: pid, processes: [
+    { pid, ppid: 1, pgid: pid, startedAt: 'Sun Nov 29 01:00:00 2026' },
+    { pid: pid + 100, ppid: pid, pgid: pid + 100, startedAt: 'Sun Nov 29 01:00:01 2026' },
+  ] })), awaitNativeProcessTreeExit: vi.fn(async () => {}) }));
+import { captureNativeProcessTree, awaitNativeProcessTreeExit } from './nativeProcessTree';
 import { stopDetachedCodexWorker } from './stopDetachedCodexWorker';
 import { startDaemon } from './run';
 import axios from 'axios';
@@ -56,9 +62,15 @@ beforeEach(async () => {
   sourceHome = await mkdtemp(join(tmpdir(), 'daemon-codex-test-')); await writeFile(join(sourceHome, 'auth.json'), 'global-auth');
   (configuration as { happyHomeDir: string }).happyHomeDir = sourceHome;
   savedHome = process.env.CODEX_HOME; process.env.CODEX_HOME = sourceHome;
+  state.sessionRpc = vi.fn(async (_id, _key, method) => {
+    if (method === 'delegation-context') return { agent: 'codex', hostPid: 987601 };
+    const child = state.children.at(-1);
+    if (child) { child.exitCode = 0; child.signalCode = null; child.emit('exit', 0); }
+    return { success: true };
+  });
   state.api = {
     getOrCreateMachine: async () => ({ id: 'machine-1', encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy' }),
-    machineSyncClient: () => ({ setScheduledTaskRunner: vi.fn(), setNativeSessionHooks: vi.fn(), setRPCHandlers: (h: any) => { state.handlers = h; }, connect: vi.fn(), shutdown: vi.fn(), updateDaemonState: async () => {}, isConnected: () => false }),
+    machineSyncClient: () => ({ callSessionRpc: state.sessionRpc, setScheduledTaskRunner: vi.fn(), setNativeSessionHooks: vi.fn(), setRPCHandlers: (h: any) => { state.handlers = h; }, connect: vi.fn(), shutdown: vi.fn(), updateDaemonState: async () => {}, isConnected: () => false }),
     redeemCodexSessionGrant: vi.fn(async () => { if (state.rejectGrant) throw new Error('secret-canary'); return { auth: { tokens: { id_token: 'id', access_token: 'access', refresh_token: 'refresh', account_id: 'account' } }, launchId: 'launch-1', profile: { id: 'profile-1', displayName: 'Codex · ABCD', credentialVersion: 1 } }; }),
     attachCodexSession: vi.fn(async () => ({ success: true })), updateCodexAccountCredential: vi.fn(), reportCodexAccountQuota: vi.fn(), reportCodexAccountStatus: vi.fn(),
   };
@@ -639,14 +651,15 @@ it.each([false, true, 'partial-history'])('cancels only an unsent, fully stopped
  if (alreadyDelivered) expect(child.kill).not.toHaveBeenCalled();
  else {
   expect(result).toEqual({ success: true, cancelled: true, targetSessionId: 'cancel-target' });
-  expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM');
+  expect(child.kill).not.toHaveBeenCalled();
+  expect(state.sessionRpc.mock.calls.map(([, , method]: any[]) => method)).toEqual(['delegation-context', 'killSession']);
   expect(await state.handlers.spawnConversationSession(f.request)).toMatchObject({ type: 'error', conversationCancelled: true });
  }
  expect(state.spawned).toHaveLength(2);
 });
 
 it.each([
- ['antigravity', true, 'missing-ready', true], ['codex', true, 'full-ready', true], ['antigravity', false, 'missing-ready', true],
+ ['antigravity', true, 'missing-ready', true], ['codex', true, 'full-ready', true], ['antigravity', false, 'missing-ready', false],
  ['antigravity', true, 'parent-conflict', false], ['antigravity', true, 'request-conflict', false],
  ['antigravity', true, 'agent-conflict', false], ['antigravity', true, 'missing-starting', false], ['antigravity', true, 'missing-receipt', false],
 ] as const)('proves persisted %s cancellation after daemon restart (live=%s, lineage=%s)', async (agent, alive, scenario, success) => {
@@ -680,11 +693,12 @@ it.each([
   if (Math.abs(pid) === targetPid) throw Object.assign(new Error('already exited'), { code: 'ESRCH' });
   return true;
  });
+ if (!alive) vi.mocked(captureNativeProcessTree).mockRejectedValueOnce(new Error('Host lifetime missing; no captured sidecar proof'));
  const before = vi.mocked(process.kill).mock.calls.length;
  const result = await state.handlers.cancelConversationLaunch(f.request);
  expect(result.success).toBe(success);
  if (success) expect(result).toEqual({ success: true, cancelled: true, targetSessionId: targetId });
- expect(callSessionRpc.mock.calls.map(([, , method]) => method)).toEqual(success && alive ? ['delegation-context', 'killSession'] : []);
+ expect(callSessionRpc.mock.calls.map(([, , method]) => method)).toEqual(success ? ['delegation-context', 'killSession'] : !alive ? ['delegation-context'] : []);
  expect(vi.mocked(process.kill).mock.calls.slice(before).every(([, signal]) => signal === 0)).toBe(true);
  expect(state.children[0].kill).not.toHaveBeenCalled();
  expect(state.spawned).toHaveLength(1);

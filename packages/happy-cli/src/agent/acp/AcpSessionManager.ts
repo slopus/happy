@@ -32,6 +32,7 @@ function parseThinkingPayload(payload: unknown): { text: string; streaming: bool
 export class AcpSessionManager {
   private currentTurnId: string | null = null;
   private readonly acpCallToSessionCall = new Map<string, string>();
+  private readonly terminalCalls = new Set<string>();
   private readonly roleCalls = new Map<string, RoleSaveInput>();
   private readonly savedRoleReceipts = new Set<string>();
   private roleSaveEpoch = 0;
@@ -139,6 +140,10 @@ export class AcpSessionManager {
     const turnId = this.currentTurnId;
     this.currentTurnId = null;
     this.invalidateRoleSaveObservations();
+    // An ended turn can still receive its first tool result after cancellation.
+    // Retain every known call, including permission-only calls, so that result
+    // cannot create a new binding in a later turn. A new explicit start may reuse it.
+    for (const callId of this.acpCallToSessionCall.keys()) this.terminalCalls.add(callId);
     this.acpCallToSessionCall.clear();
     this.roleCalls.clear();
     this.savedRoleReceipts.clear();
@@ -191,6 +196,10 @@ export class AcpSessionManager {
     }
 
     if (msg.type === 'tool-call') {
+      // A late terminal retransmission keeps its old identity across turns.
+      // Only an explicit new call start may establish a new binding for that ID.
+      if (this.terminalCalls.has(msg.callId) && this.acpCallToSessionCall.has(msg.callId)) return [];
+      this.terminalCalls.delete(msg.callId);
       const flushed = this.flush();
       const call = this.getSessionCallId(msg.callId);
       const roleTool = isHappyRoleTool(msg.toolName, msg.title);
@@ -210,22 +219,27 @@ export class AcpSessionManager {
     }
 
     if (msg.type === 'tool-result') {
+      if (this.terminalCalls.has(msg.callId)) return [];
+      this.terminalCalls.add(msg.callId);
       const flushed = this.flush();
       const call = this.getSessionCallId(msg.callId);
       const result = msg.result && typeof msg.result === 'object' ? msg.result as Record<string, unknown> : {};
       const rawExitCode = result.exitCode ?? result.exit_code;
       const exitCode = typeof rawExitCode === 'number' && Number.isInteger(rawExitCode) ? rawExitCode : undefined;
-      const status = result.status === 'cancelled' ? 'cancelled' : result.status === 'failed' || result.error || (exitCode !== undefined && exitCode !== 0) ? 'failed' : undefined;
+      const status = msg.status === 'cancelled' || result.status === 'cancelled' ? 'cancelled'
+        : msg.status === 'failed' || result.status === 'failed' || result.error || result.isError === true || (exitCode !== undefined && exitCode !== 0) ? 'failed'
+          : msg.status === 'completed' || result.status === 'completed' ? 'completed' : undefined;
       const failure = status === 'failed' ? selectToolFailure([msg.result], 'Tool failed') : null;
       const roleInput = this.roleCalls.get(msg.callId);
       this.roleCalls.delete(msg.callId);
-      const candidate = status === undefined && roleInput !== undefined
+      const candidate = status !== 'failed' && status !== 'cancelled' && roleInput !== undefined
         ? roleSaveReceipt('happy', 'agent_roles', roleInput, msg.result) : undefined;
       const receipt = candidate && this.acceptRoleReceipt(candidate) ? candidate : undefined;
       return [
         ...flushed,
         createEnvelope('agent', { t: 'tool-call-end', call, ...(status ? { status } : {}),
-          ...(msg.result === undefined ? {} : { output: msg.result }),
+          ...(Object.hasOwn(msg, 'content') ? { output: { rawOutput: msg.result, content: msg.content } }
+            : msg.result === undefined ? {} : { output: msg.result }),
           ...(exitCode === undefined ? {} : { exitCode }),
           ...(failure?.summary ? { error: failure } : {}),
           ...(receipt ? { mcpAppResult: receipt } : {}) }, turnOptions(this.currentTurnId, this.nextTime())),

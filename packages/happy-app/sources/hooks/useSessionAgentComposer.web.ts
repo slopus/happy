@@ -1,5 +1,5 @@
 import { Modal } from '@/modal';
-import { getAgentPermissionModeForTaskLevel, getTaskPermissionLevelForAgentMode, resolveTaskPermissionAgent } from '@/utils/taskPermissionModes';
+import { getAgentPermissionModeForTaskLevel, getTaskPermissionLevelForAgentMode, resolveTaskPermissionAgent, supportsTaskPermissionLevel, isTaskPermissionModeSelectable } from '@/utils/taskPermissionModes';
 import * as React from 'react';
 import { useAllSessions, useMachine, useSetting } from '@/sync/storage';
 import { enabledCodingAgents } from '@/utils/codingAgentSelection';
@@ -104,6 +104,9 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
         || (selected === 'codex' && !useMagpie && accountProfile === undefined);
     const submitWithDestination = async (continueInCurrentConversation: boolean) => {
         if (!pending || disabled || spawn.sending) return false;
+        if (!isTaskPermissionModeSelectable(selected, selection.permissionMode)) {
+            Modal.alert(t('common.error'), t('agentInput.taskPermission.chooseSupported')); return false;
+        }
         if (spawn.hydrationError) return spawn.retryHydration();
         args.flushDraft();
         let submission: ReturnType<SessionAgentComposerArgs['readSubmission']>;
@@ -190,7 +193,7 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
         submitNewSession,
         permissionSelector: pending ? {
             online: online && !busy, supported: resolveTaskPermissionAgent(selected) !== null,
-            supportsAutomatic: selected === 'codex', currentMode: selection.permissionMode,
+            supportsAutomatic: supportsTaskPermissionLevel(selected, 'automatic'), currentMode: selection.permissionMode,
             level: getTaskPermissionLevelForAgentMode(selected, selection.permissionMode), unavailableReason: null,
             onLevelChange: async level => {
                 const mode = getAgentPermissionModeForTaskLevel(selected, level);

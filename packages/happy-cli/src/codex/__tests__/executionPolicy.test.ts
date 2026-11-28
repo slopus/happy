@@ -26,13 +26,12 @@ describe('resolveCodexExecutionPolicy', () => {
         });
     });
 
-    it('maps safe-yolo mode to on-failure + workspace-write without managed sandbox', () => {
-        const policy = resolveCodexExecutionPolicy('safe-yolo', false);
-
-        expect(policy).toEqual({
-            approvalPolicy: 'on-failure',
-            sandbox: 'workspace-write',
-        });
+    it.each([false, true])('explicitly rejects unsupported automatic approvals with managed sandbox=%s', sandboxManagedByHappy => {
+        // Legacy metadata must reach an explicit error instead of being ignored
+        // and silently retaining a different permission policy.
+        expect(isRemoteCodexPermissionMode('safe-yolo')).toBe(true);
+        expect(() => resolveCodexExecutionPolicy('safe-yolo', sandboxManagedByHappy))
+            .toThrow(/automatic approval.*not supported.*confirm.*full access/i);
     });
 
     it('maps yolo mode to never + danger-full-access without managed sandbox', () => {

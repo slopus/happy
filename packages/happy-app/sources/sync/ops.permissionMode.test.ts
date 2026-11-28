@@ -32,4 +32,21 @@ describe('session permission mode ops', () => {
             { mode: 'yolo' },
         );
     });
+
+    it.each([false, undefined, null, {}, { success: true }, 'true', 1])(
+        'does not treat a malformed or negative reply as a permission acknowledgement: %j',
+        async (reply) => {
+            sessionRPC.mockResolvedValue(reply);
+            const { sessionSetPermissionMode } = await import('./ops');
+            expect(await sessionSetPermissionMode('session-1', 'default')).toBe(false);
+        },
+    );
+
+    it('surfaces a worker error instead of acknowledging its truthy envelope', async () => {
+        sessionRPC.mockResolvedValue({ error: 'This permission mode is not supported by this Codex runtime.' });
+        const { sessionSetPermissionMode } = await import('./ops');
+        await expect(sessionSetPermissionMode('session-1', 'safe-yolo')).rejects.toThrow(
+            'This permission mode is not supported by this Codex runtime.',
+        );
+    });
 });

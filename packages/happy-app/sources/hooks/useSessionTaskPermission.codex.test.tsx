@@ -50,6 +50,15 @@ describe('acknowledged Codex permission controls', () => {
     });
     afterEach(() => { act(() => renderer.unmount()); });
 
+    it('does not offer or apply automatic while retaining a historical safe-yolo value', async () => {
+        mocks.sessions[sessionId].permissionMode = 'safe-yolo'; renderCurrent();
+        expect(controller.supportsAutomatic).toBe(false);
+        expect(controller.currentMode).toBe('safe-yolo');
+        await act(async () => { expect(await controller.onLevelChange('automatic')).toBe(false); });
+        expect(mocks.setMode).not.toHaveBeenCalled();
+        expect(mocks.sessions[sessionId].permissionMode).toBe('safe-yolo');
+    });
+
     it('keeps the previous displayed mode until the worker acknowledges full access', async () => {
         let acknowledge!: (accepted: boolean) => void;
         mocks.setMode.mockImplementation(() => new Promise(resolve => { acknowledge = resolve; }));

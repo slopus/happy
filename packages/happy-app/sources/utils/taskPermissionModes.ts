@@ -11,7 +11,6 @@ const TASK_PERMISSION_MAPPINGS: Record<TaskPermissionAgent, TaskPermissionMappin
     },
     codex: {
         confirm: 'acceptEdits',
-        automatic: 'safe-yolo',
         'full-access': 'yolo',
     },
     gemini: {
@@ -46,6 +45,15 @@ export function getAgentPermissionModeForTaskLevel(
 ): string | null {
     const agent = resolveTaskPermissionAgent(flavor);
     return agent ? TASK_PERMISSION_MAPPINGS[agent][level] ?? null : null;
+}
+
+export function supportsTaskPermissionLevel(flavor: string | null | undefined, level: TaskPermissionLevel): boolean {
+    return getAgentPermissionModeForTaskLevel(flavor, level) !== null;
+}
+
+/** Keep historical policies readable, but never submit a policy the current native contract removed. */
+export function isTaskPermissionModeSelectable(flavor: string | null | undefined, mode: string | null | undefined): boolean {
+    return !(resolveTaskPermissionAgent(flavor) === 'codex' && mode === 'safe-yolo');
 }
 
 /**

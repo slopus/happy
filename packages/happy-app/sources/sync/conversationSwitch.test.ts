@@ -13,7 +13,7 @@ const record = { rootId: 'root', sourceId: 'root', targetId: 'target', requestId
 beforeEach(() => {
     vi.resetAllMocks();
     mock.sessions = { root: session('root'), target: session('target', { continuationOfSessionId: 'root' }) };
-    mock.cancel.mockResolvedValue({ success: false, error: 'unknown' });
+    mock.cancel.mockResolvedValue({ success: false, error: '' });
     mock.refresh.mockResolvedValue(true); mock.hydrate.mockResolvedValue(true); mock.delivery.mockResolvedValue(true);
     mock.update.mockImplementation(async (_id, metadata, version, apply) => ({ metadata: apply(metadata), version: version + 1 }));
 });
@@ -364,6 +364,19 @@ it('recovers a bound but never-sent launch only with daemon proof that all targe
     expect(mock.sessions.root.metadata!.conversationSwitch).toBeUndefined();
     expect(mock.sessions.root.metadata!.conversationActiveSessionId).toBeUndefined();
     expect(mock.sessions.target.metadata!.conversationRootSessionId).toBeUndefined();
+});
+
+it.each([false, true])('retains the reservation and reports the actual cancellation failure (bound=%s)', async bound => {
+    if (bound) await claimConversationSwitch(record);
+    else {
+        const { reserveConversationSwitch } = await import('./conversationSwitch');
+        await reserveConversationSwitch({ rootId: record.rootId, sourceId: record.sourceId, requestId: record.requestId });
+    }
+    mock.delivery.mockResolvedValue(false);
+    mock.cancel.mockResolvedValue({ success: false, error: 'Candidate MCP processes have not exited; cancellation is unconfirmed.' });
+    await expect(recoverConversationSwitch('root')).rejects.toThrow('Candidate MCP processes have not exited; cancellation is unconfirmed.');
+    expect(mock.sessions.root.metadata!.conversationSwitch?.id).toBe(record.requestId);
+    expect(mock.sessions.root.metadata!.conversationActiveSessionId).toBeUndefined();
 });
 
 it('rejects a cancelled handoff request even after its candidate becomes an ordinary independent continuation', async () => {

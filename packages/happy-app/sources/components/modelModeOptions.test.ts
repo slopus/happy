@@ -19,6 +19,10 @@ import {
 const translate = (key: string) => `tr:${key}`;
 
 describe('modelModeOptions', () => {
+    it('does not offer the unsupported historical Codex automatic policy as a new selection', () => {
+        expect(getAvailablePermissionModes('codex', null, translate).map(mode => mode.key)).not.toContain('safe-yolo');
+        expect(getAvailablePermissionModes('codex', null, translate).map(mode => mode.key)).toEqual(['default', 'read-only', 'acceptEdits', 'yolo']);
+    });
     it('resets stale Claude effort to a supported level or CLI default on the next send', () => {
         const metadata = { models: [{ code: 'small', value: 'Small', supportedEffortLevels: ['low'] }, { code: 'none', value: 'None', supportedEffortLevels: [] }] } as any;
         expect(normalizeModelEffortKey('claude', 'small', 'max', metadata)).toBe('low');
@@ -219,7 +223,7 @@ describe('modelModeOptions', () => {
             operatingModes: [{ code: 'metadata-only', value: 'Metadata Mode', description: null }],
         } as any, translate);
 
-        expect(modes.map((mode) => mode.key)).toEqual(['default', 'read-only', 'acceptEdits', 'safe-yolo', 'yolo']);
+        expect(modes.map((mode) => mode.key)).toEqual(['default', 'read-only', 'acceptEdits', 'yolo']);
     });
 
     it('applies hacks to metadata-provided operating modes for custom ACP agents', () => {

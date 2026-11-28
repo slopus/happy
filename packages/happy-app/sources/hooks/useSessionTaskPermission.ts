@@ -12,6 +12,7 @@ import {
     getAgentPermissionModeForTaskLevel,
     getTaskPermissionLevelForAgentMode,
     resolveTaskPermissionAgent,
+    supportsTaskPermissionLevel,
     type TaskPermissionLevel,
 } from '@/utils/taskPermissionModes';
 import {
@@ -98,7 +99,7 @@ export function useSessionTaskPermission(
     return React.useMemo(() => ({
         online,
         supported,
-        supportsAutomatic: agent === 'codex',
+        supportsAutomatic: supportsTaskPermissionLevel(flavor, 'automatic'),
         currentMode: currentAgentMode,
         level,
         unavailableReason,

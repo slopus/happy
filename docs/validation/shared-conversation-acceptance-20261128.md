@@ -11,7 +11,7 @@
 
 ## 真实基线
 
-环境为正式 Paws Web 与 Mac mini 执行端，使用本轮专属测试目录及合成资料；没有改写用户业务文件。以下已在活动旧 CLI 上验证，不能替代新补丁激活后的回归。
+环境为正式 Paws Web 与 Mac mini 执行端，使用本轮专属测试目录及合成资料；没有改写用户业务文件。以下为首轮真实基线；后续就绪补丁激活及失败候选的进展见文末，不能以旧版结果替代新版回归。
 
 1. Codex 读取约 108 KB 的长文本和约定文件，接收真实图片附件。
 2. 同 root 切换 Gemini 4 Neon。Gemini 通过 `thread_read` 读取初始预算外的原文，在约 53 KB 偏移处找到核对码；通过 `thread_attachment` 取得历史图片并正确识别水獭、电脑和黄色背景。
@@ -44,10 +44,26 @@
 
 ## 验证与发布
 
-合并后源码基点为 `f669ead6ff0af035fb03b6c491d2a43696468f2b`。独立代码评审未发现可确认的阻断缺陷；App 14 文件 249 项（含独立 Codex 权限 4 项）、CLI 11 文件 324 项、两端 typecheck、wire build、diff check 及 OTA/runtime 7 项契约通过。CLI 首次 typecheck 与构建清理依赖产物重叠而失败，构建完成后同源顺序复验通过，保留首次失败日志。native ACK 探针、候选封存、PR/CI、Web/OTA、CLI 激活与后续真实回归分别记录后补。此时未发布本轮补丁，不能标记整体验收完成。
+首轮开发基点为 `f669ead6ff0af035fb03b6c491d2a43696468f2b`（不是最终合并提交）。独立代码评审未发现可确认的阻断缺陷；App 14 文件 249 项（含独立 Codex 权限 4 项）、CLI 11 文件 324 项、两端 typecheck、wire build、diff check 及 OTA/runtime 7 项契约通过。CLI 首次 typecheck 与构建清理依赖产物重叠而失败，构建完成后同源顺序复验通过，保留首次失败日志。native ACK 探针、候选封存、PR/CI、Web/OTA、CLI 激活与后续真实回归分别记录后补。此段为上线前的历史验证记录；实际合并/发布及新增失败见文末，整体验收尚未完成。
 
 专属会话、进程、截图回执及文件清单保存在被 Git 忽略的 `test-results/shared-conversation-20261128/`；公开报告不保存凭据或完整业务记录。实体手机、用户原浏览器窗口及其他执行机器未测。
 
 ## 原生协议探针发现
 
-Codex 0.166.0 的真实空线程 start 配置确认通过。对含一个合成历史回合的专属 QA thread，首次 resume 接受配置；同连接再次 resume 时，返回旧配置，未应用新权限覆盖。严格 ACK 检查正确拒绝，未发送业务回合。该问题证明 mock 绿灯不能代替当前 native 协议兼容性。已通过专属历史线程的真实 settings/update→resume 探针确认受支持的修复路径；源码先补红例，再改用该原生 API 更新后沿同线程严格读回 ACK。新增配置并发、身份/进程/回合变化、原生不支持及迟到错误的回归，修复后完整 client 115 项通过。最终候选构建与实装路径复验仍待完成。探针未改写业务 rollout、未发送 turn/*，专用原生进程已退出。
+Codex 0.166.0 的真实空线程 start 配置确认通过。对含一个合成历史回合的专属 QA thread，首次 resume 接受配置；同连接再次 resume 时，返回旧配置，未应用新权限覆盖。严格 ACK 检查正确拒绝，未发送业务回合。该问题证明 mock 绿灯不能代替当前 native 协议兼容性。已通过专属历史线程的真实 settings/update→resume 探针确认受支持的修复路径；源码先补红例，再改用该原生 API 更新后沿同线程严格读回 ACK。新增配置并发、身份/进程/回合变化、原生不支持及迟到错误的回归，修复后完整 client 115 项通过。该首轮候选已完成构建、实装路径复验及激活；后续新增兼容性与取消问题见文末。探针未改写业务 rollout、未发送 turn/*，专用原生进程已退出。
+
+
+## 2026-11-29 就绪补丁上线后的实测与跟进
+
+首轮补丁经 PR #965 正常合并（`f8898bf756505bfe20f36321886696a6238f517d`），精确 head 的 15 项检查、4 个 workflow 通过。正式 Web、preview/runtime24 与 production/runtime25 固定 OTA 清单、来源与实际主包哈希已核验；手机加载未测。保留全部活动运行包叠层后，受控激活新版 CLI，新 daemon 注册成功；切换时的 339 个受保护 CLI/provider 身份均保留。旧 worker 没有热升级。
+
+实际新增结果：
+
+- 新页面遇到旧 CLI 不支持 `conversation-prepare` 时，首条业务未投递，原执行器、草稿及文件保留。刷新后的恢复只取消同一候选；该候选退出、持久回执 cancelled、reservation 释放，没有重发业务。
+- 新 CLI 的 Gemini 4 Neon/high 与 full access 就绪后，只接收一次新消息。同一 root 下实际读取约 108 KB 原工具结果在 52 KB 偏移处的原文、取得历史图片，新增讨论约定并完成。原草稿文件和结果文件保持。
+- 返回 Codex 时选择历史 automatic 档失败：当前 native 0.166.0 已不接受 `on-failure`。目标 user/turn/tool 均为零，业务草稿保留；失败时页面错误被 schema 报错掩盖，取消又因原生 MCP 独立进程组被旧严格 guard 阻断。本候选保留用于恢复验收，未手工改 reservation 或重发业务。
+- ACP 合法分批更新可能先传正文、后传 completed/status-only。旧 relay 未保留 end-event 正文及终态，不能据助手复述声称服务端保留了原字节。
+
+跟进补丁覆盖：将历史可读权限和新选择分开，明确拒绝 automatic 且不静默提权；准备及普通权限 RPC 识别错误 envelope，只有 literal true 是普通权限 ACK；ACP 保留 changed fields/显式终态并防止已知旧回合首次迟到结果串入新回合；仅对已证明 user0 的候选使用持久、请求绑定的 lifetime 退役证明，原 native-writer handoff 的严格检查不变；已取消的 resumed/未知计划仍保留原生身份占用边界，后续转 fresh portable，不能以候选取消推导原生线程可安全复用。
+
+跟进补丁本地当前证据为 App 666 文件/6,515 项及类型检查通过，ACP 相关 14 文件/272 项、普通权限 RPC 相关 4 文件/60 项及 CLI 类型检查通过。候选退役/原生占用 5 文件/134 项及 CLI 类型检查通过，最终独立代码复核无阻断；精确源码 CI、候选封存/激活与真实失败恢复仍按各自证据补验，不能据此标记整体验收完成。后续无 originating turn ID 的未知工具结果或 provider 过早复用 call ID 仍存在协议歧义；缺失终态保持 unknown，不伪造 completed。未先捕获 lifetime 的 dead-root、变化中的进程子树或不确定投递也保持 pending，不自动重发或按 metadata PID 杀进程。

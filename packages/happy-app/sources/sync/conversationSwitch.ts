@@ -319,6 +319,12 @@ export async function releaseConversationSwitch(record: ConversationSwitch): Pro
 }
 
 /** A reload can finish an acknowledged handoff, but never replays an uncertain prompt. */
+function requireConversationCancellationProof(result: Awaited<ReturnType<typeof machineCancelConversationLaunch>>): void {
+    if (result?.success === true && result.cancelled === true) return;
+    const reason = result?.success === false ? result.error : undefined;
+    throw new Error(typeof reason === 'string' && reason.trim() ? reason : t('session.agentSwitchPending'));
+}
+
 export async function recoverConversationSwitch(rootId: string): Promise<boolean> {
     if (!await sync.refreshConversationSession(rootId)) throw unavailable();
     assertAccountRuntime();
@@ -333,7 +339,7 @@ export async function recoverConversationSwitch(rootId: string): Promise<boolean
         const result = await machineCancelConversationLaunch({ machineId, rootSessionId: rootId,
             sourceSessionId: pending.sourceSessionId, requestId: pending.id });
         assertAccountRuntime();
-        if (!result?.success || !result.cancelled) throw new Error(t('session.agentSwitchPending'));
+        requireConversationCancellationProof(result);
         await releaseConversationSwitchReservation({ rootId, sourceId: pending.sourceSessionId, requestId: pending.id });
         return true;
     }
@@ -356,7 +362,7 @@ export async function recoverConversationSwitch(rootId: string): Promise<boolean
         const result = await machineCancelConversationLaunch({ machineId, rootSessionId: rootId,
             sourceSessionId: pending.sourceSessionId, requestId: pending.id });
         assertAccountRuntime();
-        if (!result?.success || !result.cancelled) throw new Error(t('session.agentSwitchPending'));
+        requireConversationCancellationProof(result);
         await releaseConversationSwitch(record);
         return true;
     }

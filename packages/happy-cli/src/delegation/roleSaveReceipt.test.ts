@@ -63,7 +63,7 @@ describe('real ACP update → session mapper', () => {
         const mapper = new AcpSessionManager();
         const events: SessionEnvelope[] = mapper.startTurn();
         const ctx: HandlerContext = {
-            transport: new DefaultTransport('antigravity'), activeToolCalls: new Set(),
+            transport: new DefaultTransport('antigravity'), activeToolCalls: new Set(), toolCallStates: new Map(),
             toolCallStartTimes: new Map(), toolCallTimeouts: new Map(), toolCallIdToNameMap: new Map(),
             idleTimeout: null, toolCallCountSincePrompt: 0,
             emit: message => events.push(...mapper.mapMessage(message)), emitIdleStatus: () => {},

@@ -437,3 +437,87 @@ describe('AcpSessionManager id consistency', () => {
     expect(isCuid(secondStart.turn!)).toBe(true);
   });
 });
+
+
+describe('AcpSessionManager explicit terminal lifecycle', () => {
+  it.each(['completed', 'failed', 'cancelled'] as const)('preserves explicit %s without an output body', status => {
+    const mapper = new AcpSessionManager(); mapper.startTurn();
+    mapper.mapMessage({ type: 'tool-call', callId: 'native-call', toolName: 'other', args: {} });
+    const [end] = mapper.mapMessage({ type: 'tool-result', callId: 'native-call', toolName: 'other', status, result: undefined });
+    expect(end.ev).toMatchObject({ t: 'tool-call-end', status });
+    expect(Object.hasOwn(end.ev, 'output')).toBe(false);
+  });
+
+  it('ignores duplicate terminal messages and resets the call binding between turns', () => {
+    const mapper = new AcpSessionManager(); const [firstTurn] = mapper.startTurn();
+    const [start] = mapper.mapMessage({ type: 'tool-call', callId: 'native-call', toolName: 'other', args: {} });
+    const result = { type: 'tool-result' as const, callId: 'native-call', toolName: 'other', status: 'completed' as const, result: 'first body' };
+    const [end] = mapper.mapMessage(result);
+    if (start.ev.t !== 'tool-call-start' || end.ev.t !== 'tool-call-end') throw new Error('Expected a tool pair');
+    expect(end.ev).toMatchObject({ call: start.ev.call, status: 'completed', output: 'first body' });
+    expect(mapper.mapMessage(result)).toEqual([]);
+    mapper.endTurn('completed'); const [secondTurn] = mapper.startTurn();
+    const [newStart] = mapper.mapMessage({ type: 'tool-call', callId: 'native-call', toolName: 'other', args: {} });
+    const [newEnd] = mapper.mapMessage({ ...result, result: 'second body' });
+    if (newStart.ev.t !== 'tool-call-start' || newEnd.ev.t !== 'tool-call-end') throw new Error('Expected a new tool pair');
+    expect(newEnd.turn).toBe(secondTurn.turn); expect(newEnd.turn).not.toBe(firstTurn.turn);
+    expect(newEnd.ev).toMatchObject({ call: newStart.ev.call, output: 'second body' }); expect(newEnd.ev.call).not.toBe(end.ev.call);
+  });
+
+  it('retains MCP errors even when native lifecycle says completed', () => {
+    const mapper = new AcpSessionManager(); mapper.startTurn();
+    const [end] = mapper.mapMessage({ type: 'tool-result', callId: 'mcp-error', toolName: 'other', status: 'completed',
+      result: { isError: true, content: [{ type: 'text', text: 'original tool error' }] } });
+    expect(end.ev).toMatchObject({ t: 'tool-call-end', status: 'failed' });
+  });
+});
+
+
+it('does not attach a late duplicate result to a later root turn', () => {
+  const mapper = new AcpSessionManager(); mapper.startTurn();
+  mapper.mapMessage({ type: 'tool-call', callId: 'old-call', toolName: 'other', args: {} });
+  const result = { type: 'tool-result' as const, callId: 'old-call', toolName: 'other', status: 'completed' as const, result: 'original body' };
+  mapper.mapMessage(result); mapper.endTurn('completed'); mapper.startTurn();
+  expect(mapper.mapMessage(result)).toEqual([]);
+});
+
+it.each(['completed', 'failed', 'cancelled'] as const)('does not attach the first late result from an ended %s turn to a later turn', status => {
+  const mapper = new AcpSessionManager();
+  mapper.startTurn();
+  mapper.mapMessage({ type: 'tool-call', callId: 'old-call', toolName: 'read', args: { path: 'old.txt' } });
+  mapper.endTurn(status);
+  const [nextTurn] = mapper.startTurn();
+  mapper.mapMessage({ type: 'model-output', textDelta: 'next-turn output' });
+  const [nextStart] = mapper.mapMessage({ type: 'tool-call', callId: 'new-call', toolName: 'read', args: { path: 'new.txt' } }).filter(event => event.ev.t === 'tool-call-start');
+  const lateResult = { type: 'tool-result' as const, callId: 'old-call', toolName: 'read', status: 'completed' as const, result: 'old-turn body' };
+
+  expect(mapper.mapMessage(lateResult)).toEqual([]);
+  const [nextEnd] = mapper.mapMessage({ type: 'tool-result', callId: 'new-call', toolName: 'read', status: 'completed', result: 'new-turn body' });
+  expect(nextEnd.turn).toBe(nextTurn.turn);
+  if (nextStart.ev.t !== 'tool-call-start') throw new Error('Expected the current tool start');
+  expect(nextEnd.ev).toMatchObject({ t: 'tool-call-end', call: nextStart.ev.call, status: 'completed', output: 'new-turn body' });
+});
+
+it('ignores a first late result while no turn is active and still allows an explicit new call with the same native ID', () => {
+  const mapper = new AcpSessionManager();
+  mapper.startTurn();
+  const [oldStart] = mapper.mapMessage({ type: 'tool-call', callId: 'reused-call', toolName: 'read', args: {} });
+  mapper.endTurn('cancelled');
+  expect(mapper.mapMessage({ type: 'tool-result', callId: 'reused-call', toolName: 'read', status: 'completed', result: 'late old body' })).toEqual([]);
+
+  const [newTurn] = mapper.startTurn();
+  const [newStart] = mapper.mapMessage({ type: 'tool-call', callId: 'reused-call', toolName: 'read', args: {} });
+  const [newEnd] = mapper.mapMessage({ type: 'tool-result', callId: 'reused-call', toolName: 'read', status: 'completed', result: 'new body' });
+  if (oldStart.ev.t !== 'tool-call-start' || newStart.ev.t !== 'tool-call-start') throw new Error('Expected both tool starts');
+  expect(newStart.ev.call).not.toBe(oldStart.ev.call);
+  expect(newEnd).toMatchObject({ turn: newTurn.turn, ev: { t: 'tool-call-end', call: newStart.ev.call, output: 'new body' } });
+});
+
+it('does not attach a late result from an ended permission-only call to a later turn', () => {
+  const mapper = new AcpSessionManager();
+  mapper.startTurn();
+  mapper.getSessionCallId('pending-permission-call');
+  mapper.endTurn('cancelled');
+  mapper.startTurn();
+  expect(mapper.mapMessage({ type: 'tool-result', callId: 'pending-permission-call', toolName: 'write', status: 'cancelled', result: undefined })).toEqual([]);
+});

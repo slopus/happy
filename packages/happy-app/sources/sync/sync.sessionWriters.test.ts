@@ -347,6 +347,18 @@ describe('real session writer composition', () => {
         expect(subject.pendingOutbox.size).toBe(0);
         expect(JSON.stringify(storage.getState().sessionMessages['writer-session'])).toBe(before);
     });
+    it('rejects a historical Codex automatic mode before provider recovery or queue admission without rewriting it', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const current = storage.getState().sessions['writer-session'];
+        storage.getState().applySessions([{ ...current, metadata: { ...current.metadata!, flavor: 'codex' } }]);
+        storage.getState().updateSessionPermissionMode('writer-session', 'safe-yolo');
+        const recovery = vi.spyOn(subject.failedCodexRecovery, 'ensure');
+        const enqueue = vi.spyOn(subject, 'sendMessageWithContext');
+        await expect(sync.sendMessage('writer-session', 'preserve this draft')).rejects.toThrow();
+        expect(recovery).not.toHaveBeenCalled(); expect(enqueue).not.toHaveBeenCalled();
+        expect(subject.pendingOutbox.size).toBe(0);
+        expect(storage.getState().sessions['writer-session'].permissionMode).toBe('safe-yolo');
+    });
     it('holds already-pending Personal outbox bytes without sending or deleting them', async () => {
         await sync.ensureSessionHydrated('writer-session');
         const current = storage.getState().sessions['writer-session'];

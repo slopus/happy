@@ -48,11 +48,15 @@ export interface SessionUpdate {
 /**
  * Context for session update handlers
  */
+export type ToolCallState = { kind?: string; content?: unknown; rawOutput?: unknown; terminal?: true };
+
 export interface HandlerContext {
   /** Transport handler for agent-specific behavior */
   transport: TransportHandler;
   /** Set of active tool call IDs */
   activeToolCalls: Set<string>;
+  /** Changed fields belong to this native call only; terminal entries retain no body. */
+  toolCallStates: Map<string, ToolCallState>;
   /** Map of tool call ID to start time */
   toolCallStartTimes: Map<string, number>;
   /** Map of tool call ID to timeout handle */
@@ -232,6 +236,22 @@ export function handleAgentThoughtChunk(
   return { handled: true };
 }
 
+/** ACP updates replace explicitly present fields; omission leaves the prior value intact. */
+function retainToolCallUpdate(update: SessionUpdate, ctx: HandlerContext): ToolCallState {
+  const id = update.toolCallId!;
+  const state = ctx.toolCallStates.get(id) ?? {};
+  if (state.terminal) return state;
+  if (Object.hasOwn(update, 'content')) state.content = update.content;
+  if (Object.hasOwn(update, 'rawOutput')) state.rawOutput = update.rawOutput;
+  if (typeof update.kind === 'string') state.kind = update.kind;
+  ctx.toolCallStates.set(id, state);
+  return state;
+}
+
+function retainedToolResult(state: ToolCallState): unknown {
+  return Object.hasOwn(state, 'rawOutput') ? state.rawOutput : state.content;
+}
+
 /**
  * Start tracking a new tool call
  */
@@ -242,6 +262,7 @@ export function startToolCall(
   ctx: HandlerContext,
   source: 'tool_call' | 'tool_call_update'
 ): void {
+  retainToolCallUpdate(update, ctx);
   const startTime = Date.now();
   const toolKindStr = typeof toolKind === 'string' ? toolKind : undefined;
   const isInvestigation = ctx.transport.isInvestigationTool?.(toolCallId, toolKindStr) ?? false;
@@ -324,6 +345,8 @@ export function completeToolCall(
   content: unknown,
   ctx: HandlerContext
 ): void {
+  const state = ctx.toolCallStates.get(toolCallId);
+  if (state?.terminal) return;
   const startTime = ctx.toolCallStartTimes.get(toolCallId);
   const duration = formatDuration(startTime);
   const toolKindStr = typeof toolKind === 'string' ? toolKind : 'unknown';
@@ -339,10 +362,13 @@ export function completeToolCall(
 
   logger.debug(`[AcpBackend] ✅ Tool call COMPLETED: ${toolCallId} (${toolKindStr}) - Duration: ${duration}. Active tool calls: ${ctx.activeToolCalls.size}`);
 
+  ctx.toolCallStates.set(toolCallId, { terminal: true });
   ctx.emit({
     type: 'tool-result',
     toolName: toolKindStr,
     result: content,
+    status: 'completed',
+    ...(state && Object.hasOwn(state, 'rawOutput') && Object.hasOwn(state, 'content') ? { content: state.content } : {}),
     callId: toolCallId,
   });
 
@@ -364,6 +390,8 @@ export function failToolCall(
   content: unknown,
   ctx: HandlerContext
 ): void {
+  const state = ctx.toolCallStates.get(toolCallId);
+  if (state?.terminal) return;
   const startTime = ctx.toolCallStartTimes.get(toolCallId);
   const duration = startTime ? Date.now() - startTime : null;
   const toolKindStr = typeof toolKind === 'string' ? toolKind : 'unknown';
@@ -415,12 +443,13 @@ export function failToolCall(
   }
 
   // Emit tool-result with error
+  ctx.toolCallStates.set(toolCallId, { terminal: true });
   ctx.emit({
     type: 'tool-result',
     toolName: toolKindStr,
-    result: errorDetail
-      ? { error: errorDetail, status }
-      : { error: `Tool call ${status}`, status },
+    result: content,
+    status,
+    ...(state && Object.hasOwn(state, 'rawOutput') && Object.hasOwn(state, 'content') ? { content: state.content } : {}),
     callId: toolCallId,
   });
 
@@ -447,7 +476,9 @@ export function handleToolCallUpdate(
     return { handled: false };
   }
 
-  const toolKind = update.kind || 'unknown';
+  const state = retainToolCallUpdate(update, ctx);
+  if (state.terminal) return { handled: true };
+  const toolKind = state.kind || 'unknown';
   let toolCallCountSincePrompt = ctx.toolCallCountSincePrompt;
 
   if (status === 'in_progress' || status === 'pending') {
@@ -458,9 +489,9 @@ export function handleToolCallUpdate(
       logger.debug(`[AcpBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
     }
   } else if (status === 'completed') {
-    completeToolCall(toolCallId, toolKind, update.rawOutput ?? update.content, ctx);
+    completeToolCall(toolCallId, toolKind, retainedToolResult(state), ctx);
   } else if (status === 'failed' || status === 'cancelled') {
-    failToolCall(toolCallId, status, toolKind, update.content, ctx);
+    failToolCall(toolCallId, status, toolKind, retainedToolResult(state), ctx);
   }
 
   return { handled: true, toolCallCountSincePrompt };
@@ -486,7 +517,7 @@ export function handleToolCall(
     return { handled: false };
   }
 
-  if (ctx.activeToolCalls.has(toolCallId)) {
+  if (ctx.toolCallStates.get(toolCallId)?.terminal || ctx.activeToolCalls.has(toolCallId)) {
     logger.debug(`[AcpBackend] Tool call ${toolCallId} already in active set, skipping`);
     return { handled: true };
   }

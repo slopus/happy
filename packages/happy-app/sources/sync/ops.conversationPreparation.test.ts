@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('./apiSocket', () => ({ apiSocket: { sessionRPC: mocks.rpc } }));
 vi.mock('./sync', () => ({ sync: { refreshConversationSession: mocks.refresh } }));
 vi.mock('@/auth/accountRuntime', () => ({ assertAccountRuntime: mocks.assertAccount }));
+vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('./storage', () => ({ storage: { getState: () => ({ sessions: mocks.sessions, settings: mocks.settings,
     updateSessionPermissionMode: mocks.permission, updateSessionModelMode: mocks.model, updateSessionEffortLevel: mocks.effort }) } }));
 import { sessionPrepareConversation } from './ops';
@@ -34,6 +35,22 @@ beforeEach(() => {
 });
 
 describe('conversation native preparation RPC', () => {
+    it('surfaces the worker error envelope before validating a readiness receipt, without saving configuration', async () => {
+        mocks.rpc.mockResolvedValue({ error: 'Native Codex automatic approval is unsupported; select confirmation or full access.' });
+        await expect(sessionPrepareConversation(record, configuration)).rejects.toThrow('Native Codex automatic approval is unsupported; select confirmation or full access.');
+        expect(mocks.permission).not.toHaveBeenCalled();
+        expect(mocks.model).not.toHaveBeenCalled();
+        expect(mocks.effort).not.toHaveBeenCalled();
+    });
+
+    it('reports an invalid readiness receipt without exposing the schema diagnostic array', async () => {
+        mocks.rpc.mockResolvedValue({ ready: true });
+        await expect(sessionPrepareConversation(record, configuration)).rejects.toThrow('Target runtime did not provide a valid readiness acknowledgement.');
+        expect(mocks.permission).not.toHaveBeenCalled();
+        expect(mocks.model).not.toHaveBeenCalled();
+        expect(mocks.effort).not.toHaveBeenCalled();
+    });
+
     it('makes one bounded request for this worker and archive before saving acknowledged configuration', async () => {
         await sessionPrepareConversation(record, configuration);
         expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('target', 'conversation-prepare', {
@@ -60,12 +77,19 @@ describe('conversation native preparation RPC', () => {
 
     it('preserves an explicit staged permission and lets native select an unspecified model and effort', async () => {
         mocks.sessions.target.metadata.flavor = 'codex';
-        mocks.sessions.target.metadata.currentOperatingModeCode = 'safe-yolo';
-        mocks.rpc.mockResolvedValue({ ...receipt(), agent: 'codex', permissionMode: 'safe-yolo' });
-        await sessionPrepareConversation(record, { agent: 'codex', permissionMode: 'safe-yolo', modelMode: 'default', effortLevel: 'default' });
-        expect(mocks.rpc.mock.calls[0][2]).toMatchObject({ permissionMode: 'safe-yolo' });
+        mocks.sessions.target.metadata.currentOperatingModeCode = 'acceptEdits';
+        mocks.rpc.mockResolvedValue({ ...receipt(), agent: 'codex', permissionMode: 'acceptEdits' });
+        await sessionPrepareConversation(record, { agent: 'codex', permissionMode: 'acceptEdits', modelMode: 'default', effortLevel: 'default' });
+        expect(mocks.rpc.mock.calls[0][2]).toMatchObject({ permissionMode: 'acceptEdits' });
         expect(mocks.rpc.mock.calls[0][2]).not.toHaveProperty('model');
-        expect(mocks.permission).toHaveBeenCalledWith('target', 'safe-yolo');
+        expect(mocks.permission).toHaveBeenCalledWith('target', 'acceptEdits');
+    });
+
+    it('rejects a historical unsupported Codex mode before making a native preparation request', async () => {
+        mocks.sessions.target.metadata.flavor = 'codex';
+        await expect(sessionPrepareConversation(record, { agent: 'codex', permissionMode: 'safe-yolo' })).rejects.toThrow('agentInput.taskPermission.chooseSupported');
+        expect(mocks.rpc).not.toHaveBeenCalled();
+        expect(mocks.permission).not.toHaveBeenCalled();
     });
 
     it.each(['refresh', 'rpc'] as const)('rejects account changes during %s without saving configuration', async phase => {

@@ -72,6 +72,39 @@ describe('portable source history', () => {
         expect(items.every(item => item.role === 'tool')).toBe(true);
     });
 
+    it('keeps an absent persisted result body and its status unknown without assigning a sender cause', () => {
+        const items = portableItemsFromRows('root', [row(1, { role: 'session', content: { type: 'session', data: {
+            id: 'missing-result', time: 1, role: 'agent', turn: 'root-turn', ev: { t: 'tool-call-end', call: 'missing-call' },
+        } } })]);
+        expect(items).toHaveLength(1);
+        expect(items[0].text).toContain('Historical tool result for missing-call (unknown)');
+        expect(items[0].text).toContain('result body is absent from the persisted source record');
+        expect(items[0].text).not.toMatch(/older|completed/i);
+        expect(items[0]).toMatchObject({ nativeToolCallId: 'missing-call', nativeResultMissing: true });
+    });
+
+    it.each(['completed', 'failed', 'cancelled'] as const)('retains explicit %s status when the result body is absent', status => {
+        const items = portableItemsFromRows('root', [row(1, { role: 'session', content: { type: 'session', data: {
+            id: 'explicit-result', time: 1, role: 'agent', turn: 'root-turn',
+            ev: { t: 'tool-call-end', call: 'explicit-call', status },
+        } } })]);
+        expect(items[0].text).toContain(`Historical tool result for explicit-call (${status})`);
+        expect(items[0].nativeResultMissing).toBe(true);
+    });
+
+    it.each([
+        { output: '', suffix: '\n' },
+        { output: null, suffix: '\nnull' },
+        { output: [], suffix: '\n[]' },
+    ])('keeps an explicit $output result distinct from an absent body', ({ output, suffix }) => {
+        const items = portableItemsFromRows('root', [row(1, { role: 'session', content: { type: 'session', data: {
+            id: 'empty-result', time: 1, role: 'agent', turn: 'root-turn',
+            ev: { t: 'tool-call-end', call: 'empty-call', output },
+        } } })]);
+        expect(items[0].text).toBe(`Historical tool result for empty-call (unknown):${suffix}`);
+        expect(items[0].nativeResultMissing).toBeUndefined();
+    });
+
     it('retains original file references but no local arbitrary path or decryption key in model text', () => {
         const items = portableItemsFromRows('root', [row(1, { role: 'session', content: { type: 'session', data: {
             id: 'image-message', time: 1, role: 'user', ev: { t: 'file', ref: 'opaque-ref', name: 'diagram.png', size: 32,

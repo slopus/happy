@@ -87,7 +87,7 @@ export function portableItemsFromRows(sessionId: string, rows: DecryptedMessage[
                     : record.role === 'agent' && record.content.type === 'session' ? record.content.data : undefined;
                 const missing = envelope?.ev.t === 'tool-call-end' && !Object.hasOwn(envelope.ev, 'output');
                 return [{ ...item(index, 'tool',
-                    `Historical tool result for ${part.tool_use_id} (${part.status ?? (part.is_error ? 'failed' : 'completed')}):\n${missing ? '[The older relay did not retain this result body; native recovery is required.]' : stringify(part.content)}${part.exitCode !== undefined ? `\nExit code: ${part.exitCode}` : ''}${part.failure ? `\nFailure: ${stringify(part.failure)}` : ''}`),
+                    `Historical tool result for ${part.tool_use_id} (${part.status ?? (part.is_error ? 'failed' : 'unknown')}):\n${missing ? '[The result body is absent from the persisted source record; the cause is unknown.]' : stringify(part.content)}${part.exitCode !== undefined ? `\nExit code: ${part.exitCode}` : ''}${part.failure ? `\nFailure: ${stringify(part.failure)}` : ''}`),
                     nativeToolCallId: part.tool_use_id, ...(missing ? { nativeResultMissing: true as const } : {}) }];
             }
             // Private reasoning, signatures, live approvals and sidechain

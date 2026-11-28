@@ -6,6 +6,11 @@ import {
 } from './taskPermissionModes';
 
 describe('task permission mode adapter', () => {
+    it('does not offer the retired Codex automatic policy but still recognizes its historical value', () => {
+        expect(getAgentPermissionModeForTaskLevel('codex', 'automatic')).toBeNull();
+        expect(getAgentPermissionModeForTaskLevel('openai', 'automatic')).toBeNull();
+        expect(getTaskPermissionLevelForAgentMode('codex', 'safe-yolo')).toBe('automatic');
+    });
     it.each([
         { flavor: 'claude', confirm: 'default', full: 'bypassPermissions' },
         { flavor: 'codex', confirm: 'acceptEdits', full: 'yolo' },

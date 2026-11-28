@@ -6,12 +6,12 @@ import TestRenderer from 'react-test-renderer';
 import { useSessionAgentComposer } from './useSessionAgentComposer.web';
 vi.mock('./useMagpieModelCatalog', () => ({ useMagpieModelCatalog: () => ({ catalog: mocks.magpieCatalog, refresh: vi.fn() }) }));
 const mocks = vi.hoisted(() => ({ spawn: vi.fn(), retry: vi.fn(), sending: false, hydrationError: null as any, flush: vi.fn(), update: vi.fn(),
-    images: [] as any[], sessions: [] as any[], magpieCatalog: null as any, alert: vi.fn(), queued: vi.fn(), prompt: 'keep this draft',
+    images: [] as any[], sessions: [] as any[], bindings: [] as any[], magpieCatalog: null as any, alert: vi.fn(), queued: vi.fn(), prompt: 'keep this draft',
     settings: { codingAgentMachines: { m: ['codex', 'claude', 'opencode'] }, agentDefaultOverrides: {} } as any,
     machine: { id: 'm', active: true, activeAt: Date.now(), metadata: { homeDir: '/tmp', cliAvailability: { codex: true, claude: true, opencode: true, antigravity: true } } },
 }));
 vi.mock('@/sync/storage', () => ({ useMachine: () => mocks.machine, useAllSessions: () => mocks.sessions, useSetting: (k: string) => mocks.settings[k] }));
-vi.mock('@/hooks/useCodexAccounts', () => ({ useCodexAccounts: () => ({ loading: false, error: null, bindings: [] }) }));
+vi.mock('@/hooks/useCodexAccounts', () => ({ useCodexAccounts: () => ({ loading: false, error: null, bindings: mocks.bindings }) }));
 vi.mock('@/hooks/useClaudeModelCatalog', () => ({ useClaudeModelCatalog: () => ({ catalog: { models: [{ code: 'sonnet-native', value: 'Sonnet Native' }], observedAt: 1 }, refresh: vi.fn() }) }));
 vi.mock('@/hooks/useSpawnSession', () => ({ useSpawnSession: () => ({ spawn: mocks.spawn, retryHydration: mocks.retry, sending: mocks.sending, hydrationError: mocks.hydrationError }) }));
 vi.mock('@/modal', () => ({ Modal: { alert: mocks.alert, confirm: vi.fn().mockResolvedValue(true) } }));
@@ -21,8 +21,27 @@ const base: any = { online: true, model: { key: 'gpt-live', name: 'GPT Live' }, 
 let value: any;let renderer: any;
 function mount(source = session) { act(() => { renderer = TestRenderer.create(<Harness source={source} />); }); }
 function Harness({ source }: any) { value = useSessionAgentComposer({ session: source, base, readSubmission: () => ({ prompt: mocks.prompt, images: mocks.images, onQueued: mocks.queued }), flushDraft: mocks.flush });return null; }
-beforeEach(() => { renderer?.unmount(); vi.clearAllMocks(); mocks.sending=false;mocks.hydrationError=null;mocks.images=[];mocks.sessions=[];mocks.magpieCatalog=null;mocks.prompt='keep this draft';mocks.settings.agentDefaultOverrides={};mocks.spawn.mockResolvedValue(true); });
+beforeEach(() => { renderer?.unmount(); vi.clearAllMocks(); mocks.sending=false;mocks.hydrationError=null;mocks.images=[];mocks.sessions=[];mocks.bindings=[];mocks.magpieCatalog=null;mocks.prompt='keep this draft';mocks.settings.agentDefaultOverrides={};mocks.spawn.mockResolvedValue(true); });
 describe('Web composer Agent staging', () => {
+ it('retains but refuses an unavailable target permission default without spawning or touching the source draft', async () => {
+  mocks.bindings = [{ machineId: 'm', profileId: 'qa-profile' }];
+  mocks.settings.agentDefaultOverrides = { codex: { permissionMode: 'safe-yolo' } };
+  mount({ ...session, metadata: { ...session.metadata, flavor: 'claude' } });
+  act(() => value.modeSelector.agentSwitcher.onSelect('codex'));
+  expect(value.permissionSelector.currentMode).toBe('safe-yolo');
+  await act(async () => { expect(await value.submitInChat()).toBe(false); });
+  expect(mocks.spawn).not.toHaveBeenCalled(); expect(mocks.flush).not.toHaveBeenCalled(); expect(mocks.queued).not.toHaveBeenCalled();
+  expect(mocks.settings.agentDefaultOverrides.codex.permissionMode).toBe('safe-yolo');
+  expect(mocks.alert).toHaveBeenCalledWith('common.error', 'agentInput.taskPermission.chooseSupported');
+ });
+ it('does not offer or stage automatic on a pending Codex switch', async () => {
+  mount({ ...session, metadata: { ...session.metadata, flavor: 'claude' } });
+  act(() => value.modeSelector.agentSwitcher.onSelect('codex'));
+  expect(value.permissionSelector.supportsAutomatic).toBe(false);
+  await act(async () => { expect(await value.permissionSelector.onLevelChange('automatic')).toBe(false); });
+  expect(value.permissionSelector.currentMode).not.toBe('safe-yolo');
+  expect(mocks.spawn).not.toHaveBeenCalled();
+ });
  it('stages Agent and model choices until ordinary send explicitly continues this conversation', async () => {
   mount();
   act(() => value.modeSelector.agentSwitcher.onSelect('claude'));

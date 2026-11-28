@@ -1764,6 +1764,7 @@ failedContinueTask: "Continua la tasca pendent",
             badgePlanMode: 'Mode de planificació',
         },
         taskPermission: {
+            chooseSupported: 'Aquest mode de permisos no està disponible. Tria sol·licitar confirmació o accés complet.',
             pickerTitle: 'Com s’han d’aprovar les accions?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',

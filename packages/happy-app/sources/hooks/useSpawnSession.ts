@@ -6,6 +6,8 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import { sync, type LocalMessageQueueReceipt } from '@/sync/sync';
 import { storage } from '@/sync/storage';
+import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { isTaskPermissionModeSelectable } from '@/utils/taskPermissionModes';
 import { machineSpawnNewSession, machineSpawnConversationSession, machineCancelConversationLaunch, sessionPrepareConversation, type SpawnSessionResult } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -496,6 +498,8 @@ export function useSpawnSession() {
         });
         beginSending();
         try {
+            const permissionMode = args.permissionMode ?? resolveAgentDefaultConfig(storage.getState().settings?.agentDefaultOverrides, args.agent).permissionMode;
+            if (!isTaskPermissionModeSelectable(args.agent, permissionMode)) throw new Error(t('agentInput.taskPermission.chooseSupported'));
             if (args.continueInCurrentConversation && !args.continuationSourceSessionId) throw new Error('conversation-source-required');
             const conversationRootId = args.continueInCurrentConversation
                 ? await prepareConversationSwitch(args.continuationSourceSessionId!) : undefined;

@@ -1780,6 +1780,7 @@ failedContinueTask: "Kontynuuj niedokończone zadanie",
             badgePlanMode: 'Tryb planowania',
         },
         taskPermission: {
+            chooseSupported: 'Ten tryb uprawnień jest niedostępny. Wybierz wymaganie potwierdzenia lub pełny dostęp.',
             pickerTitle: 'Jak zatwierdzać działania?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',

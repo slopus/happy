@@ -1,6 +1,6 @@
 import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
 import { SessionComposerPermissionSelector } from './SessionComposerPermissionSelector';
-import { getAgentPermissionModeForTaskLevel, getTaskPermissionLevelForAgentMode } from '@/utils/taskPermissionModes';
+import { getAgentPermissionModeForTaskLevel, getTaskPermissionLevelForAgentMode, supportsTaskPermissionLevel, isTaskPermissionModeSelectable } from '@/utils/taskPermissionModes';
 import { ComposerTooltip } from './DesktopShortcutTooltip';
 import { SessionComposerModeSelector } from './SessionComposerModeSelector';
 import { useMagpieModelCatalog } from '@/hooks/useMagpieModelCatalog';
@@ -47,7 +47,7 @@ import { useAntigravityModelCatalog } from '@/hooks/useAntigravityModelCatalog';
 import { useShallow } from 'zustand/react/shallow';
 import type { Machine, Session } from '@/sync/storageTypes';
 import {
-    getHardcodedPermissionModes,
+    getKnownPermissionModes,
     getSuggestedModelModes,
     getEffortLevelsForModel,
     normalizeModelEffortKey,
@@ -1038,7 +1038,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         } : null, [magpie.catalog, catalogDirectory, selectedMachine?.metadata?.host]);
         const magpieModels = React.useMemo(() => magpieMetadata ? getSuggestedModelModes('codex', magpieMetadata, t) : [], [magpieMetadata]);
         const permissionModes = React.useMemo<PermissionMode[]>(
-            () => getHardcodedPermissionModes(selectedAgent, t),
+            () => getKnownPermissionModes(selectedAgent, t),
             [selectedAgent],
         );
         const modelMetadata = React.useMemo(
@@ -1441,7 +1441,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 case 'effort':
                     return { title: 'Effort', items: getModePickerItems(effortLevels), selectedKey: currentEffort?.key ?? null, searchPlaceholder: 'search efforts...' };
                 case 'permission':
-                    return { title: 'Permissions', items: getModePickerItems(permissionModes), selectedKey: currentPermission?.key ?? null, searchPlaceholder: 'search permissions...' };
+                    return { title: 'Permissions', items: getModePickerItems(permissionModes.filter(mode => isTaskPermissionModeSelectable(selectedAgent, mode.key))), selectedKey: currentPermission?.key ?? null, searchPlaceholder: 'search permissions...' };
                 default:
                     return null;
             }
@@ -1496,6 +1496,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                     break;
                 }
                 case 'permission': {
+                    if (!isTaskPermissionModeSelectable(selectedAgent, key)) break;
                     const next = permissionModes.findIndex((mode) => mode.key === key);
                     if (next >= 0) {
                         if (selectedAgent === 'antigravity' && key === 'bypassPermissions' && draft.permissionMode !== key) {
@@ -1733,7 +1734,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             const permissionControl = <>{
 !isOffline && showPermission && (selectedAgent === 'codex' || selectedAgent === 'antigravity' ? (
                                 <SessionComposerPermissionSelector
-                                    online supported supportsAutomatic={selectedAgent === 'codex'}
+                                    online supported supportsAutomatic={supportsTaskPermissionLevel(selectedAgent, 'automatic')}
                                     level={getTaskPermissionLevelForAgentMode(selectedAgent, currentPermission?.key)}
                                     currentMode={currentPermission?.key}
                                     unavailableReason={null}

@@ -1950,6 +1950,7 @@ failedContinueTask: "繼續未完成的工作",
             badgePlanMode: '計畫模式',
         },
         taskPermission: {
+            chooseSupported: '目前執行器不支援此權限，請選擇「請求批准」或「完全存取」。',
             pickerTitle: '應如何批准操作？',
             automatic: '幫我批准',
             automaticDescription: '允許工作區內操作，失敗時請求批准；裝置及外層沙箱限制仍適用。',

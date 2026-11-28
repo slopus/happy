@@ -18,6 +18,12 @@ export function resolveCodexExecutionPolicy(
     permissionMode: PermissionMode,
     sandboxManagedByHappy: boolean,
 ): { approvalPolicy?: ApprovalPolicy; sandbox?: SandboxMode } {
+    // The current native protocol no longer accepts on-failure. Keep the
+    // legacy mode recognizable, but never silently replace its permission tier.
+    if (permissionMode === 'safe-yolo') {
+        throw new Error('Codex automatic approval mode (safe-yolo) is not supported by this runtime. Choose confirmation or full access explicitly.');
+    }
+
     if (sandboxManagedByHappy) {
         return {
             approvalPolicy: 'never',
@@ -33,7 +39,6 @@ export function resolveCodexExecutionPolicy(
         switch (permissionMode) {
             // Codex native modes
             case 'read-only': return 'never';                      // Never ask, read-only enforced by sandbox
-            case 'safe-yolo': return 'on-failure';                 // Auto-run, ask only on failure
             case 'yolo': return 'never';                           // Full YOLO: never interrupt for approvals
             // Defensive fallback for Claude-specific modes (backward compatibility)
             case 'bypassPermissions': return 'never';              // Full access: map to yolo behavior
@@ -47,7 +52,6 @@ export function resolveCodexExecutionPolicy(
         switch (permissionMode) {
             // Codex native modes
             case 'read-only': return 'read-only';                  // Read-only filesystem
-            case 'safe-yolo': return 'workspace-write';            // Can write in workspace
             case 'yolo': return 'danger-full-access';              // Full system access
             // Defensive fallback for Claude-specific modes
             case 'bypassPermissions': return 'danger-full-access'; // Full access: map to yolo

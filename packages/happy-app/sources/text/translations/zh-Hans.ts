@@ -2175,6 +2175,7 @@ failedContinueTask: "继续未完成的任务",
             badgePlanMode: '计划模式',
         },
         taskPermission: {
+            chooseSupported: '当前执行器不支持此权限，请选择“请求批准”或“完全访问”。',
             pickerTitle: '应如何批准操作？',
             automatic: '帮我批准',
             automaticDescription: '允许工作区操作，失败时请求批准',

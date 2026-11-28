@@ -1764,6 +1764,7 @@ failedContinueTask: "Continuar tarea pendiente",
             badgePlanMode: 'Modo de planificación',
         },
         taskPermission: {
+            chooseSupported: 'Este modo de permisos no está disponible. Elige solicitar confirmación o acceso completo.',
             pickerTitle: '¿Cómo aprobar las acciones?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',

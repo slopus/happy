@@ -110,6 +110,16 @@ function describeCodexFailure(msg: any): string | null {
 
 const DEFAULT_CODEX_PERMISSION_MODE: PermissionMode = 'yolo';
 
+/** Ordinary RPC acceptance controls subsequent input; it is not a mid-turn native policy acknowledgement. */
+export function applyCodexRpcPermissionMode(mode: unknown, sandboxManagedByHappy: boolean,
+    apply: (mode: PermissionMode) => void): boolean {
+    if (typeof mode !== 'string' || !isRemoteCodexPermissionMode(mode)) return false;
+    // Validation must precede both in-memory policy and metadata mutation.
+    resolveCodexExecutionPolicy(mode, sandboxManagedByHappy);
+    apply(mode);
+    return true;
+}
+
 export async function completeCodexProcessorStartup(
     session: Pick<ApiSessionClient, 'processorReady' | 'sendSessionEvent' | 'updateMetadataAndAwait' | 'getMetadata'>,
     ensureThreadAvailable: () => Promise<CodexSessionConfigSnapshot>,
@@ -1169,12 +1179,8 @@ export async function runCodex(opts: {
     session.rpcHandlerManager.registerHandler<{ mode: string }, boolean>('setPermissionMode', async (request) => {
         if (delegationRetiring) throw new Error('Delegated worker is retiring');
         const incoming = request?.mode;
-        if (!isRemoteCodexPermissionMode(incoming)) {
-            logger.debug(`[Codex] Ignoring invalid RPC permission mode: ${String(incoming)}`);
-            return false;
-        }
-        applyPermissionMode(incoming as PermissionMode, 'session rpc');
-        return true;
+        return applyCodexRpcPermissionMode(incoming, client.sandboxEnabled,
+            mode => applyPermissionMode(mode, 'session rpc'));
     });
     reasoningProcessor = new ReasoningProcessor((message) => {
         const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, {

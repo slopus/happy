@@ -188,7 +188,7 @@ describe('SessionComposerPermissionSelector', () => {
 
     it('does not label read-only as confirmation and applies confirmation when selected', async () => {
         const onLevelChange = vi.fn().mockResolvedValue(true);
-        act(() => { renderer = TestRenderer.create(<SessionComposerPermissionSelector online supported supportsAutomatic currentMode="read-only" level={null} unavailableReason={null} onLevelChange={onLevelChange} />); });
+        act(() => { renderer = TestRenderer.create(<SessionComposerPermissionSelector online supported currentMode="read-only" level={null} unavailableReason={null} onLevelChange={onLevelChange} />); });
         const trigger = renderer.root.findByProps({ testID: 'session-composer-permission-trigger' });
         expect(trigger.props.accessibilityLabel).toBe('Task permissions: Read Only');
         act(() => trigger.props.onPress());
@@ -196,6 +196,17 @@ describe('SessionComposerPermissionSelector', () => {
         expect(option.props.accessibilityState.checked).toBe(false);
         await act(async () => { option.props.onPress(); });
         expect(onLevelChange).toHaveBeenCalledWith('confirm');
+    });
+
+    it('shows an unavailable historical automatic policy without offering it or changing the current selection', () => {
+        const onLevelChange = vi.fn();
+        act(() => { renderer = TestRenderer.create(<SessionComposerPermissionSelector online supported currentMode="safe-yolo" level="automatic" unavailableReason={null} onLevelChange={onLevelChange} />); });
+        const trigger = renderer.root.findByProps({ testID: 'session-composer-permission-trigger' });
+        expect(trigger.props.accessibilityLabel).toBe('Task permissions: Auto approve · Unavailable');
+        act(() => trigger.props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-permission-option-automatic' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-permission-option-confirm' })).not.toHaveLength(0);
+        expect(onLevelChange).not.toHaveBeenCalled();
     });
 
     it('offers the restricted automatic option only for supported Codex sessions', async () => {

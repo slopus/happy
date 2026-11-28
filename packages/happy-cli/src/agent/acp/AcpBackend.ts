@@ -100,6 +100,7 @@ import {
 import {
   type SessionUpdate,
   type HandlerContext,
+  type ToolCallState,
   DEFAULT_IDLE_TIMEOUT_MS,
   DEFAULT_TOOL_CALL_TIMEOUT_MS,
   handleAgentMessageChunk,
@@ -422,6 +423,7 @@ export class AcpBackend implements AgentBackend {
   private acceptsImages = false;
   /** Track active tool calls to prevent duplicate events */
   private activeToolCalls = new Set<string>();
+  private toolCallStates = new Map<string, ToolCallState>();
   private toolCallTimeouts = new Map<string, NodeJS.Timeout>();
   /** Track tool call start times for performance monitoring */
   private toolCallStartTimes = new Map<string, number>();
@@ -919,6 +921,7 @@ export class AcpBackend implements AgentBackend {
     return {
       transport: this.transport,
       activeToolCalls: this.activeToolCalls,
+      toolCallStates: this.toolCallStates,
       toolCallStartTimes: this.toolCallStartTimes,
       toolCallTimeouts: this.toolCallTimeouts,
       toolCallIdToNameMap: this.toolCallIdToNameMap,
@@ -1399,6 +1402,7 @@ export class AcpBackend implements AgentBackend {
     this.connection = null;
     this.acpSessionId = null;
     this.activeToolCalls.clear();
+    this.toolCallStates.clear();
     // Clear all tool call timeouts
     for (const timeout of this.toolCallTimeouts.values()) {
       clearTimeout(timeout);

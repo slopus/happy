@@ -3,6 +3,8 @@ import { createConversationSessionLauncher, assertConversationLaunchIdle, type C
 import { readNativeConversationCoverage } from './nativeConversationCoverage';
 import { verifyNativeProcessGroup, awaitNativeProcessGroupExit } from './nativeProcessGroup';
 import { cancelPersistedConversationCandidate } from './cancelPersistedConversationCandidate';
+import { retireUnsentConversationCandidate } from './unsentConversationCandidateRetirement';
+import { captureNativeProcessTree, awaitNativeProcessTreeExit } from './nativeProcessTree';
 import { readNativeToolResult } from '@/continuation/recoverToolResult';
 import { PortableContextStore, PORTABLE_CONTEXT_DIRECTORY_NAME } from '@/continuation/portableContextStore';
 import { getProjectPath } from '@/claude/utils/path';
@@ -1648,7 +1650,16 @@ export async function startDaemon(): Promise<void> {
           return target;
         };
         const target = await verify();
-        await stopConversationWriter(target, verify);
+        if (target.metadata.flavor === 'codex' || target.metadata.flavor === 'antigravity') {
+          if (!readyBinding) throw new Error('The candidate launch receipt is not ready; its outcome remains unknown.');
+          await retireUnsentConversationCandidate({ owner: target, binding: readyBinding, machineId,
+            directory: join(configuration.happyHomeDir, 'conversation-candidate-retirements', machineId),
+            retained: () => findTrackedSessionById(targetId), verify,
+            callSessionRpc: (id, encryption, method, body) => apiMachine.callSessionRpc(id, encryption, method, body),
+            captureProcessTree: captureNativeProcessTree, awaitProcessTreeExit: awaitNativeProcessTreeExit });
+        } else {
+          await stopConversationWriter(target, verify);
+        }
         // An old client might have delivered while shutdown was in flight.
         // A second immutable history traversal must still prove no user input.
         await verify();

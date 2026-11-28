@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createConversationSessionLauncher, type ConversationLaunchSnapshot, type ConversationSessionLaunchRequest, type ConversationNativeCandidate } from './conversationSessionLaunch';
@@ -172,6 +172,46 @@ describe('reserved conversation native restoration', () => {
         expect(f.deps.cancelTarget).toHaveBeenCalledOnce();
         expect(await f.launch(request)).toMatchObject({ type: 'error', conversationCancelled: true });
         expect(f.deps.spawn).toHaveBeenCalledOnce();
+    });
+    it.each(['resume', 'unknown'] as const)('retains a native ownership tombstone after cancelling a %s candidate', async plan => {
+        const f = fixture(); await f.launch(request);
+        if (plan === 'unknown') {
+            const path = join(directory, `${request.requestId}.json`);
+            const receipt = JSON.parse(await readFile(path, 'utf8')); delete receipt.nativePlan; delete receipt.nativeResume; delete receipt.result.nativeResume;
+            await writeFile(path, JSON.stringify(receipt));
+        }
+        expect(await f.launch.cancel(request)).toMatchObject({ success: true, cancelled: true });
+        const next = { ...request, requestId: '00000000-0000-4000-8000-000000000098' };
+        f.sessions.root.metadata.conversationSwitch!.id = next.requestId;
+        expect(await f.launch(next)).toEqual({ type: 'success', sessionId: 'new-segment' });
+        expect(f.deps.spawn.mock.calls[1][2]).toBeUndefined();
+    });
+    it('does not let a cancelled old native identity block a distinct new native thread', async () => {
+        const f = fixture(); await f.launch(request); await f.launch.cancel(request);
+        const nextId = '00000000-0000-4000-8000-000000000002';
+        f.sessions.root.metadata.codexThreadId = nextId;
+        const next = { ...request, requestId: '00000000-0000-4000-8000-000000000098' };
+        f.sessions.root.metadata.conversationSwitch!.id = next.requestId;
+        await f.launch(next);
+        expect(f.deps.spawn.mock.calls[1][2]).toMatchObject({ nativeId: nextId });
+    });
+    it('does not release a cancelled native ownership tombstone when only portable context or its clear boundary changes', async () => {
+        const f = fixture(); await f.launch(request); await f.launch.cancel(request);
+        f.sessions.root.metadata.portableContextBoundary = { id: 'new-clear', afterSeq: 7 };
+        Object.assign(f.sessions.root.metadata, { portableContext: { id: 'new-prefix', sha256: 'new-digest' } });
+        const next = { ...request, requestId: '00000000-0000-4000-8000-000000000098' };
+        f.sessions.root.metadata.conversationSwitch!.id = next.requestId;
+        expect(await f.launch(next)).toEqual({ type: 'success', sessionId: 'new-segment' });
+        expect(f.deps.spawn.mock.calls[1][2]).toBeUndefined();
+    });
+    it.each(['fresh', 'never-dispatched'] as const)('does not create a native ownership tombstone for %s cancellation', async plan => {
+        const f = fixture();
+        if (plan === 'fresh') { f.deps.verifyNative.mockResolvedValueOnce(false); await f.launch(request); }
+        await f.launch.cancel(request);
+        const next = { ...request, requestId: '00000000-0000-4000-8000-000000000098' };
+        f.sessions.root.metadata.conversationSwitch!.id = next.requestId;
+        await f.launch(next);
+        expect(f.deps.spawn.mock.calls.at(-1)![2]).toMatchObject({ nativeId });
     });
     it('does not cancel an unknown, unregistered target or replay a prompt', async () => {
         const f = fixture(); f.deps.spawn.mockResolvedValueOnce({ type: 'error', errorMessage: 'lost ACK' });

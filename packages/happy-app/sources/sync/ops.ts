@@ -382,6 +382,7 @@ export async function sessionPrepareConversation(record: { rootId: string; sourc
     const { storage } = await import('./storage');
     const { assertAccountRuntime } = await import('@/auth/accountRuntime');
     const { resolveAgentDefaultConfig } = await import('./agentDefaults');
+    const { isTaskPermissionModeSelectable } = await import('@/utils/taskPermissionModes');
     assertAccountRuntime();
     if (!await sync.refreshConversationSession(record.rootId) || !await sync.refreshConversationSession(record.targetId)) {
         throw new Error('Conversation preparation target is unavailable');
@@ -390,6 +391,10 @@ export async function sessionPrepareConversation(record: { rootId: string; sourc
     const target = storage.getState().sessions[record.targetId]?.metadata;
     const permissionMode = configuration.permissionMode
         ?? resolveAgentDefaultConfig(storage.getState().settings.agentDefaultOverrides, configuration.agent).permissionMode;
+    if (!isTaskPermissionModeSelectable(configuration.agent, permissionMode)) {
+        const { t } = await import('@/text');
+        throw new Error(t('agentInput.taskPermission.chooseSupported'));
+    }
     const request = ConversationPrepareRequestSchema.parse({ rootSessionId: record.rootId, sourceSessionId: record.sourceId,
         requestId: record.requestId, expectedWorkerPid: target?.hostPid, contextId: target?.portableContext?.id,
         contextSha256: target?.portableContext?.sha256, permissionMode,
@@ -420,8 +425,18 @@ export async function sessionPrepareConversation(record: { rootId: string; sourc
         }
     };
     assertCurrent();
-    const result = ConversationPrepareResponseSchema.parse(await apiSocket.sessionRPC(record.targetId, 'conversation-prepare', request,
-        { timeoutMs: 75_000, overallTimeoutMs: 75_000, isCurrent: () => { try { assertCurrent(); return true; } catch { return false; } } }));
+    const response = await apiSocket.sessionRPC(record.targetId, 'conversation-prepare', request,
+        { timeoutMs: 75_000, overallTimeoutMs: 75_000, isCurrent: () => { try { assertCurrent(); return true; } catch { return false; } } });
+    // Worker handler failures use an error envelope even when transport succeeds.
+    // Preserve the actual failure instead of masking it as a malformed ready ACK.
+    if (response && typeof response === 'object' && 'error' in response && typeof response.error === 'string') {
+        throw new Error(response.error || 'Conversation runtime preparation failed');
+    }
+    const acknowledgement = ConversationPrepareResponseSchema.safeParse(response);
+    if (!acknowledgement.success) {
+        throw new Error('Target runtime did not provide a valid readiness acknowledgement.');
+    }
+    const result = acknowledgement.data;
     assertCurrent();
     if (result.sessionId !== record.targetId || result.hostPid !== request.expectedWorkerPid || result.agent !== configuration.agent
         || result.rootSessionId !== record.rootId || result.sourceSessionId !== record.sourceId || result.requestId !== record.requestId
@@ -973,11 +988,16 @@ export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): 
  */
 export async function sessionSetPermissionMode(sessionId: string, mode: string): Promise<boolean> {
     const request: SessionPermissionModeUpdateRequest = { mode };
-    return await apiSocket.sessionRPC<boolean, SessionPermissionModeUpdateRequest>(
+    const response = await apiSocket.sessionRPC<unknown, SessionPermissionModeUpdateRequest>(
         sessionId,
         'setPermissionMode',
         request,
     );
+    if (response && typeof response === 'object' && 'error' in response
+        && typeof response.error === 'string' && response.error.trim()) {
+        throw new Error(response.error);
+    }
+    return response === true;
 }
 
 /**

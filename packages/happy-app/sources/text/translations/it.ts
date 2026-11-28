@@ -1762,6 +1762,7 @@ failedContinueTask: "Continua il lavoro in sospeso",
             badgePlanMode: 'Modalità piano',
         },
         taskPermission: {
+            chooseSupported: 'Questa modalità di autorizzazione non è disponibile. Scegli la richiesta di conferma o accesso completo.',
             pickerTitle: 'Come approvare le azioni?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',

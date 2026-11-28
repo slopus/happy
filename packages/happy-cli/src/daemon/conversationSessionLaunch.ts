@@ -55,6 +55,20 @@ const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const nativeId = (session: ConversationLaunchSnapshot) => session.metadata.flavor === 'claude'
     ? session.metadata.claudeSessionId : session.metadata.flavor === 'codex' ? session.metadata.codexThreadId : undefined;
 const boundary = (session: ConversationLaunchSnapshot) => session.metadata.portableContextBoundary;
+function nativeLeaseIdentity(identity: string | undefined): string | undefined {
+    try {
+        // Portable identity v1 also contains App lineage, clear and archive
+        // fields. Those changes cannot release a lease on the same native ID.
+        const fields: unknown = JSON.parse(identity ?? 'null');
+        if (!Array.isArray(fields) || fields.length < 8 || typeof fields[0] !== 'string' || typeof fields[1] !== 'string'
+            || !['codex', 'claude'].includes(fields[2])) return undefined;
+        const id = fields[2] === 'codex' ? fields[4] : fields[3];
+        if (typeof id !== 'string' || !uuid.test(id)) return undefined;
+        return JSON.stringify([fields[0], fields[1], fields[2], id,
+            fields[2] === 'codex' ? fields[5] : null, fields[2] === 'codex' ? fields[6] : null,
+            fields[2] === 'claude' ? fields[7] : null]);
+    } catch { return undefined; }
+}
 const identity = (request: ConversationSessionLaunchRequest) => JSON.stringify([
     request.rootSessionId, request.sourceSessionId, request.targetAgent,
     request.expectedCodexAccountProfileId ?? null, request.magpieModel ?? null,
@@ -154,8 +168,22 @@ export function createConversationSessionLauncher(deps: Dependencies) {
                 if (!name.endsWith('.json') || name === `${request.requestId}.json`) continue;
                 const previous = JSON.parse(await readFile(join(deps.directory, name), 'utf8')) as Receipt;
                 const scope = JSON.parse(previous.identity) as unknown[];
-                if (scope[0] !== request.rootSessionId || previous.phase === 'cancelled'
-                    || (previous.result?.sessionId && owned.has(previous.result.sessionId))) continue;
+                if (scope[0] !== request.rootSessionId) continue;
+                if (previous.phase === 'cancelled') {
+                    const neverDispatched = scope.length === 2 && !previous.result && !previous.nativeResume && previous.nativePlan === undefined;
+                    if (neverDispatched || previous.nativePlan === 'fresh') continue;
+                    // Captured-lifetime retirement is not a native-writer exit
+                    // proof. A cancelled resumed/unknown candidate keeps its
+                    // old native lease blocked while the App may start fresh.
+                    if (scope[2] && scope[2] !== source.metadata.flavor) continue;
+                    const lease = previous.nativeResume ?? previous.result?.nativeResume;
+                    const oldSource = lease?.sourceSessionId;
+                    const oldIdentity = nativeLeaseIdentity(lease?.contextSources?.find(item => item.sessionId === oldSource)?.identity);
+                    const currentIdentity = nativeLeaseIdentity(portableNativeSourceIdentity(source.metadata));
+                    if (!oldIdentity || !currentIdentity || oldIdentity === currentIdentity) return undefined;
+                    continue;
+                }
+                if (previous.result?.sessionId && owned.has(previous.result.sessionId)) continue;
                 if (previous.nativePlan !== 'fresh' && (!previous.nativeResume
                     || owners.some(owner => owner.id === previous.nativeResume!.sourceSessionId))) return undefined;
             }
@@ -312,7 +340,9 @@ export function createConversationSessionLauncher(deps: Dependencies) {
             await deps.cancelTarget(request, targetId, assertReservation, readyBinding);
             await assertReservation();
             const temp = `${path}.cancelled`;
-            await writeFile(temp, JSON.stringify({ ...receipt, phase: 'cancelled', result: { type: 'success', sessionId: targetId } }), { mode: 0o600 });
+            const nativeResume = receipt.nativeResume ?? receipt.result?.nativeResume;
+            await writeFile(temp, JSON.stringify({ ...receipt, phase: 'cancelled', ...(nativeResume ? { nativeResume } : {}),
+                result: { type: 'success', sessionId: targetId } }), { mode: 0o600 });
             await rename(temp, path);
             return { success: true, cancelled: true, targetSessionId: targetId };
         }).catch(error => ({ success: false as const, error: error instanceof Error ? error.message : 'Cannot safely cancel the conversation launch.' }));

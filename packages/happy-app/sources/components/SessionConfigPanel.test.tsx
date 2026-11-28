@@ -922,11 +922,25 @@ describe('SessionConfigPanel composer layout', () => {
         expect(mocks.setFastMode).toHaveBeenCalledWith(true);
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-picker-scrim' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
-        await act(async () => renderer.root.findByProps({ testID: 'session-composer-permission-option-automatic' }).props.onPress());
-        expect(mocks.setPermissionMode).toHaveBeenCalledWith('safe-yolo');
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-permission-option-automatic' })).toHaveLength(0);
+        await act(async () => renderer.root.findByProps({ testID: 'session-composer-permission-option-confirm' }).props.onPress());
+        expect(mocks.setPermissionMode).toHaveBeenCalledWith('acceptEdits');
         expect(renderer.root.findAllByProps({ testID: 'session-composer-permission-more' })).toHaveLength(0);
 
 
+    });
+
+    it('retains a historical automatic new-session draft until the user explicitly chooses a supported mode', async () => {
+        mocks.draftStore.setState({ agentType: 'codex', permissionMode: 'safe-yolo' });
+        const ref = React.createRef<any>();
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />); });
+        expect(ref.current.getSelection().permissionKey).toBe('safe-yolo');
+        const trigger = renderer.root.findByProps({ testID: 'session-composer-permission-trigger' });
+        expect(trigger.props.accessibilityLabel).toContain('agentInput.taskPermission.unavailable');
+        act(() => trigger.props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-permission-option-automatic' })).toHaveLength(0);
+        expect(mocks.draftStore.getState().permissionMode).toBe('safe-yolo');
+        expect(mocks.setPermissionMode).not.toHaveBeenCalled();
     });
 
     it('resets a source Claude grant when the regular Agent picker creates an agy draft', async () => {

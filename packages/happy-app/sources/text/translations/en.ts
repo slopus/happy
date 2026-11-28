@@ -1499,6 +1499,7 @@ failedContinueTask: "Continue unfinished task",
             badgePlanMode: 'plan mode',
         },
         taskPermission: {
+            chooseSupported: 'This permission mode is unavailable. Choose Request approval or Full access.',
             pickerTitle: 'How should actions be approved?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace actions; ask for approval on failure',

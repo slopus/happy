@@ -55,11 +55,13 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
     const [anchor, setAnchor] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null);
     const enabled = props.online && props.supported && !selecting;
     const legacyLabel = props.currentMode === 'read-only' ? t('agentInput.codexPermissionMode.readOnly') : t('agentInput.codexPermissionMode.default');
+    const unavailableAutomaticLabel = props.level === 'automatic' && !props.supportsAutomatic
+        ? `${t('agentInput.taskPermission.automatic')} · ${t('agentInput.taskPermission.unavailable')}` : null;
     const currentFullLabel = props.supported
-        ? (props.supportsAutomatic && props.level === null ? legacyLabel : labelForLevel(props.level))
+        ? (unavailableAutomaticLabel ?? (props.level === null ? legacyLabel : labelForLevel(props.level)))
         : t('agentInput.taskPermission.unavailable');
     const currentTriggerLabel = props.supported
-        ? (props.supportsAutomatic && props.level === null ? legacyLabel : shortLabelForLevel(props.level))
+        ? (unavailableAutomaticLabel ?? (props.level === null ? legacyLabel : shortLabelForLevel(props.level)))
         : t('agentInput.taskPermission.unavailable');
 
     React.useEffect(() => {

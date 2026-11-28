@@ -9,6 +9,7 @@ import {
     getEffortLevelsForModel,
     getHardcodedModelModes,
     getHardcodedPermissionModes,
+    getKnownPermissionModes,
     type ModeOption,
 } from '@/components/modelModeOptions';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
@@ -94,9 +95,10 @@ export default function AgentDefaultsSettingsScreen() {
         const overrideValue = getAgentDefaultOverrideValue(agentDefaultOverrides, agent, config.field);
         const hasOverride = hasAgentDefaultOverride(agentDefaultOverrides, agent, config.field);
         const isExpanded = expanded?.agent === agent && expanded.field === config.field;
+        const displayOptions = config.field === 'permissionMode' ? getKnownPermissionModes(agent, t) : config.options;
         const detail = hasOverride
-            ? optionName(config.options, overrideValue)
-            : t('agentDefaults.defaultValue', { value: optionName(config.options, effectiveValue) });
+            ? optionName(displayOptions, overrideValue)
+            : t('agentDefaults.defaultValue', { value: optionName(displayOptions, effectiveValue) });
         const codeDefaultLabel = optionName(config.options, config.codeDefaultKey);
 
         return (

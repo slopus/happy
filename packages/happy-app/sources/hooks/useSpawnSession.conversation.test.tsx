@@ -10,7 +10,7 @@ import TestRenderer from 'react-test-renderer';
 const mocks = vi.hoisted(() => ({
     prepare: vi.fn(), reserve: vi.fn(), releaseReservation: vi.fn(), claim: vi.fn(), release: vi.fn(), commit: vi.fn(),
     prepareContext: vi.fn(), prepareRuntime: vi.fn(), preview: vi.fn(), scope: vi.fn(), attachContext: vi.fn(), spawn: vi.fn(), spawnConversation: vi.fn(), cancelConversation: vi.fn(), online: vi.fn(), hydrate: vi.fn(),
-    sessions: {} as Record<string, any>,
+    sessions: {} as Record<string, any>, settings: {} as any,
     send: vi.fn(), project: vi.fn(), confirmDelivery: vi.fn(), navigate: vi.fn(), alert: vi.fn(),
 }));
 vi.mock('@/sync/conversationSwitch', () => ({
@@ -36,6 +36,7 @@ vi.mock('@/sync/sync', () => ({ sync: {
 } }));
 vi.mock('@/sync/storage', () => ({ storage: { getState: () => ({
     sessions: mocks.sessions,
+    settings: mocks.settings,
     updateSessionPermissionMode: vi.fn(), updateSessionModelMode: vi.fn(),
     updateSessionEffortLevel: vi.fn(), updateSessionFastMode: vi.fn(),
 }) } }));
@@ -71,7 +72,7 @@ beforeEach(() => {
     vi.resetAllMocks();
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     mocks.prepare.mockResolvedValue('root'); mocks.prepareContext.mockResolvedValue(prepared);
-    mocks.online.mockReturnValue(true); mocks.sessions = {};
+    mocks.online.mockReturnValue(true); mocks.sessions = {}; mocks.settings = {};
     mocks.cancelConversation.mockResolvedValue({ success: true, cancelled: true, targetSessionId: 'target' });
     mocks.preview.mockReturnValue('Incremental context.');
     mocks.claim.mockResolvedValue(undefined); mocks.release.mockResolvedValue(undefined); mocks.commit.mockResolvedValue(undefined);
@@ -85,6 +86,27 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('same-conversation handoff lifetimes', () => {
+    it('rejects an unavailable inherited permission default before changing the original conversation', async () => {
+        mocks.settings = { agentDefaultOverrides: { codex: { permissionMode: 'safe-yolo' } } };
+        const hook = renderHook();
+        await act(async () => { expect(await hook.current().spawn({ ...args, agent: 'codex' })).toBe(false); });
+        expect(mocks.prepare).not.toHaveBeenCalled(); expect(mocks.spawnConversation).not.toHaveBeenCalled();
+        expect(mocks.settings.agentDefaultOverrides.codex.permissionMode).toBe('safe-yolo');
+        hook.unmount();
+    });
+    it('rejects an unavailable historical permission before reserving or spawning while preserving the source draft', async () => {
+        const cleanupDraft = vi.fn(); const hook = renderHook();
+        await act(async () => {
+            expect(await hook.current().spawn({ ...args, agent: 'codex', permissionMode: 'safe-yolo' }, false, cleanupDraft)).toBe(false);
+        });
+        expect(mocks.prepare).not.toHaveBeenCalled();
+        expect(mocks.spawnConversation).not.toHaveBeenCalled();
+        expect(mocks.spawn).not.toHaveBeenCalled();
+        expect(mocks.send).not.toHaveBeenCalled();
+        expect(cleanupDraft).not.toHaveBeenCalled();
+        expect(mocks.alert).toHaveBeenCalledWith('common.error', 'agentInput.taskPermission.chooseSupported');
+        hook.unmount();
+    });
     it('keeps the source draft and first prompt unsent until the registered target confirms native configuration', async () => {
         const ready = deferred(); mocks.prepareRuntime.mockReturnValueOnce(ready.promise);
         const cleanupDraft = vi.fn(); const hook = renderHook(); let operation!: Promise<boolean>;

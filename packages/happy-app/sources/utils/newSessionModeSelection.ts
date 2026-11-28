@@ -1,7 +1,7 @@
 import {
     getEffortLevelsForModel,
     getHardcodedModelModes,
-    getHardcodedPermissionModes,
+    getKnownPermissionModes,
     type ModeOption,
 } from '@/components/modelModeOptions';
 import {
@@ -117,7 +117,7 @@ export function resolveNewSessionModeSelection(args: {
         && args.effortSelection.defaultValue === effectiveDefaults.effortLevel);
     const draftModel = explicitModel ? modelMode : null;
     const draftEffort = explicitEffort ? effortLevel : null;
-    const permissionOptions = getHardcodedPermissionModes(agent, identityTranslate);
+    const permissionOptions = getKnownPermissionModes(agent, identityTranslate);
     const modelOptions = args.modelOptions ?? getHardcodedModelModes(agent, identityTranslate);
 
     const resolvedPermissionMode = resolveSelectionKey({

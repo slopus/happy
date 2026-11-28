@@ -2,6 +2,7 @@ import type { Metadata, Session } from '@/sync/storageTypes';
 import { hackModes } from '@/sync/modeHacks';
 import { getCodeAgentDefaults } from '@/sync/agentDefaults';
 import { isRetiredAgentFlavor } from '@/sync/retiredSessions';
+import { isTaskPermissionModeSelectable } from '@/utils/taskPermissionModes';
 
 export type ModeOption = {
     key: string;
@@ -66,7 +67,6 @@ export function getCodexPermissionModes(translate: Translate): PermissionMode[] 
         { key: 'default', name: translate('agentInput.codexPermissionMode.default'), description: null },
         { key: 'read-only', name: translate('agentInput.codexPermissionMode.readOnly'), description: null },
         { key: 'acceptEdits', name: translate('agentInput.taskPermission.confirm'), description: translate('agentInput.taskPermission.confirmDescription') },
-        { key: 'safe-yolo', name: translate('agentInput.taskPermission.automatic'), description: translate('agentInput.taskPermission.automaticDescription') },
         { key: 'yolo', name: translate('agentInput.taskPermission.fullAccess'), description: translate('agentInput.taskPermission.fullAccessDescription') },
     ];
 }
@@ -126,14 +126,18 @@ export function getOpenCodePermissionModes(translate: Translate): PermissionMode
     ];
 }
 
-export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
+/** Includes retired values solely so saved selections can be shown without changing their policy. */
+export function getKnownPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (isRetiredAgentFlavor(flavor)) return [];
     if (flavor === 'antigravity') return [
         { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
         { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
     ];
     if (flavor === 'codex') {
-        return getCodexPermissionModes(translate);
+        return [...getCodexPermissionModes(translate), {
+            key: 'safe-yolo', name: `${translate('agentInput.taskPermission.automatic')} · ${translate('agentInput.taskPermission.unavailable')}`,
+            description: translate('agentInput.taskPermission.chooseSupported'),
+        }];
     }
     if (flavor === 'gemini') {
         return getGeminiPermissionModes(translate);
@@ -145,6 +149,10 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
         return getOpenClawPermissionModes(translate);
     }
     return getClaudePermissionModes(translate);
+}
+
+export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
+    return getKnownPermissionModes(flavor, translate).filter(mode => isTaskPermissionModeSelectable(flavor, mode.key));
 }
 
 export function getOpenClawModelModes(): ModelMode[] {
