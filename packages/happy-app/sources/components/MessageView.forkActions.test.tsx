@@ -9,6 +9,8 @@ import TestRenderer from 'react-test-renderer';
 import { MessageView } from './MessageView';
 import { TranscriptReadOnlyContext, TranscriptRestrictedContentContext, TranscriptMessageOptionsContext } from './TranscriptReadOnlyContext';
 import * as Clipboard from 'expo-clipboard';
+import { Platform } from 'react-native';
+import { Modal } from '@/modal';
 
 vi.mock('react-native', () => ({
     ActivityIndicator: 'ActivityIndicator',
@@ -340,6 +342,91 @@ describe('MessageView fork action feedback', () => {
     });
 });
 
+
+describe('native user message editing', () => {
+    const message = { kind: 'user-text' as const, id: 'native-prompt', localId: 'local-prompt', createdAt: 1, text: 'Original prompt' };
+    let renderer: any;
+    beforeEach(() => {
+        (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+        Platform.OS = 'android';
+    });
+    afterEach(() => {
+        if (renderer) act(() => renderer.unmount());
+        renderer = undefined;
+        Platform.OS = 'web';
+        vi.clearAllMocks();
+    });
+    const render = (edit: (id: string, text: string) => Promise<void>, canEdit = true, readOnly = false) => act(() => {
+        const element = <TranscriptReadOnlyContext.Provider value={readOnly}>
+            <MessageView message={message} metadata={{ flavor: 'codex' } as any}
+                showUserMessageActions canEditUserMessage={canEdit} onEditUserMessage={edit} />
+        </TranscriptReadOnlyContext.Provider>;
+        if (renderer) renderer.update(element); else renderer = TestRenderer.create(element);
+    });
+    const button = (action: string) => renderer.root.findByProps({ testID: `message-user-${action}-${message.id}` });
+    const open = () => act(() => button('edit').props.onPress());
+
+    it.each(['android', 'ios'] as const)('edits and resends the stopped prompt on %s', async platform => {
+        Platform.OS = platform;
+        const edit = vi.fn().mockResolvedValue(undefined);
+        render(edit, false);
+        expect(renderer.root.findAllByProps({ testID: 'message-user-edit-native-prompt' })).toHaveLength(0);
+        render(edit); open();
+        expect(button('edit-input').props.value).toBe('Original prompt');
+        act(() => button('edit-input').props.onChangeText('  Revised prompt  '));
+        await act(async () => button('edit-send').props.onPress());
+        expect(edit).toHaveBeenCalledExactlyOnceWith('local-prompt', 'Revised prompt');
+        expect(renderer.root.findAllByType('TextInput')).toHaveLength(0);
+    });
+
+    it('cancels without sending and restores the original text when reopened', () => {
+        const edit = vi.fn(); render(edit); open();
+        act(() => button('edit-input').props.onChangeText('Changed draft'));
+        act(() => button('edit-cancel').props.onPress());
+        expect(edit).not.toHaveBeenCalled();
+        expect(renderer.root.findByType('MarkdownView').props.markdown).toBe(message.text);
+        open(); expect(button('edit-input').props.value).toBe(message.text);
+    });
+
+    it('keeps the draft and reports a failed send so it can be retried', async () => {
+        const edit = vi.fn().mockRejectedValueOnce(new Error('Offline')).mockResolvedValue(undefined);
+        render(edit); open();
+        act(() => button('edit-input').props.onChangeText('Keep this draft'));
+        await act(async () => button('edit-send').props.onPress());
+        expect(button('edit-input').props.value).toBe('Keep this draft');
+        expect(button('edit-send').props.disabled).toBe(false);
+        expect(Modal.alert).toHaveBeenCalled();
+        await act(async () => button('edit-send').props.onPress());
+        expect(edit).toHaveBeenLastCalledWith('local-prompt', 'Keep this draft');
+        expect(renderer.root.findAllByType('TextInput')).toHaveLength(0);
+    });
+
+    it('blocks sending if the session resumes while the editor is open', async () => {
+        const edit = vi.fn(); render(edit); open();
+        render(edit, false);
+        expect(button('edit-send').props.disabled).toBe(true);
+        await act(async () => button('edit-send').props.onPress());
+        expect(edit).not.toHaveBeenCalled();
+        expect(button('edit-input').props.value).toBe(message.text);
+    });
+
+    it('submits only once when send is tapped twice before the first receipt', async () => {
+        let finish!: () => void;
+        const edit = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+        render(edit); open();
+        const send = button('edit-send').props.onPress;
+        act(() => { send(); send(); });
+        expect(edit).toHaveBeenCalledTimes(1);
+        expect(button('edit-send').props.disabled).toBe(true);
+        await act(async () => finish());
+        expect(renderer.root.findAllByType('TextInput')).toHaveLength(0);
+    });
+
+    it('does not expose editing in a read-only transcript', () => {
+        render(vi.fn(), true, true);
+        expect(renderer.root.findAllByProps({ testID: 'message-user-edit-native-prompt' })).toHaveLength(0);
+    });
+});
 
 describe('native async question rendering', () => {
     it('shows one structured card instead of repeating the question as Markdown', () => {

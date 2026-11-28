@@ -210,6 +210,7 @@ function UserTextBlock(props: {
   const [isEditing, setIsEditing] = React.useState(false);
   const [editText, setEditText] = React.useState('');
   const [isSendingEdit, setIsSendingEdit] = React.useState(false);
+  const sendingEditRef = React.useRef(false);
   const [isCopied, setIsCopied] = React.useState(false);
   const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleOptionPress = React.useCallback(async (option: Option) => {
@@ -231,13 +232,13 @@ function UserTextBlock(props: {
       props.onForkFromUserMessage(props.message.id, rewindPointId, visibleText, undefined, props.message.createdAt);
     }
   }, [props.message.createdAt, props.message.id, props.onForkFromUserMessage, rewindPointId, visibleText, readOnly]);
-  const showActions = Platform.OS === 'web' && props.showUserMessageActions;
+  const showActions = props.showUserMessageActions;
   const canEdit = !readOnly && showActions && props.canEditUserMessage && Boolean(props.onEditUserMessage);
   const startEditing = React.useCallback(() => {
-    if (readOnly) return;
+    if (!canEdit) return;
     setEditText(visibleText);
     setIsEditing(true);
-  }, [visibleText, readOnly]);
+  }, [visibleText, canEdit]);
   const cancelEditing = React.useCallback(() => {
     setEditText('');
     setIsEditing(false);
@@ -264,16 +265,20 @@ function UserTextBlock(props: {
   }, []);
   const sendEditedMessage = React.useCallback(async () => {
     const trimmed = editText.trim();
-    if (readOnly || !trimmed || !props.onEditUserMessage || isSendingEdit) return;
+    if (!canEdit || !trimmed || !props.onEditUserMessage || sendingEditRef.current) return;
 
+    sendingEditRef.current = true;
     setIsSendingEdit(true);
     try {
       await props.onEditUserMessage(props.message.localId ?? props.message.id, trimmed);
       setIsEditing(false);
+    } catch (error) {
+      Modal.alert(t('common.error'), error instanceof Error && error.message.trim() ? error.message : t('errors.unknownError'));
     } finally {
+      sendingEditRef.current = false;
       setIsSendingEdit(false);
     }
-  }, [editText, isSendingEdit, props.message.id, props.message.localId, props.onEditUserMessage, readOnly]);
+  }, [canEdit, editText, props.message.id, props.message.localId, props.onEditUserMessage]);
 
   // Claude Agent SDK emits synthetic user messages wrapped in tags like
   // <local-command-caveat>…</local-command-caveat> and
@@ -311,7 +316,7 @@ function UserTextBlock(props: {
   }
 
   if (isEditing && !readOnly) {
-    const canSend = editText.trim().length > 0 && !isSendingEdit;
+    const canSend = canEdit && editText.trim().length > 0 && !isSendingEdit;
     return (
       <View testID={`message-user-${props.message.id}`} style={styles.userMessageContainer}>
         <View style={styles.userMessageEditor}>
@@ -813,8 +818,8 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: 2,
   },
   userMessageAction: {
-    width: 28,
-    height: 28,
+    width: Platform.OS === 'web' ? 28 : 48,
+    height: Platform.OS === 'web' ? 28 : 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -822,6 +827,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   userMessageCopyActionCopied: {
     width: 'auto',
+    minWidth: Platform.OS === 'web' ? 28 : 48,
     gap: 4,
     paddingHorizontal: 7,
   },
@@ -832,10 +838,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   userMessageActionPressed: {
     opacity: 0.58,
+    backgroundColor: theme.colors.surfacePressed,
   },
   userMessageEditor: {
-    width: '88%',
-    minWidth: 320,
+    width: Platform.OS === 'web' ? '88%' : '100%',
+    minWidth: Platform.OS === 'web' ? 320 : 0,
     maxWidth: 900,
     minHeight: 156,
     marginBottom: 12,
@@ -864,7 +871,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   userMessageEditorButton: {
     minWidth: 64,
-    height: 40,
+    height: Platform.OS === 'web' ? 40 : 48,
     paddingHorizontal: 14,
     borderRadius: 14,
     alignItems: 'center',

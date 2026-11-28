@@ -92,7 +92,7 @@ const ContinuationChatList = React.memo((props: ChatListProps) => {
             return transcriptViewportRange(section.messages, visible.filter(item => item.source?.sessionId === section.id).flatMap(itemMessages),
                 section.reading.wireSeq, { oldestSeq: sync.getHistoryBoundarySeq(section.id, 'older'), newestSeq: sync.getHistoryBoundarySeq(section.id, 'newer') });
         }}
-        showMessageActions={Platform.OS === 'web'} canEditLatestUserMessage={history.isAtLatest && !session.thinking}
+        showMessageActions canEditLatestUserMessage={history.isAtLatest && !session.thinking}
         hasPendingPermission={Boolean(session.agentState?.requests && Object.keys(session.agentState.requests).length)}
         onEditUserMessage={async (id, text) => { await sync.sendMessage(session.id, text, { source: 'chat', editedFromMessageId: id }); }}
         onForkFromMessage={canFork ? (messageId, rewindPointId, messageText, retainSelectedTurn, messageCreatedAt, excludeSelectedPrompt) => {
@@ -209,7 +209,7 @@ const SingleSessionChatList = React.memo((props: ChatListProps) => {
                 <StreamingTextPreviews previews={visibleTextPreviews} />
                 <ListFooter sessionId={props.session.id} />
             </> : null}
-            showMessageActions={Platform.OS === 'web'}
+            showMessageActions
             canEditLatestUserMessage={isAtLatest && session?.thinking !== true}
             onEditUserMessage={handleEditUserMessage}
             onForkFromMessage={canFork ? handleForkFromMessage : undefined}

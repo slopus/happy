@@ -6,6 +6,8 @@ import TestRenderer from 'react-test-renderer';
 import type { DelegatedTaskSummary } from '@slopus/happy-wire';
 import type { Message } from '@/sync/typesMessage';
 import { ChatList } from './ChatList';
+import { Platform } from 'react-native';
+import { sync } from '@/sync/sync';
 
 const state = vi.hoisted(() => ({
     messages: [] as Message[], sessions: {} as Record<string, any>, groupTools: true,
@@ -36,6 +38,7 @@ vi.mock('@/sync/storage', () => ({
 }));
 vi.mock('@/sync/sessionTextStream', () => ({ useSessionTextPreviews: () => [] }));
 vi.mock('@/sync/sync', () => ({ sync: {
+    sendMessage: vi.fn().mockResolvedValue(undefined),
     getLocalHistoryScope: () => null, getHistoryBoundarySeq: () => null,
     getMessageWireId: (_session: string, id: string) => id,
     getMessageWireSeq: () => null, getMessageWireBlockKey: () => null,
@@ -49,7 +52,7 @@ vi.mock('@/modal/components/BaseModal', () => ({ BaseModal: 'BaseModal' }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('./tools/knownTools', () => ({ knownTools: {} }));
 vi.mock('./layout', () => ({ layout: { maxWidth: 800 } }));
-vi.mock('./MessageView', () => ({ MessageView: ({ message }: any) => React.createElement('MessageRow', { id: message.id }) }));
+vi.mock('./MessageView', () => ({ MessageView: (props: any) => React.createElement('MessageRow', { ...props, id: props.message.id }) }));
 vi.mock('./ToolGroupView', () => ({
     AgentWorkGroupView: ({ group }: any) => React.createElement('WorkRow', { id: group.id }),
     ToolGroupView: ({ group }: any) => React.createElement('WorkRow', { id: group.id }),
@@ -88,6 +91,27 @@ describe('delegated task placement in the real chat transcript', () => {
         if (renderer) renderer.update(element); else renderer = TestRenderer.create(element);
     });
     const rows = () => renderer.root.findAll((node: any) => ['MessageRow', 'WorkRow', 'TaskRow'].includes(node.type)).map((node: any) => node.props.id);
+
+    it.each([false, true])('enables native edit after stopping (continuation=%s)', async continuation => {
+        Platform.OS = 'android';
+        try {
+            if (continuation) {
+                state.sessions.parent.metadata.continuationOfSessionId = 'older';
+                state.sections = [{ id: 'parent', metadata: state.sessions.parent.metadata, messages: state.messages, readOnly: false }];
+            }
+            state.sessions.parent.thinking = true; render();
+            let prompt = renderer.root.findByProps({ id: 'prompt' }).props;
+            expect(prompt.showUserMessageActions).toBe(true);
+            expect(prompt.canEditUserMessage).toBe(false);
+            state.sessions.parent = { ...state.sessions.parent, thinking: false }; render();
+            prompt = renderer.root.findByProps({ id: 'prompt' }).props;
+            expect(prompt.canEditUserMessage).toBe(true);
+            await prompt.onEditUserMessage('local-prompt', 'Revised prompt');
+            expect(sync.sendMessage).toHaveBeenCalledWith('parent', 'Revised prompt', { source: 'chat', editedFromMessageId: 'local-prompt' });
+        } finally {
+            Platform.OS = 'web';
+        }
+    });
 
     it.each([true, false])('shows the child during its work, before the final answer (grouping=%s)', grouping => {
         state.groupTools = grouping; render();
