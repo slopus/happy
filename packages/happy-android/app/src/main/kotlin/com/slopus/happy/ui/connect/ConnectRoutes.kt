@@ -2,7 +2,6 @@ package com.slopus.happy.ui.connect
 
 import com.slopus.happy.ui.connection.CloudInviteRoute
 import com.slopus.happy.ui.connection.CloudInvites
-import com.slopus.happy.ui.connection.LocalCloudConnect
 import com.slopus.happy.connection.PairingStart
 import com.slopus.happy.ui.components.LocalOverlays
 import com.slopus.happy.ui.guest.GuestChatEntry
@@ -89,6 +88,9 @@ fun NavGraphBuilder.connectRoutes(graph: AppGraph, nav: NavHostController) {
  * opens the one it goes to ([com.slopus.happy.accounts.AccountRegistry.forTerminal])
  * and that account's stack takes it; with none on the phone, it is
  * confirmed here and a new account made for it.
+ *
+ * A Happy Cloud invite opens on its invite wherever the build has Happy
+ * Cloud ([cloudInvites]), Settings' switch on or off.
  */
 @Composable
 fun DeepLinkEffect(
@@ -98,12 +100,12 @@ fun DeepLinkEffect(
     openConnection: String? = null,
     onHappyLink: ((DeepLink) -> Unit)? = null,
     openHappyAccount: () -> Boolean = { false },
+    cloudInvites: Boolean = false,
 ) {
     val pending by DeepLinks.pending.collectAsStateWithLifecycle()
     val connectAgent = LocalAgentPairing.current
     val overlays = LocalOverlays.current
-    val cloud = LocalCloudConnect.current != null
-    LaunchedEffect(pending, signedIn, cloud) {
+    LaunchedEffect(pending, signedIn, cloudInvites) {
         val link = pending ?: return@LaunchedEffect
         if (link is DeepLink.OnConnection && link.connectionId != openConnection) return@LaunchedEffect
         // Whatever is over the stack (a menu, a sheet, a dialog) goes first, animated, and the link
@@ -126,10 +128,11 @@ fun DeepLinkEffect(
             nav.navigate(GuestChatRoute(link.url))
             return@LaunchedEffect
         }
-        // A Happy Cloud invite is the Cloud account's, not the open one's: it opens signed in or out,
-        // and only while Happy Cloud is offered (Settings' switch); otherwise it is dropped.
+        // A Happy Cloud invite is the Cloud account's, not the open one's: it opens signed in or out, and
+        // whatever Settings' switch says. The switch only stops the app claiming the links (the
+        // HappyCloudLinks alias); one that reaches it anyway opens. Dropped only by a build without Happy Cloud.
         if (link is DeepLink.CloudServerInvite) {
-            if (!cloud) return@LaunchedEffect
+            if (!cloudInvites) return@LaunchedEffect
             CloudInvites.offer(link.invite)
             nav.navigate(CloudInviteRoute) { launchSingleTop = true }
             return@LaunchedEffect

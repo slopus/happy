@@ -84,9 +84,17 @@ import kotlinx.serialization.Serializable
  * Happy Cloud's way in, provided at the app's root: the first screen's Use
  * Happy Cloud and the account menu's "Connect to Happy Cloud"; null while
  * Settings' Happy Cloud switch is off ([com.slopus.happy.config.HappyCloudSetting])
- * or the build has no Happy Cloud, and both are left out, as its invite links are.
+ * or the build has no Happy Cloud, and both are left out. The switch only hides
+ * ways in (Kirill): a Cloud flow reached anyway (an invite link, a settings
+ * link, a server's sign-in) opens and works.
  */
 val LocalCloudConnect: ProvidableCompositionLocal<(() -> Unit)?> = compositionLocalOf { null }
+
+/**
+ * The account menu's "Sign out of Happy Cloud", provided at the app's root
+ * ([rememberCloudSignOut]); null while there is nothing to sign out of.
+ */
+val LocalCloudSignOut: ProvidableCompositionLocal<(() -> Unit)?> = compositionLocalOf { null }
 
 object HappyCloudSwitchTags {
     const val ROW = "settings.happyCloud"
@@ -143,6 +151,21 @@ fun rememberCloudConnect(graph: AppGraph, nav: NavHostController): (() -> Unit)?
             nav.navigate(CloudRoute) { launchSingleTop = true }
         }
     }
+}
+
+/**
+ * Signing out of Happy Cloud from the account menu, while the account is
+ * signed in and its + is left out (Settings' switch off): the switch hides
+ * the way in, never the way out. With the + there, Join a server, where it
+ * opens, signs out (its menu, and Back). Servers already on the phone stay.
+ */
+@Composable
+fun rememberCloudSignOut(graph: AppGraph): (() -> Unit)? {
+    val account = graph.cloudAccount ?: return null
+    val offered by graph.happyCloud.enabled.collectAsStateWithLifecycle()
+    val state by account.state.collectAsStateWithLifecycle()
+    if (offered || state != CloudAccountState.SignedIn) return null
+    return remember(account) { { account.signOut() } }
 }
 
 fun NavGraphBuilder.cloudRoutes(graph: AppGraph, nav: NavHostController) {

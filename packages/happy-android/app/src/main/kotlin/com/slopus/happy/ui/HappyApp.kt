@@ -65,7 +65,9 @@ import com.slopus.happy.ui.connection.signInToServerAgain
 import com.slopus.happy.ui.connection.SessionEndedEffect
 import com.slopus.happy.connection.ServerInvite
 import com.slopus.happy.ui.connection.LocalCloudConnect
+import com.slopus.happy.ui.connection.LocalCloudSignOut
 import com.slopus.happy.ui.connection.rememberCloudConnect
+import com.slopus.happy.ui.connection.rememberCloudSignOut
 import com.slopus.happy.ui.connect.rememberAddFlow
 import com.slopus.happy.ui.start.rememberCustomServerLabel
 import com.slopus.happy.ui.tablet.TabletShell
@@ -163,8 +165,9 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
             val happyLinks = rememberHappyLinks(graph, nav, agent)
             // Every scanner, signed in or out, sends happy://direct? codes here.
             CompositionLocalProvider(LocalAgentPairing provides connectAgent, LocalServerSignIn provides signInToServer, LocalHappyLinks provides happyLinks) {
-              // Happy Cloud: the first screen's Use Happy Cloud and the account menu's row.
+              // Happy Cloud: the first screen's Use Happy Cloud and the account menu's row, or its sign-out.
               val cloud = rememberCloudConnect(graph, nav)
+              val cloudSignOut = rememberCloudSignOut(graph)
               // Add (the first screen's Connect, the account menu's Add): scan, then route the code.
               val add = rememberAddFlow(
                   graph,
@@ -172,7 +175,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                   onServer = { nav.navigate(ServerRoute) },
                   serverLabel = rememberCustomServerLabel(graph),
               )
-              CompositionLocalProvider(LocalAddFlow provides add, LocalCloudConnect provides cloud) {
+              CompositionLocalProvider(LocalAddFlow provides add, LocalCloudConnect provides cloud, LocalCloudSignOut provides cloudSignOut) {
                 // Links: through the open agent connection in its browser, or as ever on a Happy account.
                 ProvideLinks(rememberLinks(graph, nav, agent)) {
                 // The account's home, sending what it opens through [go]: the stack's own pushes on its page, the
@@ -267,6 +270,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                 }
                 DeepLinkEffect(
                     nav, signedIn = signedIn, onOpenSession = { id -> nav.navigate(SessionRoute(id)) }, openConnection = agent, onHappyLink = happyLinks::take,
+                    cloudInvites = graph.cloudAccount != null,
                     // A terminal link while no Happy account is open: the one it goes to opens, as from home's account menu.
                     openHappyAccount = { graph.accountStore.registry.value.forTerminal(graph.accountStore.unreadable.value::readable)?.id?.also(switcher::fromHome) != null },
                 )

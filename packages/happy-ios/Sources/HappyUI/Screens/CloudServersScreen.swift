@@ -348,9 +348,7 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
             say(nil)
             CloudScreens.pushTyping(CloudEmailViewController(context: context, http: http), on: navigationController)
         }
-        if HappyCloud.isOffered(in: context.variant) {
-            gallery.onArtTap = { [weak self] in self?.logoTapped(at: Date()) }
-        }
+        gallery.onArtTap = { [weak self] in self?.logoTapped(at: Date()) }
         for subview in [gallery, note, google, github, email] as [UIView] { scroll.addSubview(subview) }
         updateAppleButton()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.updateAppleButton() }
@@ -438,7 +436,7 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
 
     /// The tenth tap within four seconds opens a test account's sign-in.
     func logoTapped(at now: Date) {
-        guard HappyCloud.isOffered(in: context.variant), taps.tap(at: now) else { return }
+        guard taps.tap(at: now) else { return }
         taps = CloudLogoTaps()
         let signIn = CloudTestSignInViewController(context: context)
         signIn.http = http
@@ -917,7 +915,8 @@ final class CloudTestSignIn: UIView {
 
 /// A test account's sign-in, for testing every surface without Apple or
 /// GitHub: its login and password, opened by ten taps on the welcome's
-/// Happy mark in development and preview builds.
+/// Happy mark, wherever the welcome shows: a test account signs in again
+/// with it while Happy Cloud isn't offered too.
 final class CloudTestSignInViewController: CloudStageViewController, CloudSignInStep, UITextFieldDelegate {
     let problem = CloudStageViewController.bodyLabel("")
     private(set) var testSignIn: CloudTestSignIn?
@@ -937,7 +936,6 @@ final class CloudTestSignInViewController: CloudStageViewController, CloudSignIn
         problem.textColor = UIColor(Palette.textDestructive)
         problem.accessibilityIdentifier = "cloud-sign-in-problem"
         content.addSubview(problem)
-        guard HappyCloud.isOffered(in: context.variant) else { return }
         let form = CloudTestSignIn()
         form.login.text.delegate = self
         form.password.text.delegate = self

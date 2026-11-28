@@ -218,22 +218,26 @@ final class AccountSwitcher: NSObject {
             AccountAdding.connectToCloud(context: context, from: controller)
         }
         cloud.accessibilityIdentifier = "account-cloud"
-        // Only while the account's session is held; it ends the session
-        // (revoked at the API), and the servers stay.
+        // Whether or not Happy Cloud is offered: the switch hides the way
+        // in, never the way out.
         let cloudSignOut = UIDeferredMenuElement.uncached { completion in
-            MainActor.assumeIsolated {
-                guard CloudScreens.account?.isLive() == true else { return completion([]) }
-                let signOut = UIAction(title: Strings.HappyCloud.signOut, image: UIImage(systemName: "rectangle.portrait.and.arrow.right")) { _ in
-                    CloudScreens.account = nil
-                }
-                signOut.accessibilityIdentifier = "account-cloud-sign-out"
-                completion([signOut])
-            }
+            MainActor.assumeIsolated { completion(Self.cloudSignOut()) }
         }
         return [
             UIMenu(options: .displayInline, children: choices),
-            UIMenu(options: .displayInline, children: HappyCloud.isOffered(in: context.variant) ? [add, cloud, cloudSignOut] : [add]),
+            UIMenu(options: .displayInline, children: HappyCloud.isOffered(in: context.variant) ? [add, cloud, cloudSignOut] : [add, cloudSignOut]),
         ]
+    }
+
+    /// "Sign Out of Happy Cloud", only while the account's session is held.
+    /// It ends the session (revoked at the API), and the servers stay.
+    static func cloudSignOut() -> [UIMenuElement] {
+        guard CloudScreens.account?.isLive() == true else { return [] }
+        let signOut = UIAction(title: Strings.HappyCloud.signOut, image: UIImage(systemName: "rectangle.portrait.and.arrow.right")) { _ in
+            CloudScreens.account = nil
+        }
+        signOut.accessibilityIdentifier = "account-cloud-sign-out"
+        return [signOut]
     }
 
     /// UIKit's compact menu reserves a fixed lane for the check and picture.

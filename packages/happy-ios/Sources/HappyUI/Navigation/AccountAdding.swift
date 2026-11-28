@@ -54,8 +54,10 @@ enum AccountAdding {
     /// Cloud servers need no scanned code: their addresses are built from
     /// the app's own base. An invite link opens on its invite, after
     /// signing in when the account isn't.
+    /// Settings' Happy Cloud switch only hides the ways in to here (Start's
+    /// and the account menu's); whatever does arrive (a server's Sign In,
+    /// an invite link, a settings link) opens whether or not it is on.
     static func connectToCloud(context: AppContext, from controller: UIViewController, invite: CloudInvite? = nil) {
-        guard HappyCloud.isOffered(in: context.variant) else { return }
         let first = CloudScreens.first(context: context, invite: invite)
         if context.account.accounts.isEmpty, let navigation = controller.navigationController {
             navigation.pushViewController(first, animated: true)

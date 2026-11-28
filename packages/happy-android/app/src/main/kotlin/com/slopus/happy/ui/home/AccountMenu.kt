@@ -30,6 +30,7 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.connection.LocalCloudConnect
+import com.slopus.happy.ui.connection.LocalCloudSignOut
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.avatar.AvatarPlaceholder
@@ -119,6 +120,7 @@ object AccountMenuTags {
     const val MENU = "accountMenu.menu"
     const val ADD = "accountMenu.add"
     const val CLOUD = "accountMenu.cloud"
+    const val CLOUD_SIGN_OUT = "accountMenu.cloudSignOut"
     fun entry(id: String) = "accountMenu.entry.$id"
 }
 
@@ -200,7 +202,9 @@ fun AccountAvatarButton(menu: AccountMenu, label: String, tag: String, onClick: 
 
 /**
  * The account menu's drop-down ([AccountMenuButton]'s, and the drawer
- * header's): every account (the open one checked), then Add and Happy Cloud.
+ * header's): every account (the open one checked), then Add and Happy Cloud,
+ * or, while its + is left out and the account is signed in, Sign out of
+ * Happy Cloud ([LocalCloudSignOut]).
  */
 @Composable
 internal fun AccountMenuDropdown(
@@ -211,6 +215,7 @@ internal fun AccountMenuDropdown(
     onAdd: () -> Unit,
     onCloud: (() -> Unit)?,
     offset: DpOffset = AccountMenuSpec.menuOffset,
+    onCloudSignOut: (() -> Unit)? = LocalCloudSignOut.current,
 ) {
     val colors = HappyTheme.colors
     HappyDropdownMenu(
@@ -271,6 +276,21 @@ internal fun AccountMenuDropdown(
                     onCloud()
                 },
                 modifier = Modifier.testTag(AccountMenuTags.CLOUD),
+            )
+        }
+        if (onCloudSignOut != null) {
+            HappyMenuItem(
+                label = stringResource(R.string.cloud_sign_out),
+                leading = {
+                    Box(Modifier.size(AccountMenuSpec.rowAvatar), contentAlignment = Alignment.Center) {
+                        Icon(Ionicon.LogOutOutline, AccountMenuSpec.addIcon, colors.text)
+                    }
+                },
+                onClick = {
+                    onDismiss()
+                    onCloudSignOut()
+                },
+                modifier = Modifier.testTag(AccountMenuTags.CLOUD_SIGN_OUT),
             )
         }
     }

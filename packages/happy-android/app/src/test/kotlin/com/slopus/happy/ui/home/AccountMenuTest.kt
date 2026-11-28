@@ -1,9 +1,14 @@
 package com.slopus.happy.ui.home
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -12,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertActionsLabelled
+import com.slopus.happy.ui.connection.LocalCloudSignOut
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
@@ -70,5 +76,28 @@ class AccountMenuTest {
         rule.onNodeWithText("Add").assertExists()
         rule.node(AccountMenuTags.ADD).performClick()
         assertEquals(1, added)
+    }
+
+    /** Settings' Happy Cloud switch hides the way in, never the way out: with the + left out, a signed-in account signs out here. */
+    @Test
+    fun signingOutOfHappyCloudStaysWithTheConnectRowLeftOut() {
+        var signOut by mutableStateOf<(() -> Unit)?>(null)
+        var signedOut = 0
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalCloudSignOut provides signOut) {
+                AccountMenuButton(menu, onSwitch = {}, onAdd = {}, onCloud = null)
+            }
+        }
+        rule.node(AccountMenuTags.BUTTON).performClick()
+        rule.onAllNodesWithTag(AccountMenuTags.CLOUD, useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(AccountMenuTags.CLOUD_SIGN_OUT, useUnmergedTree = true).assertCountEquals(0)
+        rule.node(AccountMenuTags.ADD).performClick()
+
+        signOut = { signedOut++ }
+        rule.node(AccountMenuTags.BUTTON).performClick()
+        rule.onAllNodesWithTag(AccountMenuTags.CLOUD, useUnmergedTree = true).assertCountEquals(0)
+        rule.onNodeWithText("Sign out of Happy Cloud").assertExists()
+        rule.node(AccountMenuTags.CLOUD_SIGN_OUT).performClick()
+        assertEquals(1, signedOut)
     }
 }

@@ -203,8 +203,9 @@ public final class AppCoordinator {
         // Google's redirect (its reversed client ID's scheme) goes to its
         // sign-in, which usually takes it in its own session first.
         if CloudGoogle.handle(url) { return true }
+        // An invite that reaches the app opens, switch or not: the App
+        // Store app just doesn't claim their links yet (its entitlements).
         if let invite = CloudInvite(url: url) {
-            guard HappyCloud.isOffered(in: context.variant) else { return false }
             pendingInvite = invite
             openPendingInvite()
             return true
