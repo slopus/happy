@@ -16,6 +16,18 @@ describe('session liveness (PR #1715)', () => {
         }
     });
 
+    it('treats a PID reused as a thread of another process as dead (Linux)', () => {
+        const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+        try {
+            const status = (tgid: number) => () => `Name:\tlibuv-worker\nTgid:\t${tgid}\nPid:\t1808\n`;
+            expect(isPidAlive(1808, () => {}, status(1775))).toBe(false);
+            expect(isPidAlive(1808, () => {}, status(1808))).toBe(true);
+            expect(isPidAlive(1808, () => {}, () => { throw new Error('no /proc'); })).toBe(true);
+        } finally {
+            platform.mockRestore();
+        }
+    });
+
     it('subtracts uptime from now', () => {
         expect(machineBootTimeMs(60, 1_000_000)).toBe(940_000);
     });
