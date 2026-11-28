@@ -4,8 +4,6 @@
   "entries": {
     "cloudSettings.zones": "區域",
     "cloudSettings.secrets": "機密",
-    "cloudSettings.defaultZone": "預設區域",
-    "cloudSettings.criticalZone": "關鍵區域",
     "cloudSettings.restrictedZone": "受限區域",
     "cloudSettings.internetOn": "可存取網際網路",
     "cloudSettings.internetOff": "無網際網路",

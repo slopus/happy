@@ -350,6 +350,13 @@ split contract (v1, frozen 2026-11-15).
   `GET /v0/members` and `GET /v0/teams`, read as it opens. A server from
   before teams has its roles as teams (`GET /v0/roles`). Nothing edits
   teams on the phone.
+- **Zones.** Settings › Zones lists `GET /v0/zones` read-only (Zones v2,
+  happy-cluster docs/zones.md; `CloudZone`): whether a zone is
+  restricted, its description, who may join (all members for an open
+  zone; else its people by name and teams by their `GET /v0/teams` name),
+  and its internet and compute. There is no default zone and no critical
+  flag; a server from before Zones v2 reads `critical` as restricted and
+  bare member IDs as people. Zones are managed on desktop.
 - **Display.** A cloud server's address is never shown: it reads like a
   username, `@acme` (`HappyCloud.handle`), in the picker, the create field
   (an `@` in front, no domain), the availability and join messages, the

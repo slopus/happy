@@ -5,8 +5,7 @@ extension Strings {
     enum CloudMetadata {
         static var zones: String { localized("cloudSettings.zones", "Zones") }
         static var secrets: String { localized("cloudSettings.secrets", "Secrets") }
-        static var defaultZone: String { localized("cloudSettings.defaultZone", "Default zone") }
-        static var critical: String { localized("cloudSettings.criticalZone", "Critical zone") }
+        static var restricted: String { localized("cloudSettings.restrictedZone", "Restricted zone") }
         static var allMembers: String { localized("cloudSettings.allMembers", "All members") }
         static var noMembers: String { localized("cloudSettings.noMembers", "No members") }
         static func mayJoin(_ names: String) -> String { localized("cloudSettings.mayJoin", ["names": .text(names)], "May join: \(names)") }
@@ -17,9 +16,24 @@ extension Strings {
         static var loading: String { localized("common.loading", "Loading...") }
         static var retry: String { localized("common.retry", "Retry") }
 
+        static func internet(_ internet: CloudZone.Internet) -> String {
+            switch internet {
+            case .on: localized("cloudSettings.internetOn", "Internet on")
+            case .off: localized("cloudSettings.internetOff", "No internet")
+            }
+        }
+
+        static func compute(_ compute: CloudZone.Compute) -> String {
+            switch compute {
+            case .any: localized("cloudSettings.computeAny", "Any computer")
+            case .listed: localized("cloudSettings.computeListed", "Listed computers only")
+            case .none: localized("cloudSettings.computeNone", "No computers")
+            }
+        }
+
         static func owner(_ owner: String?) -> String? {
             switch owner {
-            case "team": localized("cloudSettings.ownerTeam", "Team")
+            case "team": localized("cloudSettings.ownerTeam", "Server")
             case "me": localized("cloudSettings.ownerMine", "Mine")
             case "agent": localized("cloudSettings.ownerAgent", "Agent")
             default: nil

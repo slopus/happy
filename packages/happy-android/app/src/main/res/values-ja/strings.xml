@@ -6,8 +6,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation,UnusedQuantity,UnusedResources,Typos,PluralsCandidate,StringFormatCount,ImpliedQuantity">
     <string name="cloud_settings_zones">ゾーン</string>
     <string name="cloud_settings_secrets">シークレット</string>
-    <string name="cloud_settings_default_zone">デフォルトゾーン</string>
-    <string name="cloud_settings_critical_zone">重要ゾーン</string>
     <string name="cloud_settings_restricted_zone">制限付きゾーン</string>
     <string name="cloud_settings_internet_on">インターネット：オン</string>
     <string name="cloud_settings_internet_off">インターネットなし</string>

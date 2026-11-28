@@ -169,7 +169,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         let settings = SettingsViewController(context: context, computer: session.accountID)
         let navigation = try await host(settings)
         XCTAssertNotNil(settings.shownRow("computes"))
-        XCTAssertEqual(settings.shownRowIDs.first { $0.contains("computes") }, ["agents", "providers", "computes", "usage"], "Compute follows Inference in Agents, Usage closes it: \(settings.shownRowIDs)")
+        XCTAssertEqual(settings.shownRowIDs.first { $0.contains("computes") }, ["agents", "providers", "computes", "zones", "secrets", "usage"], "Compute follows Inference in Agents, then Zones and Secrets; Usage closes it: \(settings.shownRowIDs)")
         SettingsLinks.open(.computes, session: session, from: settings)
         try await until { navigation.topViewController is ComputeViewController && navigation.transitionCoordinator == nil }
         let page = try XCTUnwrap(navigation.topViewController as? ComputeViewController)

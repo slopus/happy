@@ -5,6 +5,9 @@ import UIKit
 
 /// Settings › Zones or Secrets, both read-only. Reuses settings' standard rows,
 /// wrapping descriptions and access lists in the existing measured subtitle slot.
+/// A zone (Zones v2) says whether it is restricted, its description, who may
+/// join (people by name, teams by their `GET /v0/teams` name, an ID where
+/// neither is known), and its internet and compute.
 final class CloudMetadataViewController: SettingsPageViewController {
     enum Page: Sendable {
         case zones, secrets
@@ -18,7 +21,8 @@ final class CloudMetadataViewController: SettingsPageViewController {
     }
 
     private enum Snapshot: Sendable {
-        case zones([CloudZone], names: [String: String])
+        /// `names` are people's by user ID, `teams` teams' by ID.
+        case zones([CloudZone], names: [String: String], teams: [String: String])
         case secrets([CloudSecretMetadata])
     }
 
@@ -74,14 +78,19 @@ final class CloudMetadataViewController: SettingsPageViewController {
         switch page {
         case .zones:
             let zones = try await client.cloudZones()
-            let ids = Set(zones.flatMap { $0.members ?? [] }).sorted()
+            let listed = zones.flatMap(\.members)
+            let ids = Set(listed.filter { $0.kind == .user }.map(\.id)).sorted()
             var names: [String: String] = [:]
             for start in stride(from: 0, to: ids.count, by: 100) {
                 try Task.checkCancellation()
                 let users = try? await client.teamUsers(Array(ids[start..<min(start + 100, ids.count)]))
                 for user in users ?? [] where !user.name.isEmpty { names[user.id] = user.name }
             }
-            return .zones(zones, names: names)
+            var teams: [String: String] = [:]
+            if listed.contains(where: { $0.kind == .team }), let read = try? await client.teams() {
+                teams = Dictionary(read.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+            }
+            return .zones(zones, names: names, teams: teams)
         case .secrets:
             return .secrets(try await client.cloudSecretMetadata())
         }
@@ -95,13 +104,13 @@ final class CloudMetadataViewController: SettingsPageViewController {
         switch snapshot {
         case nil:
             return [[SettingsRow(id: "loading", title: Text.loading, accessory: .none)]]
-        case .zones(let zones, let names):
+        case .zones(let zones, let names, let teams):
             var rows = zones.map { zone in
-                let access = zone.members.map { members in
-                    members.isEmpty ? Text.noMembers : ListFormatter.localizedString(byJoining: members.map { names[$0] ?? $0 })
-                } ?? Text.allMembers
-                let subtitle = [zone.isDefault ? Text.defaultZone : nil, zone.critical ? Text.critical : nil,
-                                zone.description.isEmpty ? nil : zone.description, Text.mayJoin(access)]
+                let access = !zone.restricted ? Text.allMembers : zone.members.isEmpty ? Text.noMembers
+                    : ListFormatter.localizedString(byJoining: zone.members.map { ($0.kind == .user ? names[$0.id] : teams[$0.id]) ?? $0.id })
+                let settings = [zone.internet.map(Text.internet), zone.compute.map(Text.compute)].compactMap { $0 }.joined(separator: " · ")
+                let subtitle = [zone.restricted ? Text.restricted : nil, zone.description.isEmpty ? nil : zone.description,
+                                Text.mayJoin(access), settings.isEmpty ? nil : settings]
                     .compactMap { $0 }.joined(separator: "\n")
                 return SettingsRow(id: "zone-\(zone.id)", title: zone.name, icon: ("shield-checkmark-outline", Self.tile(zone.color)),
                                    accessory: .none, subtitle: subtitle, subtitleLines: 0)

@@ -4,8 +4,6 @@
   "entries": {
     "cloudSettings.zones": "Zones",
     "cloudSettings.secrets": "Secrets",
-    "cloudSettings.defaultZone": "Default zone",
-    "cloudSettings.criticalZone": "Critical zone",
     "cloudSettings.restrictedZone": "Restricted zone",
     "cloudSettings.internetOn": "Internet on",
     "cloudSettings.internetOff": "No internet",

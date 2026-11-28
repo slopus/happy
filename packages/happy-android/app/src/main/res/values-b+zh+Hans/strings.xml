@@ -6,8 +6,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation,UnusedQuantity,UnusedResources,Typos,PluralsCandidate,StringFormatCount,ImpliedQuantity">
     <string name="cloud_settings_zones">区域</string>
     <string name="cloud_settings_secrets">机密</string>
-    <string name="cloud_settings_default_zone">默认区域</string>
-    <string name="cloud_settings_critical_zone">关键区域</string>
     <string name="cloud_settings_restricted_zone">受限区域</string>
     <string name="cloud_settings_internet_on">可访问互联网</string>
     <string name="cloud_settings_internet_off">无互联网</string>

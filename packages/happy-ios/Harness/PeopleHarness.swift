@@ -17,7 +17,9 @@ private struct PeopleNoSocket: WebSocketConnector {
 /// tasks of his; search finds a task and two people for "ad" (Ada with a
 /// picture, Adam without), and Ada's profile is served with her numbers
 /// and the tasks she was last at. Ada is an owner, in Design and
-/// Research; Design sits inside Studio.
+/// Research; Design sits inside Studio. Its zones are Zones v2's: Finance
+/// restricted to Ada and Design, offline and on listed computers; Lab
+/// open; Vault restricted to nobody yet.
 private actor PeopleServer: AgentTransport {
     static let adaHash = "HBkSHYSIeHiPiHh8eJd4eTN0EEQG"
     static let steveHash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"
@@ -82,6 +84,17 @@ private actor PeopleServer: AgentTransport {
             """#)
         }
         if path.hasPrefix("/v0/users/ada/profile") { return ok(Self.profile()) }
+        if path == "/v0/zones" {
+            return ok(#"""
+            {"zones":[
+              {"id":"finance","name":"Finance","description":"Books and payroll. Nothing here leaves the zone.","restricted":true,"color":"red","image":null,
+               "members":[{"kind":"user","id":"ada"},{"kind":"team","id":"design"}],"bots":[],"owner":"ada","settings":{"internet":"off","compute":"listed"}},
+              {"id":"lab","name":"Lab","description":"Experiments, open to everyone.","restricted":false,"color":"teal","image":null,
+               "members":null,"bots":[],"owner":"steve","settings":{"internet":"on","compute":"any"}},
+              {"id":"vault","name":"Vault","description":"","restricted":true,"color":"indigo","image":null,
+               "members":[],"bots":[],"owner":null,"settings":{"internet":"on","compute":"none"}}]}
+            """#)
+        }
         if let picture = Self.picture(path) { return HTTP1Response(status: 200, headers: ["content-type": "image/png"], body: picture) }
         return HTTP1Response(status: 404, body: Data(#"{"error":"Not here.","code":"not_found"}"#.utf8))
     }
@@ -107,8 +120,9 @@ private actor PeopleServer: AgentTransport {
 
 /// Home on a Happy Cloud server with "ad" typed into search
 /// (`-screen people -open search`), Ada's profile over it
-/// (`-open profile`), or the server's Settings (`-open settings`), for
-/// screenshots.
+/// (`-open profile`), the server's Settings (`-open settings`) or its
+/// Zones (`-open zones`), for screenshots; `-snapshot <name>` also draws
+/// the window into the app's Documents/people/<name>.png, for a device.
 @MainActor
 final class PeopleHarness {
     private var account: AccountController?
@@ -150,12 +164,32 @@ final class PeopleHarness {
                 navigation.pushViewController(UserProfileViewController(session: session, user: TeamUser(id: "ada", name: "Ada Lovelace")), animated: false)
             case "settings":
                 navigation.pushViewController(SettingsViewController(context: context, computer: connection.id), animated: false)
+            case "zones":
+                CloudMetadataViewController.open(.zones, session: session, from: home)
             default:
                 break
+            }
+            if let index = arguments.firstIndex(of: "-snapshot"), arguments.indices.contains(index + 1) {
+                try? await Task.sleep(for: .seconds(3))
+                snapshot(window, name: arguments[index + 1])
             }
         } catch {
             print("PEOPLE error: \(error)")
         }
+    }
+
+    private func snapshot(_ window: UIWindow, name: String) {
+        guard let scene = window.windowScene else { return }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = window.screen.scale
+        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+            for each in scene.windows where !each.isHidden {
+                each.drawHierarchy(in: each.frame, afterScreenUpdates: true)
+            }
+        }
+        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("people")
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? image.pngData()?.write(to: directory.appendingPathComponent(name + ".png"))
     }
 }
 #endif
