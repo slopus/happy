@@ -82,17 +82,18 @@ public enum DeviceCalculations {
     }
 }
 
-/// How wide content may grow: 800 on every iPad, in any window, and no
-/// limit on a phone (docs/IPAD.md). happy-app's components/layout.ts holds
-/// only screens over 9 inches across to it, fixed when the module loads,
-/// which left an 11-inch iPad's chat and settings stretched across a
-/// landscape window or a main panel with the sidebar hidden.
+/// How wide content may grow: 800, on any device and in any window
+/// (docs/IPAD.md). It is a question of room, not of the device: a window
+/// narrower than that is never held, so an iPhone upright, a folded iPhone
+/// Duo or an iPad in Slide Over use their whole width, and an iPad, an
+/// unfolded Duo on its side or a Pro Max on its side keep to the column.
+/// happy-app's components/layout.ts holds only screens over 9 inches
+/// across to it, fixed when the module loads, which left an 11-inch iPad's
+/// chat and settings stretched across a landscape window or a main panel
+/// with the sidebar hidden.
 public enum ContentWidthLimit {
-    /// The readable column: chat rows, the composer, settings and item groups.
-    public static let tablet: CGFloat = 800
-
-    /// `layout.maxWidth` and `layout.headerMaxWidth`, which are the same here.
-    public static func maxWidth(isPad: Bool) -> CGFloat {
-        isPad ? tablet : .greatestFiniteMagnitude
-    }
+    /// The readable column: chat rows, the composer, settings and item
+    /// groups. `layout.maxWidth` and `layout.headerMaxWidth`, which are the
+    /// same here.
+    public static let readable: CGFloat = 800
 }

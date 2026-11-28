@@ -238,7 +238,7 @@ final class DocumentVersionViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let layout = DocumentScreenLayout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), keyboard: 0,
-                                          maxWidth: ContentWidthLimit.maxWidth(isPad: traitCollection.userInterfaceIdiom == .pad),
+                                          maxWidth: ContentWidth.maxWidth,
                                           status: Measurable { [status] width in status.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)) })
         textView.frame = layout.text
         textView.textContainerInset = UIEdgeInsets(top: layout.inset.top, left: layout.inset.left, bottom: layout.inset.bottom, right: layout.inset.right)

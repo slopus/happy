@@ -22,8 +22,41 @@ final class SplitRulesTests: XCTestCase {
         }
         // Compact is a phone whatever the width.
         XCTAssertFalse(SplitRule.showsSplit(width: 1000, isRegularWidth: false, showsHome: true))
+        // So is a compact height: an iPhone Pro Max on its side, regular
+        // at 956 but 440 tall, stays the phone it was.
+        XCTAssertFalse(SplitRule.showsSplit(width: 956, isRegularWidth: true, isRegularHeight: false, showsHome: true))
         // Onboarding, sign-in and the server confirmation own the window.
         XCTAssertFalse(SplitRule.showsSplit(width: 1376, isRegularWidth: true, showsHome: false))
+    }
+
+    /// An iPhone Duo, as the iOS 27.2 Duo simulator measures it: built with
+    /// the 27.1 SDK, the window is the whole display, its status bar's
+    /// column inside it. The same rule as an iPad's, by the window alone.
+    func testAnIPhoneDuoSplitsOpenInLandscapeAndNowhereElse() {
+        // Folded: 466 × 678 upright, compact × regular; 678 × 466 on its
+        // side, compact both ways.
+        XCTAssertFalse(SplitRule.showsSplit(width: 466, isRegularWidth: false, isRegularHeight: true, showsHome: true))
+        XCTAssertFalse(SplitRule.showsSplit(width: 678, isRegularWidth: false, isRegularHeight: false, showsHome: true))
+        // Open in portrait, 669 × 951: regular both ways, but the least
+        // sidebar (340) would leave a 329 main panel, narrower than any
+        // iPhone.
+        XCTAssertFalse(SplitRule.showsSplit(width: 669, isRegularWidth: true, isRegularHeight: true, showsHome: true))
+        // Open in landscape, 951 × 669, regular both ways: the split, the
+        // least sidebar.
+        XCTAssertTrue(SplitRule.showsSplit(width: 951, isRegularWidth: true, isRegularHeight: true, showsHome: true))
+        XCTAssertEqual(SplitRule.sidebarWidth(windowWidth: 951), 340)
+        // Beside it the main panel, to the window's edge: the status bar's
+        // column at the right (84) is its screens' safe area, where its
+        // bar's items go, as on the phone. 611, 527 of it clear of the
+        // column: more than an iPhone Pro Max's 440.
+        let panel = MainPanelLayout(size: CGSize(width: 951, height: 669), safeArea: LayoutInsets(top: 0, left: 340, bottom: 34, right: 84))
+        XCTAssertEqual(panel.panel, CGRect(x: 340, y: 0, width: 611, height: 669))
+        // The sidebar hidden: the whole window.
+        let alone = MainPanelLayout(size: CGSize(width: 951, height: 669), safeArea: LayoutInsets(top: 0, left: 0, bottom: 34, right: 84))
+        XCTAssertEqual(alone.panel, CGRect(x: 0, y: 0, width: 951, height: 669))
+        // Right to left, the sidebar and the column swap sides.
+        let rtl = MainPanelLayout(size: CGSize(width: 951, height: 669), safeArea: LayoutInsets(top: 0, left: 84, bottom: 34, right: 340), sidebarOnLeft: false)
+        XCTAssertEqual(rtl.panel, CGRect(x: 0, y: 0, width: 611, height: 669))
     }
 
     func testTheSidebarIsAThirdOfTheWindowBetween340And360() {
@@ -40,7 +73,7 @@ final class SplitRulesTests: XCTestCase {
         let alone = MainPanelLayout(size: CGSize(width: 1032, height: 1376), safeArea: LayoutInsets(top: 32, bottom: 20))
         XCTAssertEqual(alone.panel, CGRect(x: 0, y: 0, width: 1032, height: 1376))
         // Right to left, the sidebar is at the right.
-        let rtl = MainPanelLayout(size: CGSize(width: 1180, height: 820), safeArea: LayoutInsets(top: 24, left: 0, bottom: 20, right: 360))
+        let rtl = MainPanelLayout(size: CGSize(width: 1180, height: 820), safeArea: LayoutInsets(top: 24, left: 0, bottom: 20, right: 360), sidebarOnLeft: false)
         XCTAssertEqual(rtl.panel, CGRect(x: 0, y: 0, width: 820, height: 820))
         // Never negative.
         XCTAssertEqual(MainPanelLayout(size: CGSize(width: 100, height: 50), safeArea: LayoutInsets(left: 320)).panel, CGRect(x: 320, y: 0, width: 0, height: 50))

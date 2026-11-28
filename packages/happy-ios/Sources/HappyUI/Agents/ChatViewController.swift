@@ -794,7 +794,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         guard !previewing, let navigationController, navigationController.topViewController === self else { return }
         let hides = ChatScreenLayout.hidesBar(
             compact: compacts,
-            sideways: traitCollection.verticalSizeClass == .compact && traitCollection.userInterfaceIdiom == .phone,
+            sideways: traitCollection.verticalSizeClass == .compact,
             keyboardUp: keyboardTop < view.bounds.maxY
         )
         guard hides != navigationController.isNavigationBarHidden else { return }
