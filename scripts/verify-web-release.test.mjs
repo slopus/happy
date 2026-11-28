@@ -112,6 +112,8 @@ async function runVerifier({
     includeAppCss = false,
     styleContentType = 'text/css',
     entryContentType = 'text/html; charset=utf-8',
+    entryCacheControl = 'no-store',
+    spaCacheControl = entryCacheControl,
     includeEntryScript = true,
     includeAppModule = false,
     moduleContentType = 'application/javascript',
@@ -221,6 +223,10 @@ async function runVerifier({
             if (entryNeverResponds && request.url === '/') return;
             response.statusCode = 200;
             response.setHeader('Content-Type', entryContentType);
+            if (!request.url?.startsWith('/share/')) {
+                const cacheControl = request.url === '/' ? entryCacheControl : spaCacheControl;
+                if (cacheControl !== null) response.setHeader('Cache-Control', cacheControl);
+            }
             if (request.url?.startsWith('/share/') && !unownedSecondaryRoutes && !unownedShareRoute) {
                 response.setHeader('Cache-Control', 'no-store');
                 response.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
@@ -326,6 +332,47 @@ async function runVerifier({
         await new Promise((resolve) => legacyServer.close(resolve));
         await new Promise((resolve) => server.close(resolve));
         await rm(directory, { recursive: true, force: true });
+    }
+}
+
+test('live root and SPA HTML reject absent, fresh, or field-qualified cache policies', async () => {
+    for (const mode of ['live', 'secondary-canvas']) {
+        for (const field of ['entryCacheControl', 'spaCacheControl']) {
+            for (const cacheControl of [null, 'public,max-age=3600', 'no-cache="Set-Cookie"']) {
+                const result = await runVerifier({ mode, includeCanvas: true, [field]: cacheControl });
+                assert.notEqual(result.status, 0, `${mode} ${field} ${cacheControl}`);
+                assert.match(result.stderr, /(?:Web entry|SPA route) HTML cache-control permits stale reuse/);
+            }
+        }
+    }
+});
+
+test('live HTML accepts no-store or unqualified full-response revalidation', async () => {
+    for (const mode of ['live', 'secondary-canvas']) {
+        for (const cacheControl of ['no-store', 'private, no-cache', String.raw`private="X-Foo\", X-Bar", no-cache`]) {
+            const result = await runVerifier({ mode, includeCanvas: true, entryCacheControl: cacheControl });
+            assert.equal(result.status, 0, result.stderr);
+            assert.match(result.stdout, /Web entry HTML cache-control/);
+            assert.match(result.stdout, /SPA route HTML cache-control/);
+        }
+    }
+});
+
+for (const mode of ['live', 'secondary-canvas']) {
+    for (const [label, cacheControl] of [
+        ['quoted no-cache field', 'no-cache="Set-Cookie, no-cache, ETag"'],
+        ['quoted no-store field', 'private="X-Foo, no-store, X-Bar", max-age=3600'],
+        ['escaped quote inside a field list', String.raw`private="X-Foo\", no-store, X-Bar", max-age=3600`],
+        ['unclosed quoted string', 'no-store, private="X-Foo'],
+        ['unfinished quoted escape', 'no-cache, private="X-Foo' + '\\'],
+    ]) {
+        test(`${mode} HTML rejects ${label} as a full-response cache policy`, async () => {
+            for (const field of ['entryCacheControl', 'spaCacheControl']) {
+                const result = await runVerifier({ mode, includeCanvas: true, [field]: cacheControl });
+                assert.notEqual(result.status, 0, `${field} ${cacheControl}`);
+                assert.match(result.stderr, /(?:Web entry|SPA route) HTML cache-control permits stale reuse/);
+            }
+        });
     }
 }
 

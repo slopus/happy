@@ -15,6 +15,8 @@ const fixture = `121.43.32.242:8443 {
         reverse_proxy localhost:3005
     }
     # paws-web-oss:start
+    @paws_web_asset path /_expo/* /assets/*
+    redir @paws_web_asset https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com{uri} 302
     handle {
         rewrite * /web/current/index.html
         reverse_proxy https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com
@@ -34,7 +36,10 @@ test('installs the secondary canvas proxy while preserving its backend and SPA r
     assert.match(configured, /header_up -Authorization/);
     assert.match(configured, /header_up -Cookie/);
     assert.match(configured, /encode zstd gzip/);
-    assert.ok(configured.includes(fixture.slice(fixture.indexOf('    # paws-web-oss:start'))));
+    assert.match(configured, /handle \{\n\s+header >Cache-Control "no-store"\n\s+rewrite \* \/web\/current\/index\.html/);
+    assert.match(configured, /handle @backend \{\n\s+reverse_proxy localhost:3005/);
+    assert.match(configured, /redir @paws_web_asset https:\/\/happy-app-ota-jacky\.oss-cn-hangzhou\.aliyuncs\.com\{uri\} 302/);
+    assert.ok(configured.endsWith(fixture.slice(fixture.indexOf('other.example {'))));
     assert.equal(configure(configured), configured);
 });
 
@@ -42,6 +47,29 @@ test('secondary proxy configuration rejects unapproved site addresses and ambigu
     assert.throws(() => configurator.configureSecondaryCanvasCaddy(fixture, 'example.com:8443'), /approved secondary/);
     assert.throws(() => configure(fixture.replace('@backend', '@paws_canvas_prefix path /dsh-image-canvas/*\n    @backend')), /unmanaged canvas/);
     assert.throws(() => configure(fixture.replace('121.43.32.242:8443', 'other.invalid:8443')), /site block not found/);
+});
+
+test('secondary HTML policy fails closed without one approved managed OSS fallback', () => {
+    const fallback = '    handle {\n        rewrite * /web/current/index.html\n        reverse_proxy https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com\n    }\n';
+    for (const source of [
+        fixture.replace(/    # paws-web-oss:start[\s\S]*?    # paws-web-oss:end\n/, ''),
+        fixture.replace('/web/current/index.html', '/web/other/index.html'),
+        fixture.replace('    # paws-web-oss:end', '    # paws-web-oss:end\n    # paws-web-oss:start\n' + fallback + '    # paws-web-oss:end'),
+        fixture.replace('        rewrite * /web/current/index.html', '        rewrite * /web/other/index.html\n        rewrite * /web/current/index.html'),
+        fixture.replace('    # paws-web-oss:end', fallback + '    # paws-web-oss:end'),
+        fixture.replace('reverse_proxy https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com', 'reverse_proxy https://unowned.example'),
+    ]) assert.throws(() => configure(source), /managed OSS (?:Web handler|SPA fallback)/i);
+});
+
+test('secondary HTML policy replaces a stale direct policy and remains idempotent', () => {
+    const source = fixture.replace('        rewrite * /web/current/index.html',
+        '        header Cache-Control "public,max-age=3600"\n        rewrite * /web/current/index.html');
+    const configured = configure(source);
+    assert.match(configured, /header >Cache-Control "no-store"/);
+    assert.doesNotMatch(configured, /max-age=3600/);
+    assert.equal(configure(configured), configured);
+    assert.throws(() => configure(source.replace('        rewrite *',
+        '        header >Cache-Control "no-cache"\n        rewrite *')), /Ambiguous Cache-Control/);
 });
 
 test('secondary Caddy returns exact JS CSS and fonts and cannot fall back to the SPA', {
@@ -58,6 +86,21 @@ test('secondary Caddy returns exact JS CSS and fonts and cannot fall back to the
     const revision = 'a'.repeat(40);
     const oss = http.createServer((request, response) => {
         seen.push({ url: request.url, authorization: request.headers.authorization, cookie: request.headers.cookie });
+        if (request.url === '/web/current/index.html') {
+            response.writeHead(request.headers['if-modified-since'] ? 304 : 200, {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'public,max-age=3600',
+                'Last-Modified': 'Sat, 28 Nov 2026 04:13:32 GMT',
+            });
+            response.end('<html>app shell</html>');
+            return;
+        }
+        if (request.url === '/assets/app.hash.js') {
+            response.writeHead(200, { 'Content-Type': 'application/javascript',
+                'Cache-Control': 'public,max-age=31536000,immutable' });
+            response.end('hashed asset');
+            return;
+        }
         const file = files.get(request.url?.replace(`/web/releases/${revision}/dsh-image-canvas/`, ''));
         if (!file) { response.writeHead(404, { 'Content-Type': 'application/xml' }); response.end('<Error>NoSuchKey</Error>'); return; }
         response.writeHead(200, { 'Content-Type': file[0], 'Content-Length': Buffer.byteLength(file[1]),
@@ -75,6 +118,7 @@ test('secondary Caddy returns exact JS CSS and fonts and cannot fall back to the
         assert.ok(configured, 'secondary canvas proxy must be installed');
         const config = configured.replace(/    tls [^\n]+\n/, '')
             .replace('121.43.32.242:8443', address).replace(/other.example \{[\s\S]*?\}\n/, '')
+            .replace('reverse_proxy localhost:3005', 'respond "backend fixture"')
             .replaceAll(configurator.PRODUCTION_WEB_OSS_ORIGIN, `http://${ossAddress}`)
             .replaceAll(configurator.PRODUCTION_WEB_OSS_HOST, ossAddress);
         const configPath = join(directory, 'Caddyfile');
@@ -87,12 +131,34 @@ test('secondary Caddy returns exact JS CSS and fonts and cannot fall back to the
             caddy.on('exit', code => { clearTimeout(timeout); reject(Error(logs || `Caddy exited ${code}`)); });
             caddy.stderr.on('data', chunk => { logs += chunk; if (logs.includes('serving initial configuration')) { clearTimeout(timeout); resolve(); } });
         });
+        for (const path of ['/', '/session/example', '/share/example']) {
+            for (const method of ['GET', 'HEAD']) {
+                for (const conditional of [false, true]) {
+                    const response = await fetch(address + path, { method, headers: conditional
+                        ? { 'If-Modified-Since': 'Sat, 28 Nov 2026 04:13:32 GMT' } : undefined });
+                    assert.equal(response.status, conditional ? 304 : 200, `${method} ${path}`);
+                    assert.equal(response.headers.get('cache-control'), 'no-store', `${method} ${path}`);
+                    assert.equal(response.headers.get('last-modified'), 'Sat, 28 Nov 2026 04:13:32 GMT');
+                    assert.equal(await response.text(), conditional || method === 'HEAD' ? '' : '<html>app shell</html>');
+                }
+            }
+        }
+        const backend = await fetch(address + '/health');
+        assert.equal(await backend.text(), 'backend fixture');
+        assert.equal(backend.headers.get('cache-control'), null);
+        const assetRedirect = await fetch(address + '/assets/app.hash.js', { redirect: 'manual' });
+        assert.equal(assetRedirect.status, 302);
+        assert.equal(assetRedirect.headers.get('location'), `http://${ossAddress}/assets/app.hash.js`);
+        const asset = await fetch(address + '/assets/app.hash.js');
+        assert.equal(asset.headers.get('cache-control'), 'public,max-age=31536000,immutable');
+        assert.equal(await asset.text(), 'hashed asset');
         for (const [file, [mime, bytes]] of files) {
             const response = await fetch(`${address}/dsh-image-canvas/${revision}/${file}?discard=1`, {
                 redirect: 'manual', headers: { Authorization: 'Bearer test-only', Cookie: 'local_auth=1', 'Accept-Encoding': 'gzip' },
             });
             assert.equal(response.status, 200, file);
             assert.equal(response.headers.get('content-type'), mime, file);
+            assert.equal(response.headers.get('cache-control'), 'public,max-age=31536000,immutable', file);
             if (file === 'canvas.js') assert.equal(response.headers.get('content-encoding'), 'gzip');
             assert.equal(response.headers.get('x-frame-options'), 'SAMEORIGIN');
             assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
@@ -106,9 +172,12 @@ test('secondary Caddy returns exact JS CSS and fonts and cannot fall back to the
             assert.equal(response.status, 404, file);
             assert.doesNotMatch(await response.text(), /canvas frame|web\/current\/index.html/);
         }
-        assert.ok(seen.every(request => !request.authorization && !request.cookie));
-        assert.ok(seen.every(request => request.url.startsWith(`/web/releases/${revision}/dsh-image-canvas/`)));
-        assert.ok(seen.every(request => !request.url.includes('?')));
+        const canvasRequests = seen.filter(request => request.url.startsWith(`/web/releases/${revision}/dsh-image-canvas/`));
+        assert.ok(canvasRequests.every(request => !request.authorization && !request.cookie));
+        assert.ok(canvasRequests.every(request => !request.url.includes('?')));
+        assert.ok(seen.every(request => request.url === '/web/current/index.html'
+            || request.url === '/assets/app.hash.js'
+            || request.url.startsWith(`/web/releases/${revision}/dsh-image-canvas/`)));
     } finally {
         if (caddy?.exitCode === null) { caddy.kill('SIGTERM'); await once(caddy, 'exit'); }
         if (oss.listening) { oss.closeAllConnections(); await new Promise(resolve => oss.close(resolve)); }

@@ -87,7 +87,7 @@ test('serves every Web file from OSS without a filesystem fallback', () => {
     assert.match(configured, new RegExp(WEB_OSS_CADDY_BLOCK_START));
     assert.match(configured, /@paws_web_asset path \/_expo\/\* \/assets\/\* \/desktop-skins\/\* \/\.well-known\/\* \/canvaskit\.wasm \/favicon\.ico \/favicon-active\.ico \/metadata\.json/);
     assert.match(configured, new RegExp(`redir @paws_web_asset ${PRODUCTION_WEB_OSS_ORIGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\{uri\\} 302`));
-    assert.match(configured, /rewrite \* \/web\/current\/index\.html/);
+    assert.match(configured, /handle \{\n\s+header >Cache-Control "no-store"\n\s+rewrite \* \/web\/current\/index\.html/);
     assert.match(configured, new RegExp(`reverse_proxy ${PRODUCTION_WEB_OSS_ORIGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     assert.match(configured, /header_up Host happy-app-ota-jacky\.oss-cn-hangzhou\.aliyuncs\.com/);
     assert.match(configured, /header_down -Content-Disposition/);

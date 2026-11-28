@@ -221,6 +221,34 @@ function assertHtmlRevision(label, body) {
     console.log(`OK ${expectedRevision} ${label} release revision`);
 }
 
+function assertMutableHtmlCachePolicy(label, response) {
+    const cacheControl = response.headers.get('cache-control') ?? '';
+    const directives = [];
+    let start = 0;
+    let quoted = false;
+    let escaped = false;
+    // Commas inside quoted field lists are not directive separators. An
+    // unfinished quoted string must not authorize reuse of the application shell.
+    for (let index = 0; index < cacheControl.length; index += 1) {
+        const character = cacheControl[index];
+        if (escaped) {
+            escaped = false;
+        } else if (quoted && character === '\\') {
+            escaped = true;
+        } else if (character === '"') {
+            quoted = !quoted;
+        } else if (character === ',' && !quoted) {
+            directives.push(cacheControl.slice(start, index).trim().toLowerCase());
+            start = index + 1;
+        }
+    }
+    directives.push(cacheControl.slice(start).trim().toLowerCase());
+    if (quoted || escaped || !directives.some(directive => directive === 'no-store' || directive === 'no-cache')) {
+        throw new Error(`${label} HTML cache-control permits stale reuse: ${cacheControl || '(missing)'}`);
+    }
+    console.log(`OK ${cacheControl} ${label} HTML cache-control`);
+}
+
 function expectedMimePattern(pathname) {
     pathname = pathname.toLowerCase();
     if (pathname.endsWith('/apple-app-site-association') || pathname.endsWith('.json')) return /^application\/(?:[a-z0-9.+-]+\+)?json\b/i;
@@ -383,6 +411,7 @@ if (immutableMode) {
     ]) {
         const response = await fetchRequired(label, url);
         if (secondaryCanvasMode) assertMime(label, '/index.html', response);
+        assertMutableHtmlCachePolicy(label, response);
         assertHtmlRevision(label, await response.text());
     }
     await verifyProjectCanvas();

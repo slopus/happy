@@ -72,6 +72,7 @@ const WEB_OSS_CADDY_LINES = [
     `redir @paws_web_asset ${PRODUCTION_WEB_OSS_ORIGIN}{uri} 302`,
     ...PROJECT_CANVAS_CADDY_LINES,
     'handle {',
+    '    header >Cache-Control "no-store"',
     '    rewrite * /web/current/index.html',
     `    reverse_proxy ${PRODUCTION_WEB_OSS_ORIGIN} {`,
     `        header_up Host ${PRODUCTION_WEB_OSS_HOST}`,
@@ -267,6 +268,47 @@ export function configureProductionWebCaddy(source, siteAddress = '47.115.228.20
     return hadFinalNewline && !result.endsWith('\n') ? `${result}\n` : result;
 }
 
+// Restrict the mutable HTML policy to the existing managed SPA fallback.
+// A site-wide header would also disable the canvas and hashed asset caches.
+function configureSpaHtmlCachePolicy(site) {
+    const range = findManagedRange(site, WEB_OSS_CADDY_BLOCK_START, WEB_OSS_CADDY_BLOCK_END);
+    if (!range
+        || site.filter(line => line.trim() === WEB_OSS_CADDY_BLOCK_START).length !== 1
+        || site.filter(line => line.trim() === WEB_OSS_CADDY_BLOCK_END).length !== 1) {
+        throw new Error('Managed OSS Web handler not found or ambiguous in the secondary site.');
+    }
+    const candidates = [];
+    for (let start = range.start + 1; start < range.end; start += 1) {
+        if (!/^\s*handle\s*\{\s*$/.test(site[start])) continue;
+        const end = findBlockEnd(site, start);
+        const body = site.slice(start + 1, end);
+        const rewrites = body.filter(line => /^\s*rewrite\s+/.test(line));
+        const proxies = body.filter(line => /^\s*reverse_proxy\s+/.test(line));
+        if (end < range.end && rewrites.length === 1
+            && /^\s*rewrite\s+\*\s+\/web\/current\/index\.html\s*$/.test(rewrites[0])
+            && proxies.length === 1
+            && (proxies[0].trim() === `reverse_proxy ${PRODUCTION_WEB_OSS_ORIGIN}`
+                || proxies[0].trim() === `reverse_proxy ${PRODUCTION_WEB_OSS_ORIGIN} {`)) {
+            candidates.push({ start, end });
+        }
+    }
+    if (candidates.length !== 1) throw new Error('Expected one managed OSS SPA fallback in the secondary site.');
+    const { start, end } = candidates[0];
+    const existing = [];
+    for (let index = start + 1; index < end; index += 1) {
+        if (/^\s*header\s+>?Cache-Control(?:\s|$)/i.test(site[index])) existing.push(index);
+        if (/^\s*Cache-Control\s+/i.test(site[index])) {
+            throw new Error('Unsupported block Cache-Control policy in the secondary SPA fallback.');
+        }
+    }
+    if (existing.length > 1) throw new Error('Ambiguous Cache-Control policies in the secondary SPA fallback.');
+    const index = existing[0] ?? start + 1;
+    const indentation = site[index].match(/^\s*/)?.[0] ?? '        ';
+    const policy = `${indentation}header >Cache-Control "no-store"`;
+    if (existing.length) site[index] = policy;
+    else site.splice(index, 0, policy);
+}
+
 export function configureSecondaryCanvasCaddy(source, siteAddress = '121.43.32.242:8443') {
     if (siteAddress !== '121.43.32.242:8443') throw new Error('Expected the approved secondary canvas site address.');
     const lines = source.replace(/\r\n/g, '\n').split('\n');
@@ -280,6 +322,7 @@ export function configureSecondaryCanvasCaddy(source, siteAddress = '121.43.32.2
     if (site.some(line => /paws_canvas|dsh-image-canvas/.test(line))) {
         throw new Error('Found an unmanaged canvas handler in the secondary site; review before replacing it.');
     }
+    configureSpaHtmlCachePolicy(site);
     const indentation = site.find(line => line.trim())?.match(/^\s*/)?.[0] ?? '    ';
     const canvas = ['# paws-secondary-canvas:start', ...PROJECT_CANVAS_CADDY_LINES, '# paws-secondary-canvas:end'];
     site.unshift(...canvas.map(line => indentation + line));

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { configureSecondaryCanvasCaddy } from './configure-production-web-caddy.mjs';
 
 const script = fileURLToPath(new URL('./deploy-secondary-canvas-ingress.sh', import.meta.url));
-const fixture = '121.43.32.242:8443 {\n    @backend path /health\n    handle @backend {\n        respond "backend"\n    }\n    handle {\n        respond "SPA"\n    }\n}\n';
+const fixture = '121.43.32.242:8443 {\n    @backend path /health\n    handle @backend {\n        respond "backend"\n    }\n    # paws-web-oss:start\n    handle {\n        rewrite * /web/current/index.html\n        reverse_proxy https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com\n    }\n    # paws-web-oss:end\n}\n';
 async function runDeploy({ source = fixture, extraEnv = {}, args = [] } = {}) {
     const directory = await mkdtemp(join(tmpdir(), 'paws-secondary-deploy-'));
     try {
