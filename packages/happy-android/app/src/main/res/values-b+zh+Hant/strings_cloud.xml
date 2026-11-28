@@ -79,15 +79,20 @@
     <string name="cloud_invite_detail">加入 Happy Cloud 上的 %1$s。</string>
     <string name="cloud_invite_sign_in">登入後加入</string>
     <string name="cloud_invite_wrong_email">請使用受邀電子郵件</string>
-    <string name="cloud_invite_unavailable">邀請無法使用</string>
+    <string name="cloud_invite_title_invalid">邀請無效</string>
+    <string name="cloud_invite_title_expired">邀請已過期</string>
+    <string name="cloud_invite_title_revoked">邀請已撤回</string>
+    <string name="cloud_invite_title_used_up">邀請次數已用完</string>
+    <string name="cloud_invite_title_accepted">邀請已被接受</string>
     <string name="cloud_invite_expired">此邀請已過期。請向傳送者索取新的連結。</string>
     <string name="cloud_invite_revoked">此邀請已被撤回。請向傳送者索取新的連結。</string>
     <string name="cloud_invite_used_up">此邀請已被使用。請向傳送者索取新的連結。</string>
+    <string name="cloud_invite_accepted">此邀請已被接受。如果是你接受的，該伺服器已在你的列表中。</string>
     <string name="cloud_invite_unknown">此邀請連結無效。請確認你開啟的是完整的連結。</string>
     <string name="cloud_invite_email_mismatch">此邀請傳送給了 %1$s。請用該電子郵件登入後加入。</string>
     <string name="cloud_invite_email_mismatch_unknown">此邀請傳送給了另一個電子郵件。請用該電子郵件登入後加入。</string>
-    <string name="cloud_invite_other_account">使用其他帳號登入</string>
+    <string name="cloud_invite_other_email">使用其他電子郵件登入</string>
     <string name="cloud_invite_not_now">暫不</string>
     <string name="cloud_invite_inviter">%1$s 邀請了你</string>
-    <string name="cloud_switch_footer">在首頁和帳號選單中提供 Happy Cloud，並在 App 中開啟其邀請連結。已在此手機上的伺服器始終可用。</string>
+    <string name="cloud_switch_footer">在首頁和帳號選單中提供 Happy Cloud。邀請連結和已在此手機上的伺服器始終可用。</string>
 </resources>

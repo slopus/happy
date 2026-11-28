@@ -7,6 +7,7 @@ import com.slopus.happy.connection.CloudAccountState
 import com.slopus.happy.connection.CloudException
 import com.slopus.happy.connection.CloudInvite
 import com.slopus.happy.connection.CloudInviteException
+import com.slopus.happy.connection.CloudInviteLink
 import com.slopus.happy.connection.CloudInvitePreview
 import com.slopus.happy.connection.CloudInviteRefusal
 import com.slopus.happy.connection.CloudInviteService
@@ -25,7 +26,7 @@ sealed interface CloudInviteStep {
     /** The preview couldn't be had (offline, the service down): Try again. */
     data class Unloaded(val reason: CloudException.Reason) : CloudInviteStep
 
-    /** The server and role; [joining] while the accept runs, [failure] when the last one failed for no reason the invite gives. */
+    /** The offer: the server, who invited and the role. [joining] while the accept runs, [failure] when the last one failed for no reason the invite gives. */
     data class Ready(val preview: CloudInvitePreview, val joining: Boolean = false, val failure: CloudException.Reason? = null) : CloudInviteStep
 
     /** The invite can't be used, and says why; [preview] when it was read before the accept refused it. */
@@ -36,12 +37,31 @@ sealed interface CloudInviteStep {
 }
 
 /**
- * One invite, from its preview to its accept. Join while the account is
- * signed out asks for the sign-in ([onSignIn]) and accepts once it is in,
- * with the same token, which only this object holds.
+ * One invite link, from its preview to its accept, by the state machine
+ * every Happy client shares:
+ *
+ * - a link with no usable token ([CloudInviteLink.Malformed]) is
+ *   [CloudInviteStep.Refused] as unknown at once, and nothing is asked;
+ * - [CloudInviteStep.Loading] previews it with no session: refused,
+ *   [CloudInviteStep.Refused]; out of reach, [CloudInviteStep.Unloaded],
+ *   whose Try again is [load];
+ * - [CloudInviteStep.Ready] offers it, before any sign-in. [join] accepts
+ *   when the account is signed in; signed out it asks for the sign-in, and
+ *   that press is the consent: the accept follows the sign-in by itself. A
+ *   sign-in given up ([signInGivenUp]) leaves the offer, and a later
+ *   sign-in accepts nothing;
+ * - the accept: joined, [CloudInviteStep.Joined]; refused,
+ *   [CloudInviteStep.Refused] (another address's can [signInAgain]); the
+ *   session gone (401), the offer again, signed out, to be pressed again;
+ *   out of reach, the offer with its failure, whose Try again is [join].
+ *
+ * Nothing is accepted without a press on [join] or [signInAgain]. The
+ * token is held here only.
  */
-class CloudInviteFlow(private val invite: CloudInvite, private val service: CloudInviteService, private val scope: CoroutineScope) {
-    var step by mutableStateOf<CloudInviteStep>(CloudInviteStep.Loading)
+class CloudInviteFlow(private val link: CloudInviteLink, private val service: CloudInviteService, private val scope: CoroutineScope) {
+    private val invite = link as? CloudInvite
+
+    var step by mutableStateOf<CloudInviteStep>(if (invite == null) CloudInviteStep.Refused(CloudInviteRefusal.Unknown) else CloudInviteStep.Loading)
         private set
 
     /** Join was pressed signed out: accept once the account signs in. */
@@ -61,6 +81,7 @@ class CloudInviteFlow(private val invite: CloudInvite, private val service: Clou
     }
 
     fun load() {
+        val invite = invite ?: return
         work?.cancel()
         step = CloudInviteStep.Loading
         work = scope.launch {
@@ -76,7 +97,7 @@ class CloudInviteFlow(private val invite: CloudInvite, private val service: Clou
         }
     }
 
-    /** Join: accepts now when signed in; otherwise [onSignIn], and the accept follows the sign-in. */
+    /** Join, and Try again after an accept that couldn't be asked: accepts now when signed in; otherwise [onSignIn], and the accept follows the sign-in. */
     fun join(onSignIn: () -> Unit) {
         val ready = step as? CloudInviteStep.Ready ?: return
         if (ready.joining) return
@@ -96,7 +117,17 @@ class CloudInviteFlow(private val invite: CloudInvite, private val service: Clou
         onSignIn()
     }
 
+    /**
+     * The sign-in [join] or [signInAgain] asked for ended without one (the
+     * person came back from it): the offer stands, signed out, and the
+     * press that asked is spent, so a sign-in made later accepts nothing.
+     */
+    fun signInGivenUp() {
+        if (service.state.value != CloudAccountState.SignedIn) joinAfterSignIn = false
+    }
+
     private fun accept(preview: CloudInvitePreview) {
+        val invite = invite ?: return
         work?.cancel()
         step = CloudInviteStep.Ready(preview, joining = true)
         work = scope.launch {
@@ -107,8 +138,7 @@ class CloudInviteFlow(private val invite: CloudInvite, private val service: Clou
             } catch (e: CloudInviteException) {
                 CloudInviteStep.Refused(e.refusal, preview)
             } catch (e: CloudException) {
-                // The pass ran out on the way: sign in again, then the same accept.
-                if (e.reason == CloudException.Reason.SignInRequired) joinAfterSignIn = true
+                // The session gone on the way (a 401) is the offer again, signed out: Sign in to join is pressed anew.
                 CloudInviteStep.Ready(preview, failure = e.reason)
             }
         }
@@ -116,17 +146,17 @@ class CloudInviteFlow(private val invite: CloudInvite, private val service: Clou
 }
 
 /**
- * The invite a link brought, waiting for its Join screen to take it: in
+ * The invite link that came in, waiting for its screen to take it: in
  * memory only, never in a route or saved state, so it never outlives the
  * process.
  */
 object CloudInvites {
-    private val inbox = MutableStateFlow<CloudInvite?>(null)
-    val pending: StateFlow<CloudInvite?> get() = inbox
+    private val inbox = MutableStateFlow<CloudInviteLink?>(null)
+    val pending: StateFlow<CloudInviteLink?> get() = inbox
 
-    fun offer(invite: CloudInvite) {
+    fun offer(invite: CloudInviteLink) {
         inbox.value = invite
     }
 
-    fun take(): CloudInvite? = inbox.value.also { inbox.value = null }
+    fun take(): CloudInviteLink? = inbox.value.also { inbox.value = null }
 }

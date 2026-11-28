@@ -5,36 +5,63 @@ import java.net.URI
 import java.net.URISyntaxException
 
 /**
- * A private invite to a Happy Cloud server: `https://<invite host>/#<token>`,
- * or the older `https://<web host>/join#<token>`. The token rides in the
- * fragment, which a browser never sends, and it is the whole capability, so
- * it is held in memory only and never prints.
+ * What a link at an invite's address holds: the [CloudInvite], or nothing
+ * usable ([Malformed]), which the invite screen says without asking the
+ * API anything.
  */
-data class CloudInvite(val token: String) {
-    override fun toString() = "CloudInvite(…)"
+sealed interface CloudInviteLink {
+    /** At an invite's address with no token, a misshapen one, or one put anywhere but the fragment. */
+    data object Malformed : CloudInviteLink
 
     companion object {
-        private val TOKEN = Regex("[A-Za-z0-9_-]{43}")
+        /** The app's own scheme and where the web join page's "Open in Happy" points: `happy://cloud/join#<token>`. */
+        private const val SCHEME = "happy"
+        private const val SCHEME_HOST = "cloud"
+        private const val PATH = "/join"
 
         /**
-         * [link] as an invite: https on [inviteHost] at `/`, or on [webHost]
-         * at `/join`, with no user info, port or query, and a 43-character
-         * base64url token as its whole fragment. Null for anything else, and
-         * wherever the build has no Happy Cloud (null hosts).
+         * [link] as an invite link: `https://<webHost>/join#<token>` or
+         * `happy://cloud/join#<token>`, and nothing else. Null for any other
+         * host or path (the web host's `/` is the server picker and
+         * `<name>.<webHost>` a server's web app), and wherever the build has
+         * no Happy Cloud (a null [webHost]). At that address, anything but a
+         * bare 43-character token as the whole fragment (none, a misshapen
+         * one, a query, a port, user info) is [Malformed].
          */
-        fun parse(link: String, inviteHost: String? = HappyCloud.inviteHost, webHost: String? = HappyCloud.webHost): CloudInvite? {
+        fun of(link: String, webHost: String? = HappyCloud.webHost): CloudInviteLink? {
+            if (webHost == null) return null
             val uri = try {
                 URI(link.trim())
             } catch (_: URISyntaxException) {
                 return null
             }
-            if (uri.scheme?.lowercase() != "https" || uri.rawUserInfo != null || uri.port != -1 || uri.rawQuery != null) return null
             val host = uri.host?.lowercase() ?: return null
-            val path = uri.rawPath.orEmpty().removeSuffix("/")
-            val at = (host == inviteHost && path.isEmpty()) || (host == webHost && path == "/join")
-            if (!at) return null
-            return uri.rawFragment?.takeIf(TOKEN::matches)?.let(::CloudInvite)
+            val ours = when (uri.scheme?.lowercase()) {
+                "https" -> host == webHost.lowercase()
+                SCHEME -> host == SCHEME_HOST
+                else -> false
+            }
+            if (!ours || uri.rawPath.orEmpty().removeSuffix("/") != PATH) return null
+            if (uri.rawUserInfo != null || uri.port != -1 || uri.rawQuery != null) return Malformed
+            return uri.rawFragment?.takeIf(CloudInvite.TOKEN::matches)?.let(::CloudInvite) ?: Malformed
         }
+    }
+}
+
+/**
+ * A private invite to a Happy Cloud server, from its link
+ * ([CloudInviteLink.of]). The token rides in the fragment, which a browser
+ * never sends, and it is the whole capability, so it is held in memory
+ * only, never prints, and goes nowhere but the API's preview and accept.
+ */
+data class CloudInvite(val token: String) : CloudInviteLink {
+    override fun toString() = "CloudInvite(…)"
+
+    companion object {
+        internal val TOKEN = Regex("[A-Za-z0-9_-]{43}")
+
+        /** [link]'s invite; null for any link that isn't one, and for one whose token is missing or misshapen. */
+        fun parse(link: String, webHost: String? = HappyCloud.webHost): CloudInvite? = CloudInviteLink.of(link, webHost) as? CloudInvite
     }
 }
 
@@ -70,9 +97,11 @@ private const val MAX_IMAGE_BASE64 = 8 * 1024 * 1024
 sealed interface CloudInviteRefusal {
     data object Expired : CloudInviteRefusal
     data object Revoked : CloudInviteRefusal
-    /** A link used as many times as it allows, or an emailed invite already accepted. */
+    /** A link used as many times as it allows (`exhausted`). */
     data object UsedUp : CloudInviteRefusal
-    /** No such invite, or a malformed token. */
+    /** An invite for one address, already taken, perhaps by this account (`accepted`). */
+    data object Accepted : CloudInviteRefusal
+    /** No such invite (`invalid`), or a link with no usable token ([CloudInviteLink.Malformed]). */
     data object Unknown : CloudInviteRefusal
     /** The invite was sent to another address; [emailHint] is the service's masked form of it. */
     data class EmailMismatch(val emailHint: String?) : CloudInviteRefusal

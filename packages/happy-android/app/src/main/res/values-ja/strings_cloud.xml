@@ -79,15 +79,20 @@
     <string name="cloud_invite_detail">Happy Cloud の %1$s に参加しましょう。</string>
     <string name="cloud_invite_sign_in">サインインして参加</string>
     <string name="cloud_invite_wrong_email">招待されたメールアドレスを使用してください</string>
-    <string name="cloud_invite_unavailable">招待は利用できません</string>
+    <string name="cloud_invite_title_invalid">無効な招待</string>
+    <string name="cloud_invite_title_expired">招待の期限切れ</string>
+    <string name="cloud_invite_title_revoked">招待は取り消されました</string>
+    <string name="cloud_invite_title_used_up">招待は使用済みです</string>
+    <string name="cloud_invite_title_accepted">招待は承諾済みです</string>
     <string name="cloud_invite_expired">この招待は期限切れです。送信者に新しいリンクを依頼してください。</string>
     <string name="cloud_invite_revoked">この招待は取り消されました。送信者に新しいリンクを依頼してください。</string>
     <string name="cloud_invite_used_up">この招待はすでに使用されています。送信者に新しいリンクを依頼してください。</string>
+    <string name="cloud_invite_accepted">この招待はすでに承諾されています。ご自身で承諾した場合、サーバーは一覧にあります。</string>
     <string name="cloud_invite_unknown">この招待リンクは無効です。リンク全体を開いたか確認してください。</string>
     <string name="cloud_invite_email_mismatch">この招待は %1$s 宛てに送られました。そのメールアドレスでサインインして参加してください。</string>
     <string name="cloud_invite_email_mismatch_unknown">この招待は別のメールアドレス宛てに送られました。そのメールアドレスでサインインして参加してください。</string>
-    <string name="cloud_invite_other_account">別のアカウントでサインイン</string>
+    <string name="cloud_invite_other_email">別のメールアドレスでサインイン</string>
     <string name="cloud_invite_not_now">後で</string>
     <string name="cloud_invite_inviter">%1$s さんから招待されました</string>
-    <string name="cloud_switch_footer">最初の画面とアカウントメニューに Happy Cloud を表示し、招待リンクをアプリで開きます。この端末に追加済みのサーバーはどちらの場合も使えます。</string>
+    <string name="cloud_switch_footer">最初の画面とアカウントメニューに Happy Cloud を表示します。招待リンクとこの端末に追加済みのサーバーはどちらの場合も使えます。</string>
 </resources>

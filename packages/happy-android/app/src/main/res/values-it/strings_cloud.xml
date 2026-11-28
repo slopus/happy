@@ -79,15 +79,20 @@
     <string name="cloud_invite_detail">Unisciti a %1$s su Happy Cloud.</string>
     <string name="cloud_invite_sign_in">Accedi per unirti</string>
     <string name="cloud_invite_wrong_email">Usa l\'email invitata</string>
-    <string name="cloud_invite_unavailable">Invito non disponibile</string>
+    <string name="cloud_invite_title_invalid">Invito non valido</string>
+    <string name="cloud_invite_title_expired">Invito scaduto</string>
+    <string name="cloud_invite_title_revoked">Invito revocato</string>
+    <string name="cloud_invite_title_used_up">Invito esaurito</string>
+    <string name="cloud_invite_title_accepted">Invito già accettato</string>
     <string name="cloud_invite_expired">Questo invito è scaduto. Chiedi a chi te l\'ha inviato un nuovo link.</string>
     <string name="cloud_invite_revoked">Questo invito è stato ritirato. Chiedi a chi te l\'ha inviato un nuovo link.</string>
     <string name="cloud_invite_used_up">Questo invito è già stato usato. Chiedi a chi te l\'ha inviato un nuovo link.</string>
+    <string name="cloud_invite_accepted">Questo invito è già stato accettato. Se sei stato tu, il server è nel tuo elenco.</string>
     <string name="cloud_invite_unknown">Questo link di invito non è valido. Controlla di aver aperto il link completo.</string>
     <string name="cloud_invite_email_mismatch">Questo invito è stato inviato a %1$s Accedi con quell\'email per unirti.</string>
     <string name="cloud_invite_email_mismatch_unknown">Questo invito è stato inviato a un\'altra email. Accedi con quell\'email per unirti.</string>
-    <string name="cloud_invite_other_account">Accedi con un altro account</string>
+    <string name="cloud_invite_other_email">Accedi con un\'altra email</string>
     <string name="cloud_invite_not_now">Non ora</string>
     <string name="cloud_invite_inviter">%1$s ti ha invitato</string>
-    <string name="cloud_switch_footer">Mostra Happy Cloud nella prima schermata e nel menu degli account e apre i suoi link di invito nell\'app. I server già su questo telefono continuano a funzionare comunque.</string>
+    <string name="cloud_switch_footer">Mostra Happy Cloud nella prima schermata e nel menu degli account. I link di invito e i server già su questo telefono continuano a funzionare comunque.</string>
 </resources>

@@ -79,15 +79,20 @@
     <string name="cloud_invite_detail">Dołącz do %1$s w Happy Cloud.</string>
     <string name="cloud_invite_sign_in">Zaloguj się, aby dołączyć</string>
     <string name="cloud_invite_wrong_email">Użyj adresu z zaproszenia</string>
-    <string name="cloud_invite_unavailable">Zaproszenie niedostępne</string>
+    <string name="cloud_invite_title_invalid">Nieprawidłowe zaproszenie</string>
+    <string name="cloud_invite_title_expired">Zaproszenie wygasło</string>
+    <string name="cloud_invite_title_revoked">Zaproszenie wycofane</string>
+    <string name="cloud_invite_title_used_up">Zaproszenie wyczerpane</string>
+    <string name="cloud_invite_title_accepted">Zaproszenie już przyjęte</string>
     <string name="cloud_invite_expired">To zaproszenie wygasło. Poproś nadawcę o nowy link.</string>
     <string name="cloud_invite_revoked">To zaproszenie zostało wycofane. Poproś nadawcę o nowy link.</string>
     <string name="cloud_invite_used_up">To zaproszenie zostało już wykorzystane. Poproś nadawcę o nowy link.</string>
+    <string name="cloud_invite_accepted">To zaproszenie zostało już przyjęte. Jeśli to Ty, serwer jest na Twojej liście.</string>
     <string name="cloud_invite_unknown">Ten link z zaproszeniem jest nieprawidłowy. Sprawdź, czy otwarto cały link.</string>
     <string name="cloud_invite_email_mismatch">To zaproszenie wysłano na %1$s Zaloguj się tym adresem, aby dołączyć.</string>
     <string name="cloud_invite_email_mismatch_unknown">To zaproszenie wysłano na inny adres e-mail. Zaloguj się nim, aby dołączyć.</string>
-    <string name="cloud_invite_other_account">Zaloguj się na inne konto</string>
+    <string name="cloud_invite_other_email">Zaloguj się innym adresem e-mail</string>
     <string name="cloud_invite_not_now">Nie teraz</string>
     <string name="cloud_invite_inviter">%1$s zaprasza cię</string>
-    <string name="cloud_switch_footer">Pokazuje Happy Cloud na pierwszym ekranie i w menu kont oraz otwiera jego zaproszenia w aplikacji. Serwery dodane już na tym telefonie działają niezależnie od tego.</string>
+    <string name="cloud_switch_footer">Pokazuje Happy Cloud na pierwszym ekranie i w menu kont. Linki z zaproszeniami i serwery dodane już na tym telefonie działają niezależnie od tego.</string>
 </resources>

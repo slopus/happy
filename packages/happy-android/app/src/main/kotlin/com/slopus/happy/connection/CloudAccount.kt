@@ -445,7 +445,8 @@ class CloudAccount(
         val refusal = when (field("code")) {
             "expired" -> CloudInviteRefusal.Expired
             "revoked" -> CloudInviteRefusal.Revoked
-            "exhausted", "accepted" -> CloudInviteRefusal.UsedUp
+            "exhausted" -> CloudInviteRefusal.UsedUp
+            "accepted" -> CloudInviteRefusal.Accepted
             "invalid" -> CloudInviteRefusal.Unknown
             "email_mismatch" -> CloudInviteRefusal.EmailMismatch(field("emailHint")?.takeIf { it.isNotBlank() })
             else -> null

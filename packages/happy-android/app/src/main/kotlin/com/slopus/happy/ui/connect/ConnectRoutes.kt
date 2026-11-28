@@ -90,7 +90,8 @@ fun NavGraphBuilder.connectRoutes(graph: AppGraph, nav: NavHostController) {
  * confirmed here and a new account made for it.
  *
  * A Happy Cloud invite opens on its invite wherever the build has Happy
- * Cloud ([cloudInvites]), Settings' switch on or off.
+ * Cloud ([cloudInvites]), Settings' switch on or off, and takes the place
+ * of one already up, with whatever sign-in that one had started.
  */
 @Composable
 fun DeepLinkEffect(
@@ -129,12 +130,16 @@ fun DeepLinkEffect(
             return@LaunchedEffect
         }
         // A Happy Cloud invite is the Cloud account's, not the open one's: it opens signed in or out, and
-        // whatever Settings' switch says. The switch only stops the app claiming the links (the
-        // HappyCloudLinks alias); one that reaches it anyway opens. Dropped only by a build without Happy Cloud.
+        // whatever Settings' switch says, which only hides Cloud's ways in. Dropped only by a build
+        // without Happy Cloud. An invite already on the stack is the one screen there is: this link
+        // goes back to it, over any sign-in it had started, and replaces what it shows.
         if (link is DeepLink.CloudServerInvite) {
             if (!cloudInvites) return@LaunchedEffect
             CloudInvites.offer(link.invite)
-            nav.navigate(CloudInviteRoute) { launchSingleTop = true }
+            nav.navigate(CloudInviteRoute) {
+                popUpTo<CloudInviteRoute>()
+                launchSingleTop = true
+            }
             return@LaunchedEffect
         }
         if (!signedIn) {

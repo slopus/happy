@@ -73,13 +73,56 @@ class CloudInviteScreenTest {
         assertEquals(listOf("join"), taps)
     }
 
+    /** Closed: titled by why, with the sentence under it, no Join, and OK as the one way out. */
     @Test
-    fun anExpiredInviteSaysSo() {
-        screen(CloudInviteStep.Refused(CloudInviteRefusal.Expired))
-        rule.onNodeWithText("Invite unavailable").assertExists()
-        rule.onNodeWithText("This invite has expired. Ask whoever sent it for a new link.").assertExists()
+    fun anInviteThatCantBeUsedIsTitledByWhy() {
+        val closed = listOf(
+            CloudInviteRefusal.Unknown to ("Invalid invitation" to "This invite link isn’t valid. Check that you opened the whole link."),
+            CloudInviteRefusal.Expired to ("Invitation expired" to "This invite has expired. Ask whoever sent it for a new link."),
+            CloudInviteRefusal.Revoked to ("Invitation revoked" to "This invite was withdrawn. Ask whoever sent it for a new link."),
+            CloudInviteRefusal.UsedUp to ("Invitation used up" to "This invite has already been used. Ask whoever sent it for a new link."),
+            CloudInviteRefusal.Accepted to ("Invitation already accepted" to "This invite has already been accepted. If it was you, the server is in your list."),
+        )
+        screen(CloudInviteStep.Loading)
+        for ((refusal, words) in closed) {
+            step = CloudInviteStep.Refused(refusal)
+            rule.waitForIdle()
+            rule.onNodeWithText(words.first).assertExists()
+            rule.onNodeWithText(words.second).assertExists()
+            rule.onNodeWithText("Join").assertDoesNotExist()
+            rule.onNodeWithText("Sign in to join").assertDoesNotExist()
+            rule.onNodeWithText("Not now").assertDoesNotExist()
+        }
         rule.onNodeWithText("OK").performClick()
         assertEquals(listOf("back"), taps)
+    }
+
+    /** The accept couldn't be asked: the offer stays, and its button is Try again, the same press as Join. */
+    @Test
+    fun anAcceptThatFailedOffersTryAgain() {
+        screen(CloudInviteStep.Ready(preview, failure = CloudException.Reason.Unreachable))
+        rule.onNodeWithText("You’re invited").assertExists()
+        rule.onNodeWithText("Happy Cloud couldn't be reached. Check your connection and try again.").assertExists()
+        rule.onNodeWithText("Join").assertDoesNotExist()
+        rule.onNodeWithText("Try again").performClick()
+        assertEquals(listOf("join"), taps)
+    }
+
+    /** The preview couldn't be had: Try again loads it again. */
+    @Test
+    fun aPreviewThatFailedOffersTryAgain() {
+        screen(CloudInviteStep.Unloaded(CloudException.Reason.Unreachable))
+        rule.onNodeWithText("Try again").performClick()
+        assertEquals(listOf("retry"), taps)
+    }
+
+    /** The session gone on the accept: the offer, signed out. */
+    @Test
+    fun aSessionGoneOffersSignInToJoin() {
+        screen(CloudInviteStep.Ready(preview, failure = CloudException.Reason.SignInRequired), signedIn = false)
+        rule.onNodeWithText("Try again").assertDoesNotExist()
+        rule.onNodeWithText("Sign in to join").performClick()
+        assertEquals(listOf("join"), taps)
     }
 
     @Test
@@ -87,7 +130,7 @@ class CloudInviteScreenTest {
         screen(CloudInviteStep.Refused(CloudInviteRefusal.EmailMismatch("s…@…"), preview))
         rule.onNodeWithText("Use your invited email").assertExists()
         rule.onNodeWithText("This invite was sent to ${CloudEmail.unbroken("s…@…")} Sign in with that email to join.").assertExists()
-        rule.onNodeWithText("Sign in with another account").performClick()
+        rule.onNodeWithText("Sign in with another email").performClick()
         assertEquals(listOf("other"), taps)
     }
 
@@ -104,6 +147,7 @@ class CloudInviteScreenTest {
             CloudInviteStep.Refused(CloudInviteRefusal.Expired),
             CloudInviteStep.Refused(CloudInviteRefusal.Revoked),
             CloudInviteStep.Refused(CloudInviteRefusal.UsedUp),
+            CloudInviteStep.Refused(CloudInviteRefusal.Accepted),
             CloudInviteStep.Refused(CloudInviteRefusal.Unknown),
             CloudInviteStep.Refused(CloudInviteRefusal.EmailMismatch("s…@…"), preview),
         )

@@ -21,8 +21,11 @@ import com.slopus.happy.agent.HappyLink
 import com.slopus.happy.agent.HappyReferenceKind
 import com.slopus.happy.connection.AgentConnection
 import com.slopus.happy.connection.CloudInvite
+import com.slopus.happy.connection.CloudInviteLink
+import com.slopus.happy.ui.connection.CloudEmailRoute
 import com.slopus.happy.ui.connection.CloudInviteRoute
 import com.slopus.happy.ui.connection.CloudInvites
+import com.slopus.happy.ui.connection.CloudRoute
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.artifacts.ArtifactRoute
 import com.slopus.happy.ui.components.HappyDropdownMenu
@@ -115,13 +118,13 @@ class DeepLinkRoutingTest {
     }
 
     /**
-     * Settings' Happy Cloud switch only stops the app claiming invite links (no
-     * [com.slopus.happy.ui.connection.LocalCloudConnect] here: it is off): one that
-     * reaches the app anyway opens on its invite, signed out too. Only a build
-     * without Happy Cloud drops it.
+     * Settings' Happy Cloud switch only hides Cloud's ways in (no
+     * [com.slopus.happy.ui.connection.LocalCloudConnect] here: it is off): an
+     * invite link opens on its invite, signed out too. Only a build without
+     * Happy Cloud drops it.
      */
     @Test
-    fun aCloudInviteThatReachesTheAppOpensWithTheSwitchOff() {
+    fun aCloudInviteOpensWithTheSwitchOff() {
         var cloudInvites by mutableStateOf(false)
         rule.setContent {
             nav = rememberNavController()
@@ -138,10 +141,62 @@ class DeepLinkRoutingTest {
         assertNull(CloudInvites.take())
 
         cloudInvites = true
-        DeepLinks.offer(DeepLink.CloudServerInvite(invite))
+        for (link in listOf("https://happybases.com/join#${invite.token}", "happy://cloud/join#${invite.token}")) {
+            DeepLinks.offer(parseDeepLink(link)!!)
+            assertAt<CloudInviteRoute>()
+            assertNull(DeepLinks.pending.value)
+            assertEquals(invite, CloudInvites.take())
+            nav.popBackStack()
+        }
+        // No usable token: the invite screen all the same, which says so.
+        DeepLinks.offer(parseDeepLink("happy://cloud/join#short")!!)
         assertAt<CloudInviteRoute>()
-        assertNull(DeepLinks.pending.value)
-        assertEquals(invite, CloudInvites.take())
+        assertEquals(CloudInviteLink.Malformed, CloudInvites.take())
+    }
+
+    /**
+     * One invite screen: a second link while the first is up is handed to
+     * the same screen, and one that comes during the first's sign-in goes
+     * back to it over the sign-in, so no invite is left under it waiting to
+     * be accepted by that sign-in.
+     */
+    @Test
+    fun aSecondCloudInviteReplacesTheFirst() {
+        rule.setContent {
+            nav = rememberNavController()
+            NavHost(nav, startDestination = HomeRoute) {
+                composable<HomeRoute> { Text("home") }
+                composable<CloudInviteRoute> { Text("invite") }
+                composable<CloudRoute> { Text("sign in") }
+                composable<CloudEmailRoute> { Text("email") }
+            }
+            DeepLinkEffect(nav, signedIn = true, cloudInvites = true)
+        }
+        fun stack() = nav.currentBackStack.value.mapNotNull { it.destination.route?.substringAfterLast('.') }
+        val first = CloudInvite("AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcde")
+        val second = CloudInvite("ZyXwVuTsRqPoNmLkJiHgFeDcBa9876543210_-zyxwv")
+        DeepLinks.offer(DeepLink.CloudServerInvite(first))
+        assertAt<CloudInviteRoute>()
+        val screen = nav.currentBackStackEntry!!.id
+        assertEquals(first, CloudInvites.take())
+
+        DeepLinks.offer(DeepLink.CloudServerInvite(second))
+        assertAt<CloudInviteRoute>()
+        assertEquals("the same screen", screen, nav.currentBackStackEntry!!.id)
+        assertEquals(listOf("HomeRoute", "CloudInviteRoute"), stack())
+        assertEquals(second, CloudInvites.take())
+
+        // Signing in for the second, in the email step, when a third link comes.
+        rule.runOnUiThread {
+            nav.navigate(CloudRoute)
+            nav.navigate(CloudEmailRoute)
+        }
+        assertAt<CloudEmailRoute>()
+        DeepLinks.offer(DeepLink.CloudServerInvite(first))
+        assertAt<CloudInviteRoute>()
+        assertEquals("the same screen", screen, nav.currentBackStackEntry!!.id)
+        assertEquals(listOf("HomeRoute", "CloudInviteRoute"), stack())
+        assertEquals(first, CloudInvites.take())
     }
 
     @Test

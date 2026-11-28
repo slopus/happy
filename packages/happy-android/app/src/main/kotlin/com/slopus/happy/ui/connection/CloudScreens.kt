@@ -942,14 +942,17 @@ fun CloudCreateScreen(
 }
 
 /**
- * An invite link's Join screen: the server's picture in the scene's place,
- * who invited the person, the server's `@name` and the role it gives, then
- * Join, which signs in to Happy Cloud first when [signedIn] isn't. Every
- * step keeps one layout, so nothing jumps as it loads, joins or fails: room
- * for the picture, the same title, a two-line body, a line each for the
- * server and the inviter, a note's room for why it can't go on, and two
- * buttons as wide as the column. Another address's invite offers another
- * account.
+ * An invite link's screen: the server's picture in the scene's place, who
+ * invited the person, the server's `@name` and the role it gives, all
+ * before any sign-in, then Join, or "Sign in to join" when [signedIn]
+ * isn't, which signs in to Happy Cloud first. An invite that can't be used
+ * is titled by why (invalid, expired, revoked, used up, already accepted)
+ * with OK as its one way out; another address's offers signing in with
+ * another email. An accept that couldn't be asked reads Try again on the
+ * same button. Every step keeps one layout, so nothing jumps as it loads,
+ * joins or fails: room for the picture, a title, a two-line body, a line
+ * each for the server and the inviter, a note's room for why it can't go
+ * on, and two buttons as wide as the column.
  */
 @Composable
 fun CloudInviteScreen(
@@ -974,15 +977,23 @@ fun CloudInviteScreen(
         CloudInviteRefusal.Expired -> stringResource(R.string.cloud_invite_expired)
         CloudInviteRefusal.Revoked -> stringResource(R.string.cloud_invite_revoked)
         CloudInviteRefusal.UsedUp -> stringResource(R.string.cloud_invite_used_up)
+        CloudInviteRefusal.Accepted -> stringResource(R.string.cloud_invite_accepted)
         CloudInviteRefusal.Unknown -> stringResource(R.string.cloud_invite_unknown)
         is CloudInviteRefusal.EmailMismatch -> refusal.emailHint?.let { stringResource(R.string.cloud_invite_email_mismatch, CloudEmail.unbroken(it)) }
             ?: stringResource(R.string.cloud_invite_email_mismatch_unknown)
     }
     val joining = (step as? CloudInviteStep.Ready)?.joining == true || step is CloudInviteStep.Joined
-    val join = stringResource(if (signedIn) R.string.cloud_join_button else R.string.cloud_invite_sign_in)
+    val join = stringResource(
+        when {
+            !signedIn -> R.string.cloud_invite_sign_in
+            // The accept couldn't be asked (offline, the service down): the same press asks it again.
+            step is CloudInviteStep.Ready && step.failure != null && step.failure != CloudException.Reason.SignInRequired -> R.string.team_server_try_again
+            else -> R.string.cloud_join_button
+        },
+    )
     val notNow = CloudAction(stringResource(R.string.cloud_invite_not_now), onBack, enabled = !joining)
     val (primary, secondary) = when {
-        refusal is CloudInviteRefusal.EmailMismatch -> CloudAction(stringResource(R.string.cloud_invite_other_account), onOtherAccount) to notNow
+        refusal is CloudInviteRefusal.EmailMismatch -> CloudAction(stringResource(R.string.cloud_invite_other_email), onOtherAccount) to notNow
         refusal != null -> CloudAction(stringResource(R.string.common_ok), onBack) to null
         step is CloudInviteStep.Unloaded -> CloudAction(stringResource(R.string.team_server_try_again), onRetry) to notNow
         else -> CloudAction(join, onJoin, enabled = step is CloudInviteStep.Ready && !joining, loading = joining) to notNow
@@ -994,7 +1005,11 @@ fun CloudInviteScreen(
                 null -> R.string.cloud_invite_title
                 // The invite is fine; it's the account that isn't the one invited.
                 is CloudInviteRefusal.EmailMismatch -> R.string.cloud_invite_wrong_email
-                else -> R.string.cloud_invite_unavailable
+                CloudInviteRefusal.Unknown -> R.string.cloud_invite_title_invalid
+                CloudInviteRefusal.Expired -> R.string.cloud_invite_title_expired
+                CloudInviteRefusal.Revoked -> R.string.cloud_invite_title_revoked
+                CloudInviteRefusal.UsedUp -> R.string.cloud_invite_title_used_up
+                CloudInviteRefusal.Accepted -> R.string.cloud_invite_title_accepted
             },
         ),
         body = preview?.let { stringResource(R.string.cloud_invite_detail, it.server.title) } ?: "",

@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -35,7 +36,7 @@ import com.slopus.happy.agent.PolicyDocument
 import com.slopus.happy.connection.CloudAccount
 import com.slopus.happy.connection.CloudAccountState
 import com.slopus.happy.connection.CloudException
-import com.slopus.happy.connection.CloudInvite
+import com.slopus.happy.connection.CloudInviteLink
 import com.slopus.happy.connection.inviteImage
 import com.slopus.happy.connection.CloudName
 import com.slopus.happy.connection.CloudProvider
@@ -432,7 +433,7 @@ private class CloudInviteHolder(private val account: CloudAccount) : ViewModel()
         private set
     private var scope: CoroutineScope? = null
 
-    fun open(invite: CloudInvite) {
+    fun open(invite: CloudInviteLink) {
         scope?.cancel()
         val next = CoroutineScope(viewModelScope.coroutineContext + Job(viewModelScope.coroutineContext[Job]))
         scope = next
@@ -452,6 +453,11 @@ private fun CloudInviteEntry(graph: AppGraph, account: CloudAccount, nav: NavHos
     // A session that is over signs out here, so Join asks for the sign-in rather than failing.
     LaunchedEffect(Unit) { account.signedIn() }
     val flow = holder.flow ?: return
+    // Back on top from a sign-in that signed nobody in (cancelled, failed, backed out of): the offer stands and the consent is spent.
+    LifecycleResumeEffect(flow) {
+        flow.signInGivenUp()
+        onPauseOrDispose {}
+    }
     val state by account.state.collectAsStateWithLifecycle()
     val step = flow.step
     LaunchedEffect(step) {

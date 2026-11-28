@@ -4,37 +4,101 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** Happy Cloud invite links: the token in the fragment, on the invite host or the web app's older /join. */
+/**
+ * Happy Cloud invite links: exactly two forms carry one, the web host's
+ * `/join` and the app's own `happy://cloud/join`, the token always the
+ * whole fragment. At either address anything else is a malformed
+ * invitation; any other address is no invite link at all.
+ */
 class CloudInviteTest {
     private val token = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcde"
-    private fun parse(link: String) = CloudInvite.parse(link, inviteHost = "join.happy.engineering", webHost = "happybases.com")
+    private fun link(link: String) = CloudInviteLink.of(link, webHost = "happybases.com")
+    private fun parse(link: String) = CloudInvite.parse(link, webHost = "happybases.com")
 
     @Test
-    fun theInviteHostAndTheOlderJoinPathBothCarryTheToken() {
+    fun theTwoFormsCarryTheToken() {
         assertEquals(43, token.length)
-        assertEquals(CloudInvite(token), parse("https://join.happy.engineering/#$token"))
-        assertEquals(CloudInvite(token), parse("https://join.happy.engineering#$token"))
-        assertEquals(CloudInvite(token), parse("https://JOIN.happy.engineering/#$token"))
-        assertEquals(CloudInvite(token), parse("https://happybases.com/join#$token"))
-        assertEquals(CloudInvite(token), parse("https://happybases.com/join/#$token"))
+        for (form in listOf(
+            "https://happybases.com/join#$token",
+            "https://happybases.com/join/#$token",
+            "https://HAPPYBASES.com/join#$token",
+            "HTTPS://happybases.com/join#$token",
+            "  https://happybases.com/join#$token  ",
+            "happy://cloud/join#$token",
+            "happy://cloud/join/#$token",
+            "HAPPY://CLOUD/join#$token",
+        )) {
+            assertEquals(form.replace(token, "…"), CloudInvite(token), link(form))
+            assertEquals(form.replace(token, "…"), CloudInvite(token), parse(form))
+        }
+    }
+
+    /** At the invite's address, but with no token to use: the screen says "Invalid invitation" and asks the API nothing. */
+    @Test
+    fun atTheAddressAnythingButABareTokenIsMalformed() {
+        for (address in listOf("https://happybases.com/join", "happy://cloud/join")) {
+            for (rest in listOf(
+                "",
+                "#",
+                "#${token.drop(1)}",
+                "#${token}x",
+                "#${token.dropLast(1)}=",
+                "#${token.dropLast(1)}.",
+                "#token=$token",
+                // A token belongs in the fragment, which is never sent anywhere: one in the query isn't taken.
+                "?token=$token",
+                "?$token",
+                "?x=1#$token",
+            )) {
+                val form = address + rest
+                assertEquals(form.replace(token, "…"), CloudInviteLink.Malformed, link(form))
+                assertNull(form.replace(token, "…"), parse(form))
+            }
+        }
+        assertEquals(CloudInviteLink.Malformed, link("https://happybases.com:8443/join#$token"))
+        assertEquals(CloudInviteLink.Malformed, link("https://user@happybases.com/join#$token"))
     }
 
     @Test
-    fun anythingElseIsNoInvite() {
-        assertNull(parse("https://join.happy.engineering/"))
-        assertNull(parse("https://join.happy.engineering/#${token.drop(1)}"))
-        assertNull(parse("https://join.happy.engineering/#${token}x"))
-        assertNull(parse("https://join.happy.engineering/#${token.dropLast(1)}="))
-        assertNull(parse("https://join.happy.engineering/join#$token"))
-        assertNull(parse("https://join.happy.engineering/?x=1#$token"))
-        assertNull(parse("https://join.happy.engineering:8443/#$token"))
-        assertNull(parse("https://user@join.happy.engineering/#$token"))
-        assertNull(parse("http://join.happy.engineering/#$token"))
-        assertNull(parse("https://happybases.com/#$token"))
-        assertNull(parse("https://evil.example/#$token"))
-        assertNull(parse("https://evil.example/join#$token"))
-        // A build without Happy Cloud takes none.
-        assertNull(CloudInvite.parse("https://join.happy.engineering/#$token", inviteHost = null, webHost = null))
+    fun anotherHostOrPathIsNoInviteLink() {
+        for (other in listOf(
+            // A host of its own for invites is gone, and so is its form on the web host.
+            "https://join.happybases.com/#$token",
+            "https://join.happybases.com/join#$token",
+            "https://happybases.com/#$token",
+            "https://happybases.com#$token",
+            // The server picker and a server's web app.
+            "https://happybases.com/",
+            "https://acme.happybases.com/join#$token",
+            "https://happybases.com/join/x#$token",
+            "https://happybases.com/joined#$token",
+            "https://happybases.com/Join#$token",
+            "https://happybases.com/x/join#$token",
+            "https://evil.example/join#$token",
+            "https://happybases.com.evil.example/join#$token",
+            "https://happybases.com@evil.example/join#$token",
+            "http://happybases.com/join#$token",
+            "happy://cloud/#$token",
+            "happy://cloud#$token",
+            "happy://cloud/joined#$token",
+            "happy://cloud/join/x#$token",
+            "happy://clouds/join#$token",
+            "happy://join#$token",
+            "happy:///cloud/join#$token",
+            "happy:cloud/join#$token",
+            "other://cloud/join#$token",
+            "not a link",
+            token,
+        )) {
+            assertNull(other.replace(token, "…"), link(other))
+            assertNull(other.replace(token, "…"), parse(other))
+        }
+    }
+
+    @Test
+    fun aBuildWithoutHappyCloudTakesNone() {
+        assertNull(CloudInviteLink.of("https://happybases.com/join#$token", webHost = null))
+        assertNull(CloudInviteLink.of("happy://cloud/join#$token", webHost = null))
     }
 
     @Test

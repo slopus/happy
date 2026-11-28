@@ -701,7 +701,7 @@ class CloudAccountTest {
             json("""{"code":"expired","error":"Expired"}""", 410) to CloudInviteRefusal.Expired,
             json("""{"code":"revoked","error":"Revoked"}""", 410) to CloudInviteRefusal.Revoked,
             json("""{"code":"exhausted","error":"Used up"}""", 410) to CloudInviteRefusal.UsedUp,
-            json("""{"code":"accepted","error":"Already accepted"}""", 410) to CloudInviteRefusal.UsedUp,
+            json("""{"code":"accepted","error":"Already accepted"}""", 410) to CloudInviteRefusal.Accepted,
             json("""{"code":"invalid","error":"No such invite"}""", 410) to CloudInviteRefusal.Unknown,
             json("""{"code":"email_mismatch","error":"Wrong email","emailHint":"s…@…"}""", 403) to CloudInviteRefusal.EmailMismatch("s…@…"),
         )
