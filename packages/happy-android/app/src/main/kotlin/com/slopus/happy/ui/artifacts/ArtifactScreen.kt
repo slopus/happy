@@ -71,8 +71,10 @@ import com.slopus.happy.ui.browser.BrowserView
 import com.slopus.happy.ui.browser.rememberBrowserState
 import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.genui.GenUiArtifactView
+import com.slopus.happy.ui.genui.GenUiPluginReportApi
 import com.slopus.happy.ui.genui.GenUiSecretApi
 import com.slopus.happy.ui.genui.GenUiState
+import com.slopus.happy.ui.genui.rememberGenUiPluginReporter
 import com.slopus.happy.ui.genui.rememberGenUiSecretForm
 import com.slopus.happy.ui.genui.rememberGenUiArtifactHost
 import com.slopus.happy.ui.components.Alert
@@ -134,8 +136,14 @@ class ArtifactActions(
     val onDelete: (suspend () -> Unit)? = null,
     /** Where a Gen UI version's secret form saves; null where there is no computer to save to. */
     val genUiSecrets: GenUiSecretApi? = null,
-    /** Opens a plugin's page for a Gen UI `plugin` button; null where the computer doesn't report `capabilities.plugins`. */
-    val onOpenPlugin: ((String) -> Unit)? = null,
+    /**
+     * Opens a plugin's page for a Gen UI `plugin` button, with the token its
+     * page reports setup with (null: none); null where the computer doesn't
+     * report `capabilities.plugins`.
+     */
+    val onOpenPlugin: ((pluginId: String, report: String?) -> Unit)? = null,
+    /** Where a Gen UI version's `plugin` elements report their plugin's setup; null where there is no computer to report to. */
+    val genUiPluginReports: GenUiPluginReportApi? = null,
     /** What the Happy links in a document read as now (its connection's); null leaves them as the loader read them. */
     val references: StateFlow<References>? = null,
     /** A document's Markdown with its Happy links as [references] read them ([HappyReferences.markdown]). */
@@ -242,7 +250,10 @@ fun ArtifactScreen(
                         // The chat's card of this version shares it: a secret saved here is marked there.
                         val state = remember(ui) { GenUiState.of(actions.genUiSecrets?.computer, media.artifactId, ui.version) }
                         val secrets = rememberGenUiSecretForm(actions.genUiSecrets, media.artifactId, ui.version, state)
-                        val host = rememberGenUiArtifactHost(ui, media, actions.onOpenWeb, onView = { items, index -> viewing = items to index }, secrets = secrets, onPlugin = actions.onOpenPlugin)
+                        val reports = rememberGenUiPluginReporter(actions.genUiPluginReports, media.artifactId, ui.version, state)
+                        val host = rememberGenUiArtifactHost(
+                            ui, media, actions.onOpenWeb, onView = { items, index -> viewing = items to index }, secrets = secrets, onPlugin = actions.onOpenPlugin, reports = reports,
+                        )
                         GenUiArtifactView(ui, host, state)
                         secrets?.Sheet()
                     }

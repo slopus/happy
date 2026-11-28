@@ -41,7 +41,8 @@ object GenUiArtifactTags {
  * `copy` copies, `message` goes to [onMessage] where there is a
  * conversation to send it to, `secret` (a Happy Agent computer) and
  * `cluster_secret` (a Happy Cloud one) open [secrets]' form, `plugin`
- * opens [onPlugin]. Which may run at all is [GenUiActions.enabled]: message
+ * opens [onPlugin], with a token from [reports] where the tap reports the
+ * plugin's setup to the origin agent. Which may run at all is [GenUiActions.enabled]: message
  * and the secret actions need the version's origin agent, the secret
  * actions a computer that reports `artifactSecretActions`, `plugin` one
  * that reports `plugins`; `tool` and anything unknown are drawn disabled.
@@ -56,8 +57,14 @@ fun rememberGenUiArtifactHost(
     onView: (items: List<ArtifactMediaItem>, index: Int) -> Unit,
     onMessage: ((String) -> Unit)? = null,
     secrets: GenUiSecretForm? = null,
-    /** Opens a plugin's page; null where the computer doesn't report `capabilities.plugins`. */
-    onPlugin: ((String) -> Unit)? = null,
+    /**
+     * Opens a plugin's page, with the token its page reports setup with
+     * (null: it reports nothing); null where the computer doesn't report
+     * `capabilities.plugins`.
+     */
+    onPlugin: ((pluginId: String, report: String?) -> Unit)? = null,
+    /** Where a tapped `plugin` element begins its setup report; null where there is no computer to report to. */
+    reports: GenUiPluginReporter? = null,
 ): GenUiHost {
     val context = LocalContext.current
     val open by rememberUpdatedState(onOpenWeb)
@@ -66,7 +73,7 @@ fun rememberGenUiArtifactHost(
     val plugin by rememberUpdatedState(onPlugin)
     val sends = onMessage != null
     val plugins = onPlugin != null
-    return remember(ui, media, sends, secrets, plugins) {
+    return remember(ui, media, sends, secrets, plugins, reports) {
         GenUiHost(
             onAction = { key, action ->
                 when (action) {
@@ -74,7 +81,7 @@ fun rememberGenUiArtifactHost(
                     is Action.Copy -> copyToClipboard(context, action.text)
                     is Action.Message -> message?.invoke(action.text)
                     is Action.Secret -> secrets?.open(key, action)
-                    is Action.Plugin -> plugin?.invoke(action.id)
+                    is Action.Plugin -> plugin?.invoke(action.id, reports?.begin(key, action.id, origin = ui.origin != null, plugins = plugins))
                     is Action.ClusterSecret -> secrets?.open(key, action)
                     is Action.Tool, is Action.Unsupported -> Unit
                 }

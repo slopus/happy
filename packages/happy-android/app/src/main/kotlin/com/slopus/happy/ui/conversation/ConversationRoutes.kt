@@ -564,7 +564,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                         onMessage = { words -> conversation.send(words) },
                         onOpenWeb = { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) },
                         plugins = session.pluginsAvailable,
-                        onOpenPlugin = { id -> nav.openPlugin(route.connectionId, id) },
+                        onOpenPlugin = { id, report -> nav.openPlugin(route.connectionId, id, report) },
                     ),
                     onRetryLoad = conversation::retryLoad,
                     loadMedia = conversation::media,

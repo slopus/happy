@@ -22,8 +22,14 @@ object GenUiMessage {
         return GenUi.document(obj).copy(fallback = fallback)
     }
 
-    fun enables(action: Action): Boolean = when (action) {
+    /**
+     * Whether direct Gen UI runs [action]: `message`, `copy`, a plain https
+     * `open`, and `plugin` where the computer reports `capabilities.plugins`
+     * ([plugins]). `secret`, `cluster_secret` and `tool` never.
+     */
+    fun enables(action: Action, plugins: Boolean = false): Boolean = when (action) {
         is Action.Message, is Action.Copy -> true
+        is Action.Plugin -> plugins
         is Action.Open -> runCatching {
             val url = action.url
             val parsed = URI(url)

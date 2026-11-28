@@ -86,8 +86,8 @@ class GenUiInline(
     val onOpenWeb: (String) -> Unit,
     /** Whether the computer reports `capabilities.plugins`, so a `plugin` button runs. */
     val plugins: StateFlow<Boolean> = MutableStateFlow(false),
-    /** Opens a plugin's page. */
-    val onOpenPlugin: (String) -> Unit = {},
+    /** Opens a plugin's page, with the token its page reports setup with (null: none). */
+    val onOpenPlugin: (pluginId: String, report: String?) -> Unit = { _, _ -> },
 ) {
     /** One version as read, with what was done to it. */
     class Block(val ui: ArtifactUi.GenUi, val media: ArtifactMedia, val state: GenUiState)
@@ -99,6 +99,9 @@ class GenUiInline(
 
     /** Where a block's secret form saves. */
     val secrets = GenUiSecretApi(client)
+
+    /** Where a block's `plugin` element reports its plugin's setup. */
+    val pluginReports = GenUiPluginReportApi(client)
     private val blocks = mutableStateMapOf<String, Block>()
     private val failed = mutableStateMapOf<String, Boolean>()
 
@@ -162,7 +165,8 @@ object GenUiInlineTags {
  * read. A failed read leaves only the card. A picture opens the viewer on
  * its group; `message` goes to this conversation when its agent made the
  * version; `secret` opens the secret form, saved for whichever agent made it;
- * `plugin` opens its page where the computer has plugins.
+ * `plugin` opens its page where the computer has plugins, and reports the
+ * plugin's setup to the version's origin agent once it is.
  */
 @Composable
 fun GenUiInlineBlock(artifactId: String, version: Int, inline: GenUiInline, label: (String) -> String, modifier: Modifier = Modifier) {
@@ -183,6 +187,7 @@ fun GenUiInlineBlock(artifactId: String, version: Int, inline: GenUiInline, labe
     var viewing by remember { mutableStateOf<Pair<List<ArtifactMediaItem>, Int>?>(null) }
     val sends = block.ui.origin != null && block.ui.origin == inline.agentId
     val secrets = rememberGenUiSecretForm(inline.secrets, artifactId, version, block.state)
+    val reports = rememberGenUiPluginReporter(inline.pluginReports, artifactId, version, block.state)
     val plugins by inline.plugins.collectAsState()
     val host = rememberGenUiArtifactHost(
         block.ui, block.media, inline.onOpenWeb,
@@ -190,6 +195,7 @@ fun GenUiInlineBlock(artifactId: String, version: Int, inline: GenUiInline, labe
         onMessage = if (sends) inline.onMessage else null,
         secrets = secrets,
         onPlugin = if (plugins) inline.onOpenPlugin else null,
+        reports = reports,
     )
     val density = LocalDensity.current
     GenUiView(

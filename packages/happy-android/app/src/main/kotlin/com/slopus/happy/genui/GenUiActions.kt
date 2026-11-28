@@ -22,10 +22,13 @@ enum class GenUiHostKind { HappyAgent, Cluster }
 
 /**
  * What the computer says it runs, in its health's `capabilities`
- * (`artifactSecretActions`, `plugins`); a flag it doesn't report is false.
+ * (`artifactSecretActions`, `plugins`, `artifactPluginActions`); a flag it
+ * doesn't report is false. [artifactPluginActions] decides only whether a
+ * version's `plugin` element reports its setup ([GenUiPluginReport]), never
+ * whether it runs.
  */
 @Immutable
-data class GenUiCapabilities(val secretActions: Boolean = false, val plugins: Boolean = false)
+data class GenUiCapabilities(val secretActions: Boolean = false, val plugins: Boolean = false, val artifactPluginActions: Boolean = false)
 
 /**
  * The secret and plugin actions' shapes (render catalog `action`), and which

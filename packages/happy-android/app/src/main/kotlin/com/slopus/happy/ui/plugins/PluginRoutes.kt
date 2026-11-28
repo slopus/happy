@@ -37,26 +37,32 @@ import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.connection.LocalAgentPictures
 import com.slopus.happy.ui.page
 import com.slopus.happy.ui.theme.HappyTheme
+import com.slopus.happy.ui.genui.GenUiPluginReports
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 /** A connection's plugins, home's Plugins row. */
 @Serializable data class PluginsRoute(val connectionId: String)
 
-/** One plugin of a connection, by its catalog key ([com.slopus.happy.plugins.Plugin.key]). */
-@Serializable data class PluginRoute(val connectionId: String, val pluginKey: String)
+/**
+ * One plugin of a connection, by its catalog key ([com.slopus.happy.plugins.Plugin.key]).
+ * [report] is a Gen UI tap's setup report ([GenUiPluginReports]): while
+ * this page is on the stack, an active installation it reads sends it.
+ */
+@Serializable data class PluginRoute(val connectionId: String, val pluginKey: String, val report: String? = null)
 
 /** One installation of a plugin: its setup, sign-ins and removal. */
 @Serializable data class PluginInstallationRoute(val connectionId: String, val installationId: String)
 
 /**
  * Opens plugin [pluginId] of [connectionId] over whatever screen is up: a
- * Gen UI `plugin` action, a settings link. On a Happy Cloud server the ID is
- * the catalog key.
+ * Gen UI `plugin` action (with its setup [report], if any), a settings
+ * link. On a Happy Cloud server the ID is the catalog key.
  */
-fun NavHostController.openPlugin(connectionId: String, pluginId: String) {
-    navigate(PluginRoute(connectionId, pluginId))
+fun NavHostController.openPlugin(connectionId: String, pluginId: String, report: String? = null) {
+    navigate(PluginRoute(connectionId, pluginId, report))
 }
 
 fun NavGraphBuilder.pluginRoutes(graph: AppGraph, nav: NavHostController) = pluginRoutes(nav) { connectionId -> rememberPlugins(graph, connectionId) }
@@ -69,7 +75,7 @@ fun NavGraphBuilder.pluginRoutes(nav: NavHostController, plugins: @Composable (c
     }
     page<PluginRoute> { entry ->
         val route = entry.toRoute<PluginRoute>()
-        PluginPage(plugins(route.connectionId), nav, route.connectionId, route.pluginKey)
+        PluginPage(plugins(route.connectionId), nav, route.connectionId, route.pluginKey, route.report)
     }
     page<PluginInstallationRoute> { entry ->
         val route = entry.toRoute<PluginInstallationRoute>()
@@ -98,6 +104,20 @@ private fun rememberPlugins(graph: AppGraph, connectionId: String): PagePlugins 
     return PagePlugins(holder.source, session?.pictures) { id, available -> session?.features?.note(id, available) }
 }
 
+/**
+ * A Gen UI tap's setup [report], for as long as the page it opened is on
+ * the stack (an installation's page over it included): each read of the
+ * plugins goes to [GenUiPluginReports.seen], which sends it once one of
+ * the plugin's installations is active.
+ */
+internal class PluginReportWatch(state: StateFlow<PluginsState>, report: String) : ViewModel() {
+    init {
+        viewModelScope.launch {
+            state.collect { (it as? PluginsState.Loaded)?.let { loaded -> GenUiPluginReports.seen(report, loaded.snapshot.installations) } }
+        }
+    }
+}
+
 /** Back from a sign-in in the browser, the server has finished it. */
 @Composable
 private fun RefreshOnResume(source: PluginsSource) {
@@ -115,9 +135,10 @@ private fun PluginsPage(plugins: PagePlugins, nav: NavHostController, connection
 }
 
 @Composable
-private fun PluginPage(plugins: PagePlugins, nav: NavHostController, connectionId: String, pluginKey: String) {
+private fun PluginPage(plugins: PagePlugins, nav: NavHostController, connectionId: String, pluginKey: String, report: String?) {
     val source = plugins.source ?: return PluginScreen(PluginsState.Unsupported, pluginKey, { nav.popBackStack() }, {})
     RefreshOnResume(source)
+    if (report != null) viewModel { PluginReportWatch(source.state, report) }
     val state by source.state.collectAsStateWithLifecycle()
     val acts = remember { PluginActs() }
     val scope = rememberCoroutineScope()

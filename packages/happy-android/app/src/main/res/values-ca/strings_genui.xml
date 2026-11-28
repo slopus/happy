@@ -88,4 +88,5 @@
     <string name="genui_cluster_ports">Ports: %1$s</string>
     <string name="genui_cluster_username_optional">Nom d’usuari, si el servidor en demana</string>
     <string name="genui_saved">Desat</string>
+    <string name="genui_plugin_set_up">Configurat</string>
 </resources>

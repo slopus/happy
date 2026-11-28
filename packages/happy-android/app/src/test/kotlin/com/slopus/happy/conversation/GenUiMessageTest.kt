@@ -47,6 +47,9 @@ class GenUiMessageTest {
         assertFalse(GenUiMessage.enables(Action.Open("javascript:alert(1)")))
         assertFalse(GenUiMessage.enables(Action.Open("file:///secret")))
         assertFalse(GenUiMessage.enables(Action.Plugin("p")))
+        // Where the computer reports `capabilities.plugins`, a plugin opens its page.
+        assertTrue(GenUiMessage.enables(Action.Plugin("p"), plugins = true))
+        assertFalse(GenUiMessage.enables(Action.Unsupported("future"), plugins = true))
         assertFalse(GenUiMessage.enables(Action.Unsupported("future")))
         for (url in listOf("https:example.com", " https://example.com", "https://user:pass@example.com", "https://example.com\\evil", "https://example.com/\n")) {
             assertFalse(url, GenUiMessage.enables(Action.Open(url)))

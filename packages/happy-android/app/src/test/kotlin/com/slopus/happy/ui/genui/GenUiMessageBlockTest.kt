@@ -17,6 +17,7 @@ import com.slopus.happy.genui.GenUiMessage
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Rule
@@ -73,5 +74,21 @@ class GenUiMessageBlockTest {
         assertEquals(listOf("next"), sent)
         rule.onNodeWithText("Install").assertIsNotEnabled()
         rule.onNodeWithText("Unsafe").assertIsNotEnabled()
+    }
+
+    @Test fun aPluginButtonOpensItsPageWhereTheComputerHasPluginsAndReportsNothing() {
+        val document = GenUiMessage.document(Json.parseToJsonElement("""{"genuiRender":1,"fallback":"Plugin","root":"plugin","elements":{
+          "plugin":{"type":"button","props":{"label":"Install","action":{"type":"plugin","plugin":{"id":"linear"}}}}
+        }}"""))
+        val plugins = MutableStateFlow(false)
+        val opened = ArrayList<Pair<String, String?>>()
+        val inline = GenUiInline(client, null, "origin", onMessage = {}, onOpenWeb = {}, plugins = plugins, onOpenPlugin = { id, report -> opened += id to report })
+        rule.setHappyContent { GenUiMessageBlock("call", document, inline) }
+        rule.onNodeWithText("Install").assertIsNotEnabled()
+        plugins.value = true
+        rule.waitForIdle()
+        rule.onNodeWithText("Install").assertIsEnabled().performClick()
+        // Direct Gen UI has no version to report from: no token.
+        assertEquals(listOf("linear" to null), opened)
     }
 }

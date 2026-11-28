@@ -236,7 +236,11 @@ class GenUiState {
         if (group !in chosen) chosen[group] = key
     }
 
-    /** Secrets saved from a button or press, by its key: the name its form opens on when tapped again. */
+    /**
+     * Secrets saved from a button or press, by its key: the name its form
+     * opens on when tapped again; for a `plugin` element whose setup was
+     * reported, the plugin's ID.
+     */
     internal val saved: SnapshotStateMap<String, String> = mutableStateMapOf()
 
     fun saved(key: String): String? = saved[key]
@@ -763,7 +767,10 @@ private fun GenUiScope.activate(key: String, group: String?, action: Action) {
  * if it has one) and the rest fade and stop responding. A secret button
  * always leads with a glyph, a lock where it names none; once its form
  * saved that glyph is a check, and nothing else changes: label, colours,
- * border and size stay, and TalkBack hears "Saved" (iOS 4f36d0b23).
+ * border and size stay, and TalkBack hears "Saved" (iOS 4f36d0b23). A
+ * `plugin` button is marked the same way once its setup was reported
+ * (a bolt where it names no glyph), TalkBack hearing "Set up", and still
+ * opens the plugin's page.
  */
 @Composable
 private fun ButtonView(key: String, e: Element.Button, modifier: Modifier) {
@@ -784,11 +791,12 @@ private fun ButtonView(key: String, e: Element.Button, modifier: Modifier) {
     // A secret button's lock holds the place its check takes once saved. The check stands in for a glyph
     // and is never added beside the word, so neither choosing nor saving changes a button's width (M2).
     val secret = e.action is Action.Secret || e.action is Action.ClusterSecret
-    val glyph = e.icon ?: if (secret) IconName.Lock else null
-    val saved = secret && key in scope.state.saved
+    val plugin = e.action is Action.Plugin
+    val glyph = e.icon ?: if (secret) IconName.Lock else if (plugin) IconName.Bolt else null
+    val saved = (secret || plugin) && key in scope.state.saved
     val marked = state.chosen
     val icon = if ((marked || saved) && glyph != null) IconName.Check else glyph
-    val said = stringResource(R.string.genui_saved)
+    val said = stringResource(if (plugin) R.string.genui_plugin_set_up else R.string.genui_saved)
     val content: @Composable RowScope.() -> Unit = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             icon?.let { GenUiIcon(it, 16.dp, fg, Modifier.testTag(GenUiTags.GLYPH + it.name)) }
@@ -834,8 +842,8 @@ private fun PressView(key: String, e: Element.Press, modifier: Modifier) {
         PressRole.Tile -> 6.dp to 16.dp
     }
     var m = modifier
-    val said = stringResource(R.string.genui_saved)
-    // A row whose secret form saved takes the accent's soft ground, and TalkBack hears "Saved".
+    val said = stringResource(if (e.action is Action.Plugin) R.string.genui_plugin_set_up else R.string.genui_saved)
+    // A row whose secret form saved, or whose plugin's setup was reported, takes the accent's soft ground, and TalkBack hears "Saved" or "Set up".
     if (key in scope.state.saved) m = m.semantics { stateDescription = said }
     if (state.chosen || key in scope.state.saved) {
         val tint = LocalGenUiColors.current.fill(Tone.Accent)

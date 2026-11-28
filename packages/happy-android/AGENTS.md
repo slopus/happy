@@ -2388,7 +2388,20 @@ stored name opens change mode, blank keeps, removed is `null`, `ifMatch` the
 version) and saves only through `POST
 /v0/artifacts/:id/versions/:n/actions` with a retry id; values stay in the
 sheet's memory. `plugin` opens `NavHostController.openPlugin` where the
-session's `pluginsAvailable` is true. `cluster_secret` (Happy Cloud
+session's `pluginsAvailable` is true, in direct (tool-call) Gen UI too
+(`GenUiMessage.enables(action, plugins)`; `secret`, `cluster_secret` and
+`tool` stay off there). In an artifact version with a live origin, on a
+computer whose health says `artifactPluginActions`
+(`GenUiPluginReportApi`, never probed), the tap also begins a setup report
+(`GenUiPluginReports`, logic in `genui/GenUiPluginReport.kt`,
+`GenUiPluginReportTest`): its token rides in `PluginRoute.report`, and
+while that page is on the stack (`PluginReportWatch`) an active
+installation of the plugin sends `{id, element}` once to the actions
+route, the same `id` on every retry and on another tap before it is
+taken. `200`/`201` marks the element done in the version's `GenUiState`
+(`save(key, pluginId)`): a button's glyph (a bolt where it names none)
+turns to a check, TalkBack hears "Set up", and it still opens the page;
+`409 not_set_up` waits for the next sighting, a failure retries. `cluster_secret` (Happy Cloud
 connections, `AgentClient.cloud`) is `GenUiClusterSecretSheet` over
 `ClusterSecretDraft`: owners from `GET /v0/permissions`, the type's fields,
 prefilled public metadata it doesn't show (ports, methods) sent as it came.

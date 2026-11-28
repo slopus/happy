@@ -43,6 +43,7 @@ import com.slopus.happy.ui.browser.BrowserComputeWatch
 import com.slopus.happy.ui.browser.BrowserPage
 import com.slopus.happy.ui.browser.BrowserScreen
 import com.slopus.happy.ui.browser.openOutside
+import com.slopus.happy.ui.genui.GenUiPluginReportApi
 import com.slopus.happy.ui.genui.GenUiSecretApi
 import com.slopus.happy.ui.plugins.openPlugin
 import com.slopus.happy.ui.connection.LocalHappyLinks
@@ -197,7 +198,8 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
                 // The artifact itself, not one file of it a link opened.
                 onDelete = if (route.path == null) ({ ArtifactClient(session!!.client).delete(route.artifactId) }) else null,
                 genUiSecrets = session?.client?.let { GenUiSecretApi(it) },
-                onOpenPlugin = if (plugins) ({ id -> nav.openPlugin(route.connectionId, id) }) else null,
+                onOpenPlugin = if (plugins) ({ id, report -> nav.openPlugin(route.connectionId, id, report) }) else null,
+                genUiPluginReports = session?.client?.let { GenUiPluginReportApi(it) },
             )
         },
         history = rememberArtifactHistory(loader, session, nav, route, title),
