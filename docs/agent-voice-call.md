@@ -904,6 +904,15 @@ interruption and the app leaving the foreground play none.
 The ended bar offers nothing to resume: it shows how the call ended, as
 before.
 
+**The call and its screens, on iOS.** `AgentCall` is the call itself, on
+an agent connection or a Happy account alike: its session, context,
+history, targets and the audio session's interruptions. `CallController`
+is the phone's front end over it: the bar, the welcome, the paywall and
+the end when the app leaves the foreground. The system taking the audio
+(another call, a media services reset) or the output device going ends
+the call as `interrupted`; a route that moves to car audio is not a lost
+route.
+
 ## The hosted agent
 
 Use a new, versioned agent. Leave the relay's agent (`sendMessageToSession`,
